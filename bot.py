@@ -15,15 +15,16 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 
 PLANS = {
-    "10": ("10 گیگ", 35000),
-    "20": ("20 گیگ", 70000),
-    "30": ("30 گیگ", 105000),
-    "40": ("40 گیگ", 140000),
-    "50": ("50 گیگ", 175000),
+    "10": 35000,
+    "20": 70000,
+    "30": 105000,
+    "40": 140000,
+    "50": 175000,
 }
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     keyboard = [
         [InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy")],
         [InlineKeyboardButton("📦 سرویس‌های من", callback_data="services")],
@@ -34,218 +35,268 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌐 HanzuVPN\n\n"
         "به ربات فروش HanzuVPN خوش آمدید.\n\n"
         "یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     query = update.callback_query
 
     try:
         await query.answer()
 
-        print("BUTTON CLICKED:", query.data)
+        data = query.data
 
-        if query.data == "buy":
+        # خرید سرویس
+        if data == "buy":
 
             keyboard = [
-                [InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="p10")],
-                [InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="p20")],
-                [InlineKeyboardButton("30 گیگ | 105,000 تومان", callback_data="p30")],
-                [InlineKeyboardButton("40 گیگ | 140,000 تومان", callback_data="p40")],
-                [InlineKeyboardButton("50 گیگ | 175,000 تومان", callback_data="p50")],
-                [InlineKeyboardButton("حجم دلخواه", callback_data="custom")],
+                [InlineKeyboardButton(
+                    "10 گیگ | 35,000 تومان",
+                    callback_data="plan_10"
+                )],
+
+                [InlineKeyboardButton(
+                    "20 گیگ | 70,000 تومان",
+                    callback_data="plan_20"
+                )],
+
+                [InlineKeyboardButton(
+                    "30 گیگ | 105,000 تومان",
+                    callback_data="plan_30"
+                )],
+
+                [InlineKeyboardButton(
+                    "40 گیگ | 140,000 تومان",
+                    callback_data="plan_40"
+                )],
+
+                [InlineKeyboardButton(
+                    "50 گیگ | 175,000 تومان",
+                    callback_data="plan_50"
+                )],
+
+                [InlineKeyboardButton(
+                    "🔹 حجم دلخواه",
+                    callback_data="custom"
+                )],
+
+                [InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="home"
+                )]
             ]
 
             await query.edit_message_text(
                 "🛒 سرویس‌های HanzuVPN\n\n"
-                "همه سرویس‌ها 30 روزه هستند.\n\n"
+                "⏳ مدت همه سرویس‌ها: 30 روز\n\n"
                 "حجم موردنظر را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-        elif query.data.startswith("p"):
-
-            volume = query.data[1:]
-            volume_name, price = PLANS[volume]
-
-            context.user_data["volume"] = volume_name
-            context.user_data["price"] = price
+        # صفحه اصلی
+        elif data == "home":
 
             keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "💳 پرداخت کردم",
-                        callback_data="paid"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="buy"
-                    )
-                ],
+                [InlineKeyboardButton(
+                    "🛒 خرید سرویس",
+                    callback_data="buy"
+                )],
+
+                [InlineKeyboardButton(
+                    "📦 سرویس‌های من",
+                    callback_data="services"
+                )],
+
+                [InlineKeyboardButton(
+                    "💬 پشتیبانی",
+                    callback_data="support"
+                )]
             ]
 
             await query.edit_message_text(
-                f"🌐 سرویس: {volume_name}\n"
-                f"⏳ مدت: 30 روز\n"
-                f"💰 مبلغ: {price:,} تومان\n\n"
-                f"💳 شماره کارت:\n{CARD_NUMBER}\n\n"
-                "بعد از پرداخت روی دکمه زیر بزنید.",
-                reply_markup=InlineKeyboardMarkup(keyboard),
+                "🌐 HanzuVPN\n\n"
+                "یکی از گزینه‌های زیر را انتخاب کنید:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-        elif query.data == "paid":
+        # پلن‌های آماده
+        elif data.startswith("plan_"):
 
-    print("PAID BUTTON CLICKED")
-    print("USER DATA:", context.user_data)
+            volume = data.replace("plan_", "")
 
-    volume = context.user_data.get("volume")
-    price = context.user_data.get("price")
-
-            if not volume or not price:
+            if volume not in PLANS:
                 await query.edit_message_text(
-                    "❌ اطلاعات خرید پیدا نشد.\n\n"
-                    "لطفاً دوباره از /start شروع کنید."
+                    "❌ سرویس پیدا نشد."
                 )
                 return
 
-            context.user_data["receipt"] = True
+            price = PLANS[volume]
+
+            keyboard = [
+                [InlineKeyboardButton(
+                    "💳 پرداخت کردم",
+                    callback_data=f"paid_{volume}_{price}"
+                )],
+
+                [InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="buy"
+                )]
+            ]
 
             await query.edit_message_text(
-                "✅ پرداخت ثبت شد.\n\n"
-                "📸 لطفاً عکس رسید پرداخت را همینجا ارسال کنید."
+                f"🌐 سرویس: {volume} گیگ\n"
+                f"⏳ مدت: 30 روز\n"
+                f"💰 مبلغ: {price:,} تومان\n\n"
+                f"💳 شماره کارت:\n"
+                f"{CARD_NUMBER}\n\n"
+                "بعد از پرداخت روی دکمه زیر بزنید:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-        elif query.data == "custom":
+        # پرداخت
+        elif data.startswith("paid_"):
 
-            context.user_data["custom"] = True
+            parts = data.split("_")
+
+            if len(parts) != 3:
+
+                await query.edit_message_text(
+                    "❌ اطلاعات پرداخت نامعتبر است."
+                )
+                return
+
+            volume = parts[1]
+            price = int(parts[2])
+
+            context.user_data["volume"] = f"{volume} گیگ"
+            context.user_data["price"] = price
+            context.user_data["waiting_receipt"] = True
+
+            await query.edit_message_text(
+                "✅ درخواست پرداخت ثبت شد.\n\n"
+                "📸 حالا عکس رسید پرداخت را همینجا ارسال کنید.\n\n"
+                "⚠️ لطفاً فقط عکس رسید را ارسال کنید."
+            )
+
+        # حجم دلخواه
+        elif data == "custom":
+
+            context.user_data["waiting_custom"] = True
 
             await query.edit_message_text(
                 "🔹 حجم دلخواه\n\n"
-                "حجم را به صورت عدد ارسال کنید.\n\n"
-                "مثال:\n25\n\n"
+                "حجم موردنظر را به صورت عدد ارسال کنید.\n\n"
+                "مثال:\n"
+                "25\n\n"
                 "💰 قیمت هر گیگ: 3,500 تومان"
             )
 
-        elif query.data == "services":
+        # سرویس‌های من
+        elif data == "services":
 
             await query.edit_message_text(
                 "📦 سرویس‌های من\n\n"
-                "فعلاً سرویس فعالی ثبت نشده است."
+                "در حال حاضر سرویس فعالی ثبت نشده است.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="home"
+                    )]
+                ])
             )
 
-        elif query.data == "support":
+        # پشتیبانی
+        elif data == "support":
 
             await query.edit_message_text(
                 "💬 پشتیبانی HanzuVPN\n\n"
-                "برای پشتیبانی با مدیریت در ارتباط باشید."
+                "برای پشتیبانی با مدیریت در ارتباط باشید.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="home"
+                    )]
+                ])
+            )
+
+        # تایید توسط ادمین
+        elif data.startswith("approve_"):
+
+            if query.from_user.id != ADMIN_ID:
+                await query.answer(
+                    "⛔ شما دسترسی ندارید.",
+                    show_alert=True
+                )
+                return
+
+            user_id = int(data.split("_")[1])
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "✅ پرداخت شما تأیید شد.\n\n"
+                    "🌐 HanzuVPN\n\n"
+                    "سرویس شما با موفقیت تأیید شد.\n\n"
+                    "📦 کانفیگ در مرحله بعد برای شما ارسال می‌شود."
+                )
+            )
+
+            await query.edit_message_caption(
+                caption=query.message.caption +
+                "\n\n✅ پرداخت توسط مدیریت تأیید شد."
+            )
+
+        # رد توسط ادمین
+        elif data.startswith("reject_"):
+
+            if query.from_user.id != ADMIN_ID:
+                await query.answer(
+                    "⛔ شما دسترسی ندارید.",
+                    show_alert=True
+                )
+                return
+
+            user_id = int(data.split("_")[1])
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ پرداخت شما تأیید نشد.\n\n"
+                    "لطفاً رسید پرداخت را بررسی کرده و "
+                    "مجدداً ارسال کنید."
+                )
+            )
+
+            await query.edit_message_caption(
+                caption=query.message.caption +
+                "\n\n❌ پرداخت توسط مدیریت رد شد."
             )
 
     except Exception as e:
 
-        print("BUTTON ERROR:", repr(e))
+        print("ERROR:", repr(e))
 
         try:
-            await query.edit_message_text(
-                "❌ یک خطا رخ داد.\n\n"
-                "لطفاً دوباره تلاش کنید."
+            await query.answer(
+                "❌ خطایی رخ داد.",
+                show_alert=True
             )
         except Exception:
             pass
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "buy":
-
-        keyboard = [
-            [InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="p10")],
-            [InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="p20")],
-            [InlineKeyboardButton("30 گیگ | 105,000 تومان", callback_data="p30")],
-            [InlineKeyboardButton("40 گیگ | 140,000 تومان", callback_data="p40")],
-            [InlineKeyboardButton("50 گیگ | 175,000 تومان", callback_data="p50")],
-            [InlineKeyboardButton("حجم دلخواه", callback_data="custom")],
-        ]
-
-        await query.edit_message_text(
-            "🛒 سرویس‌های HanzuVPN\n\n"
-            "همه سرویس‌ها 30 روزه هستند.\n"
-            "حجم موردنظر را انتخاب کنید:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
-
-    elif query.data.startswith("p"):
-
-        volume = query.data[1:]
-        volume_name, price = PLANS[volume]
-
-        context.user_data["volume"] = volume_name
-        context.user_data["price"] = price
-
-        keyboard = [
-            [InlineKeyboardButton("💳 پرداخت کردم", callback_data="paid")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="buy")],
-        ]
-
-        await query.edit_message_text(
-            f"🌐 سرویس: {volume_name}\n"
-            f"⏳ مدت: 30 روز\n"
-            f"💰 مبلغ: {price:,} تومان\n\n"
-            f"💳 شماره کارت:\n{CARD_NUMBER}\n\n"
-            "پس از پرداخت روی دکمه «پرداخت کردم» بزنید.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
-
-    elif query.data == "custom":
-
-        context.user_data["custom"] = True
-
-        await query.edit_message_text(
-            "🔹 حجم دلخواه\n\n"
-            "حجم موردنظر را به صورت عدد بفرستید.\n\n"
-            "مثال: 25\n\n"
-            "قیمت هر گیگ: 3,500 تومان"
-        )
-
-    elif query.data == "paid":
-
-        if not context.user_data.get("volume"):
-            await query.edit_message_text(
-                "❌ ابتدا یک سرویس انتخاب کنید."
-            )
-            return
-
-        context.user_data["receipt"] = True
-
-        await query.edit_message_text(
-            "💳 پرداخت ثبت شد.\n\n"
-            "📸 حالا عکس رسید پرداخت را همینجا ارسال کنید.\n\n"
-            "⚠️ لطفاً فقط عکس رسید را ارسال کنید."
-        )
-
-    elif query.data == "services":
-
-        await query.edit_message_text(
-            "📦 سرویس‌های من\n\n"
-            "در حال حاضر سرویس فعالی ثبت نشده است."
-        )
-
-    elif query.data == "support":
-
-        await query.edit_message_text(
-            "💬 پشتیبانی HanzuVPN\n\n"
-            "برای پشتیبانی با مدیریت در ارتباط باشید."
-        )
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if not context.user_data.get("custom"):
+    if not context.user_data.get("waiting_custom"):
         return
 
     try:
+
         volume = int(update.message.text)
+
     except ValueError:
 
         await update.message.reply_text(
@@ -263,39 +314,55 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     price = volume * 3500
 
-    context.user_data["custom"] = False
+    context.user_data["waiting_custom"] = False
     context.user_data["volume"] = f"{volume} گیگ"
     context.user_data["price"] = price
 
     keyboard = [
-        [InlineKeyboardButton("💳 پرداخت کردم", callback_data="paid")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="buy")],
+        [InlineKeyboardButton(
+            "💳 پرداخت کردم",
+            callback_data=f"paid_{volume}_{price}"
+        )],
+
+        [InlineKeyboardButton(
+            "🔙 بازگشت",
+            callback_data="buy"
+        )]
     ]
 
     await update.message.reply_text(
         f"🌐 سرویس: {volume} گیگ\n"
         f"⏳ مدت: 30 روز\n"
         f"💰 مبلغ: {price:,} تومان\n\n"
-        f"💳 شماره کارت:\n{CARD_NUMBER}\n\n"
-        "پس از پرداخت روی «پرداخت کردم» بزنید.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        f"💳 شماره کارت:\n"
+        f"{CARD_NUMBER}\n\n"
+        "بعد از پرداخت روی دکمه زیر بزنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if not context.user_data.get("receipt"):
+    if not context.user_data.get("waiting_receipt"):
         return
 
     photo = update.message.photo[-1]
+
     user = update.effective_user
 
-    volume = context.user_data.get("volume", "نامشخص")
-    price = context.user_data.get("price", 0)
+    volume = context.user_data.get(
+        "volume",
+        "نامشخص"
+    )
+
+    price = context.user_data.get(
+        "price",
+        0
+    )
 
     username = user.username if user.username else "ندارد"
 
-    message = (
+    caption = (
         "🔔 رسید پرداخت جدید\n\n"
         f"👤 نام: {user.full_name}\n"
         f"👤 Username: @{username}\n"
@@ -310,103 +377,62 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✅ تأیید پرداخت",
                 callback_data=f"approve_{user.id}"
             ),
+
             InlineKeyboardButton(
                 "❌ رد پرداخت",
                 callback_data=f"reject_{user.id}"
-            ),
+            )
         ]
     ]
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=photo.file_id,
-        caption=message,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        caption=caption,
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    context.user_data["receipt"] = False
+    context.user_data["waiting_receipt"] = False
 
     await update.message.reply_text(
-        "✅ رسید شما دریافت شد.\n\n"
-        "⏳ پرداخت توسط مدیریت بررسی می‌شود.\n"
-        "بعد از تأیید، سرویس برای شما فعال خواهد شد."
+        "✅ رسید دریافت شد.\n\n"
+        "⏳ رسید شما برای مدیریت ارسال شد.\n"
+        "پس از بررسی، نتیجه برای شما ارسال می‌شود."
     )
-
-
-async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    query = update.callback_query
-
-    if query.from_user.id != ADMIN_ID:
-        await query.answer(
-            "⛔ دسترسی ندارید.",
-            show_alert=True
-        )
-        return
-
-    await query.answer()
-
-    data = query.data
-
-    if data.startswith("approve_"):
-
-        user_id = int(data.split("_")[1])
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "✅ پرداخت شما تأیید شد.\n\n"
-                "🌐 HanzuVPN\n"
-                "سرویس شما با موفقیت فعال شد.\n\n"
-                "📌 کانفیگ سرویس در مرحله بعد برای شما ارسال خواهد شد."
-            )
-        )
-
-        await query.edit_message_caption(
-            caption=query.message.caption + "\n\n✅ پرداخت تأیید شد."
-        )
-
-    elif data.startswith("reject_"):
-
-        user_id = int(data.split("_")[1])
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "❌ پرداخت شما تأیید نشد.\n\n"
-                "لطفاً رسید صحیح را بررسی و مجدداً ارسال کنید."
-            )
-        )
-
-        await query.edit_message_caption(
-            caption=query.message.caption + "\n\n❌ پرداخت رد شد."
-        )
 
 
 def main():
 
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN تنظیم نشده است.")
+        raise ValueError(
+            "BOT_TOKEN تنظیم نشده است."
+        )
 
     if not ADMIN_ID:
-        raise ValueError("ADMIN_ID تنظیم نشده است.")
+        raise ValueError(
+            "ADMIN_ID تنظیم نشده است."
+        )
 
     if not CARD_NUMBER:
-        raise ValueError("CARD_NUMBER تنظیم نشده است.")
+        raise ValueError(
+            "CARD_NUMBER تنظیم نشده است."
+        )
 
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
+    app = Application.builder().token(
+        BOT_TOKEN
+    ).build()
 
     app.add_handler(
-        CallbackQueryHandler(
-            admin_buttons,
-            pattern=r"^(approve_|reject_)"
+        CommandHandler(
+            "start",
+            start
         )
     )
 
     app.add_handler(
-        CallbackQueryHandler(buttons)
+        CallbackQueryHandler(
+            buttons
+        )
     )
 
     app.add_handler(
@@ -423,7 +449,9 @@ def main():
         )
     )
 
-    print("HanzuVPN Bot is running...")
+    print(
+        "HanzuVPN Bot is running..."
+    )
 
     app.run_polling()
 

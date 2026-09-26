@@ -133,4 +133,169 @@ async def custom_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     price = volume * 3500
 
-    context.user_data["volume"]
+    context.user_data["volume"] = f"{volume} گیگ"
+    context.user_data["price"] = price
+    context.user_data["waiting_custom"] = False
+
+    keyboard = [
+        [InlineKeyboardButton("💳 پرداخت کردم", callback_data="paid")],
+        [InlineKeyboardButton("🛒 انتخاب دوباره", callback_data="buy")],
+    ]
+
+    await update.message.reply_text(
+        f"🌐 سرویس {volume} گیگ\n"
+        f"⏳ مدت: ۳۰ روز\n"
+        f"💰 مبلغ: {price:,} تومان\n\n"
+        f"💳 شماره کارت:\n"
+        f"`{CARD_NUMBER}`\n\n"
+        "بعد از انتقال وجه، روی «پرداخت کردم» بزنید.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("waiting_receipt"):
+        return
+
+    if not update.message.photo:
+        await update.message.reply_text(
+            "❌ لطفاً عکس رسید پرداخت را ارسال کنید."
+        )
+        return
+
+    photo = update.message.photo[-1]
+    user = update.effective_user
+
+    volume = context.user_data.get("volume", "نامشخص")
+    price = context.user_data.get("price", 0)
+
+    username = f"@{user.username}" if user.username else "ندارد"
+
+    caption = (
+        "🔔 رسید پرداخت جدید\n\n"
+        f"👤 نام: {user.full_name}\n"
+        f"🆔 Username: {username}\n"
+        f"🔢 User ID: {user.id}\n\n"
+        f"📦 سرویس: {volume}\n"
+        f"💰 مبلغ: {price:,} تومان\n\n"
+        "⚠️ لطفاً پرداخت را بررسی کنید."
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ تأیید پرداخت",
+                callback_data=f"approve_{user.id}",
+            ),
+            InlineKeyboardButton(
+                "❌ رد پرداخت",
+                callback_data=f"reject_{user.id}",
+            ),
+        ]
+    ]
+
+    await context.bot.send_photo(
+        chat_id=ADMIN_ID,
+        photo=photo.file_id,
+        caption=caption,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    context.user_data["waiting_receipt"] = False
+
+    await update.message.reply_text(
+        "✅ رسید شما دریافت شد.\n\n"
+        "در حال بررسی پرداخت توسط پشتیبانی هستیم."
+    )
+
+
+async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    if query.from_user.id != ADMIN_ID:
+        await query.answer(
+            "شما دسترسی مدیریت ندارید.",
+            show_alert=True,
+        )
+        return
+
+    await query.answer()
+
+    if query.data.startswith("approve_"):
+        user_id = int(query.data.replace("approve_", ""))
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "✅ پرداخت شما تأیید شد.\n\n"
+                "کانفیگ سرویس پس از آماده‌سازی برای شما ارسال می‌شود."
+            ),
+        )
+
+        await query.edit_message_caption(
+            caption=query.message.caption + "\n\n✅ پرداخت تأیید شد."
+        )
+
+    elif query.data.startswith("reject_"):
+        user_id = int(query.data.replace("reject_", ""))
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "❌ پرداخت شما تأیید نشد.\n\n"
+                "لطفاً با پشتیبانی تماس بگیرید."
+            ),
+        )
+
+        await query.edit_message_caption(
+            caption=query.message.caption + "\n\n❌ پرداخت رد شد."
+        )
+
+
+def main():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN تنظیم نشده است.")
+
+    if not ADMIN_ID:
+        raise ValueError("ADMIN_ID تنظیم نشده است.")
+
+    if not CARD_NUMBER:
+        raise ValueError("CARD_NUMBER تنظیم نشده است.")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_handler,
+            pattern=r"^(approve_|reject_)",
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(button_handler)
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            receipt_handler,
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            custom_volume,
+        )
+    )
+
+    print("HanzuVPN Bot is running...")
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()

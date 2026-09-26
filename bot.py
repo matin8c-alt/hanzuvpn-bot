@@ -46,6 +46,7 @@ def get_db():
 def init_db():
     conn = get_db()
 
+    # لینک‌های سرویس پولی
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +56,7 @@ def init_db():
         )
     """)
 
+    # سفارش‌ها
     conn.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,12 +72,30 @@ def init_db():
         )
     """)
 
+    # لینک‌های تست رایگان
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS free_tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            link TEXT NOT NULL,
+            used INTEGER DEFAULT 0
+        )
+    """)
+
+    # کاربرانی که تست گرفته‌اند
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS free_test_users (
+            user_id INTEGER PRIMARY KEY,
+            test_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 
 # =========================
-# لینک‌های سرویس
+# لینک‌های سرویس پولی
 # =========================
 
 def add_subscription(volume, link):
@@ -153,6 +173,175 @@ def get_subscription_list():
 
 
 # =========================
+# تست رایگان
+# =========================
+
+def add_free_test(link):
+    conn = get_db()
+
+    conn.execute(
+        "INSERT INTO free_tests (link, used) VALUES (?, 0)",
+        (link,)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_free_test_stock():
+    conn = get_db()
+
+    count = conn.execute("""
+        SELECT COUNT(*)
+        FROM free_tests
+        WHERE used = 0
+    """).fetchone()[0]
+
+    conn.close()
+
+    return count
+
+
+def get_available_free_test():
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT id, link
+        FROM free_tests
+        WHERE used = 0
+        ORDER BY id ASC
+        LIMIT 1
+    """).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_free_test_list():
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT id, link
+        FROM free_tests
+        WHERE used = 0
+        ORDER BY id ASC
+    """).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def delete_free_test(test_id):
+    conn = get_db()
+
+    conn.execute("""
+        DELETE FROM free_tests
+        WHERE id = ?
+        AND used = 0
+    """, (test_id,))
+
+    conn.commit()
+    conn.close()
+
+
+def user_already_got_test(user_id):
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT user_id
+        FROM free_test_users
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()
+
+    conn.close()
+
+    return row is not None
+
+
+def give_free_test(user_id):
+    conn = get_db()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        # بررسی اینکه قبلاً تست گرفته یا نه
+        existing = conn.execute("""
+            SELECT user_id
+            FROM free_test_users
+            WHERE user_id = ?
+        """, (user_id,)).fetchone()
+
+        if existing:
+            conn.rollback()
+            return {
+                "status": "already_used"
+            }
+
+        # پیدا کردن یک تست آزاد
+        test = conn.execute("""
+            SELECT id, link
+            FROM free_tests
+            WHERE used = 0
+            ORDER BY id ASC
+            LIMIT 1
+        """).fetchone()
+
+        if not test:
+            conn.rollback()
+            return {
+                "status": "no_stock"
+            }
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # ثبت اینکه کاربر تست گرفته
+        conn.execute("""
+            INSERT INTO free_test_users
+            (
+                user_id,
+                test_id,
+                created_at
+            )
+            VALUES (?, ?, ?)
+        """, (
+            user_id,
+            test["id"],
+            now
+        ))
+
+        # مصرف تست
+        conn.execute("""
+            UPDATE free_tests
+            SET used = 1
+            WHERE id = ?
+            AND used = 0
+        """, (test["id"],))
+
+        conn.commit()
+
+        return {
+            "status": "success",
+            "link": test["link"]
+        }
+
+    except sqlite3.IntegrityError:
+        conn.rollback()
+
+        return {
+            "status": "already_used"
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+# =========================
 # سفارش‌ها
 # =========================
 
@@ -190,20 +379,6 @@ def create_order(user, volume, price):
     return order_id
 
 
-def get_order(order_id):
-    conn = get_db()
-
-    row = conn.execute("""
-        SELECT *
-        FROM orders
-        WHERE id = ?
-    """, (order_id,)).fetchone()
-
-    conn.close()
-
-    return row
-
-
 def get_latest_pending_order(user_id):
     conn = get_db()
 
@@ -239,6 +414,7 @@ def approve_order(order_id):
 
         if order["status"] != "pending":
             conn.rollback()
+
             return {
                 "status": "already_processed",
                 "order": order,
@@ -255,6 +431,7 @@ def approve_order(order_id):
 
         if not subscription:
             conn.rollback()
+
             return {
                 "status": "no_stock",
                 "order": order,
@@ -277,7 +454,10 @@ def approve_order(order_id):
 
         if updated.rowcount != 1:
             conn.rollback()
-            return {"status": "already_processed"}
+
+            return {
+                "status": "already_processed"
+            }
 
         conn.execute("""
             UPDATE subscriptions
@@ -386,17 +566,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
-            InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy")
+            InlineKeyboardButton(
+                "🛒 خرید سرویس",
+                callback_data="buy"
+            )
         ],
         [
-            InlineKeyboardButton("📦 سرویس‌های من", callback_data="my_services"),
-            InlineKeyboardButton("💬 پشتیبانی", callback_data="support"),
+            InlineKeyboardButton(
+                "🎁 تست رایگان",
+                callback_data="free_test"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 سرویس‌های من",
+                callback_data="my_services"
+            ),
+            InlineKeyboardButton(
+                "💬 پشتیبانی",
+                callback_data="support"
+            ),
         ],
     ]
 
     if update.effective_user.id == ADMIN_ID:
         keyboard.append([
-            InlineKeyboardButton("⚙️ پنل مدیریت", callback_data="admin")
+            InlineKeyboardButton(
+                "⚙️ پنل مدیریت",
+                callback_data="admin"
+            )
         ])
 
     await update.message.reply_text(
@@ -415,25 +613,46 @@ async def show_buy_menu(query):
 
     keyboard = [
         [
-            InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="plan_10"),
+            InlineKeyboardButton(
+                "10 گیگ | 35,000 تومان",
+                callback_data="plan_10"
+            )
         ],
         [
-            InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="plan_20"),
+            InlineKeyboardButton(
+                "20 گیگ | 70,000 تومان",
+                callback_data="plan_20"
+            )
         ],
         [
-            InlineKeyboardButton("30 گیگ | 105,000 تومان", callback_data="plan_30"),
+            InlineKeyboardButton(
+                "30 گیگ | 105,000 تومان",
+                callback_data="plan_30"
+            )
         ],
         [
-            InlineKeyboardButton("40 گیگ | 140,000 تومان", callback_data="plan_40"),
+            InlineKeyboardButton(
+                "40 گیگ | 140,000 تومان",
+                callback_data="plan_40"
+            )
         ],
         [
-            InlineKeyboardButton("50 گیگ | 175,000 تومان", callback_data="plan_50"),
+            InlineKeyboardButton(
+                "50 گیگ | 175,000 تومان",
+                callback_data="plan_50"
+            )
         ],
         [
-            InlineKeyboardButton("✏️ حجم دلخواه", callback_data="custom"),
+            InlineKeyboardButton(
+                "✏️ حجم دلخواه",
+                callback_data="custom"
+            )
         ],
         [
-            InlineKeyboardButton("🔙 بازگشت", callback_data="home"),
+            InlineKeyboardButton(
+                "🔙 بازگشت",
+                callback_data="home"
+            )
         ],
     ]
 
@@ -455,7 +674,10 @@ async def show_payment(query, volume, price):
             )
         ],
         [
-            InlineKeyboardButton("🔙 بازگشت", callback_data="buy")
+            InlineKeyboardButton(
+                "🔙 بازگشت",
+                callback_data="buy"
+            )
         ],
     ]
 
@@ -466,7 +688,8 @@ async def show_payment(query, volume, price):
         "⏳ مدت: 30 روز\n\n"
         "💳 شماره کارت:\n"
         f"`{CARD_NUMBER}`\n\n"
-        "بعد از انتقال مبلغ، روی دکمه «پرداخت کردم» بزنید و سپس تصویر رسید را ارسال کنید.",
+        "بعد از انتقال مبلغ، روی دکمه «پرداخت کردم» بزنید "
+        "و سپس تصویر رسید را ارسال کنید.",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -480,26 +703,50 @@ async def show_admin(query):
 
     keyboard = [
         [
-            InlineKeyboardButton("➕ افزودن لینک ساب", callback_data="admin_add")
+            InlineKeyboardButton(
+                "➕ افزودن لینک ساب",
+                callback_data="admin_add"
+            )
         ],
         [
-            InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"),
-            InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete"),
+            InlineKeyboardButton(
+                "📦 موجودی",
+                callback_data="admin_stock"
+            ),
+            InlineKeyboardButton(
+                "🗑 حذف لینک",
+                callback_data="admin_delete"
+            ),
         ],
         [
-            InlineKeyboardButton("📊 آمار فروش", callback_data="admin_stats")
+            InlineKeyboardButton(
+                "🎁 مدیریت تست رایگان",
+                callback_data="admin_tests"
+            )
         ],
         [
-            InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
+            InlineKeyboardButton(
+                "📊 آمار فروش",
+                callback_data="admin_stats"
+            )
         ],
         [
-            InlineKeyboardButton("🔙 بازگشت", callback_data="home")
+            InlineKeyboardButton(
+                "🧾 سفارش‌ها",
+                callback_data="admin_orders"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 بازگشت",
+                callback_data="home"
+            )
         ],
     ]
 
     await query.edit_message_text(
         "⚙️ پنل مدیریت HanzuVPN\n\n"
-        "مدیریت فروش و سرویس‌ها:",
+        "مدیریت فروش، سرویس‌ها و تست رایگان:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -520,7 +767,10 @@ async def show_stock(query):
         text,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+                InlineKeyboardButton(
+                    "🔙 پنل مدیریت",
+                    callback_data="admin"
+                )
             ]
         ])
     )
@@ -544,7 +794,10 @@ async def show_stats(query):
         text,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+                InlineKeyboardButton(
+                    "🔙 پنل مدیریت",
+                    callback_data="admin"
+                )
             ]
         ])
     )
@@ -565,15 +818,20 @@ async def show_orders(query):
 
     if not rows:
         text = "🧾 هنوز سفارشی ثبت نشده است."
+
     else:
         text = "🧾 آخرین سفارش‌ها\n\n"
 
         for row in rows:
+
             status = {
                 "pending": "⏳ در انتظار",
                 "approved": "✅ تأیید",
                 "rejected": "❌ رد",
-            }.get(row["status"], row["status"])
+            }.get(
+                row["status"],
+                row["status"]
+            )
 
             name = row["first_name"] or "بدون نام"
 
@@ -589,7 +847,10 @@ async def show_orders(query):
         text,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+                InlineKeyboardButton(
+                    "🔙 پنل مدیریت",
+                    callback_data="admin"
+                )
             ]
         ])
     )
@@ -600,6 +861,7 @@ async def show_delete_menu(query):
     rows = get_subscription_list()
 
     if not rows:
+
         await query.edit_message_text(
             "🗑 حذف لینک\n\n"
             "❌ هیچ لینک استفاده‌نشده‌ای وجود ندارد.",
@@ -612,11 +874,13 @@ async def show_delete_menu(query):
                 ]
             ])
         )
+
         return
 
     keyboard = []
 
     for row in rows:
+
         keyboard.append([
             InlineKeyboardButton(
                 f"🗑 #{row['id']} | {row['volume']} گیگ",
@@ -625,11 +889,124 @@ async def show_delete_menu(query):
         ])
 
     keyboard.append([
-        InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+        InlineKeyboardButton(
+            "🔙 پنل مدیریت",
+            callback_data="admin"
+        )
     ])
 
     await query.edit_message_text(
         "🗑 کدام لینک حذف شود؟",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# =========================
+# مدیریت تست رایگان
+# =========================
+
+async def show_test_admin(query):
+
+    stock = get_free_test_stock()
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "➕ افزودن لینک تست",
+                callback_data="admin_test_add"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 موجودی تست",
+                callback_data="admin_test_stock"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🗑 حذف تست",
+                callback_data="admin_test_delete"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 پنل مدیریت",
+                callback_data="admin"
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        "🎁 مدیریت تست رایگان\n\n"
+        "📦 حجم هر تست: 100 مگابایت\n"
+        "⏳ اعتبار: 1 روز\n"
+        f"📊 موجودی فعلی: {stock} عدد",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_test_stock(query):
+
+    stock = get_free_test_stock()
+
+    await query.edit_message_text(
+        "🎁 موجودی تست رایگان\n\n"
+        f"📦 تست‌های آماده: {stock} عدد\n\n"
+        "هر تست:\n"
+        "📦 100 مگابایت\n"
+        "⏳ 1 روز",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🔙 مدیریت تست",
+                    callback_data="admin_tests"
+                )
+            ]
+        ])
+    )
+
+
+async def show_test_delete(query):
+
+    rows = get_free_test_list()
+
+    if not rows:
+
+        await query.edit_message_text(
+            "🗑 حذف تست\n\n"
+            "❌ تست آماده‌ای برای حذف وجود ندارد.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 مدیریت تست",
+                        callback_data="admin_tests"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    keyboard = []
+
+    for row in rows:
+
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🗑 حذف تست #{row['id']}",
+                callback_data=f"delete_test_{row['id']}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🔙 مدیریت تست",
+            callback_data="admin_tests"
+        )
+    ])
+
+    await query.edit_message_text(
+        "🗑 کدام تست حذف شود؟",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -646,12 +1023,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
 
-    # خانه
+    # =========================
+    # صفحه اصلی
+    # =========================
+
     if data == "home":
 
         keyboard = [
             [
-                InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy")
+                InlineKeyboardButton(
+                    "🛒 خرید سرویس",
+                    callback_data="buy"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎁 تست رایگان",
+                    callback_data="free_test"
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -666,6 +1055,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         if user_id == ADMIN_ID:
+
             keyboard.append([
                 InlineKeyboardButton(
                     "⚙️ پنل مدیریت",
@@ -678,14 +1068,172 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "منوی اصلی:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+
         return
 
+    # =========================
+    # تست رایگان
+    # =========================
+
+    if data == "free_test":
+
+        if user_already_got_test(user_id):
+
+            await query.edit_message_text(
+                "❌ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\n"
+                "🎁 هر کاربر فقط یک بار می‌تواند تست رایگان بگیرد.\n\n"
+                "برای خرید سرویس می‌توانید از منوی خرید استفاده کنید.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🛒 خرید سرویس",
+                            callback_data="buy"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🔙 بازگشت",
+                            callback_data="home"
+                        )
+                    ]
+                ])
+            )
+
+            return
+
+        stock = get_free_test_stock()
+
+        if stock <= 0:
+
+            await query.edit_message_text(
+                "😔 متأسفانه در حال حاضر تست رایگان موجود نیست.\n\n"
+                "لطفاً بعداً دوباره امتحان کنید.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🔙 بازگشت",
+                            callback_data="home"
+                        )
+                    ]
+                ])
+            )
+
+            return
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🎁 دریافت تست",
+                    callback_data="get_free_test"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ انصراف",
+                    callback_data="home"
+                )
+            ]
+        ]
+
+        await query.edit_message_text(
+            "🎁 تست رایگان HanzuVPN\n\n"
+            "📦 حجم: 100 مگابایت\n"
+            "⏳ اعتبار: 1 روز\n\n"
+            "⚠️ هر کاربر فقط یک بار می‌تواند تست رایگان دریافت کند.\n\n"
+            "آیا می‌خواهید تست رایگان خود را دریافت کنید؟",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
+
+    # =========================
+    # دریافت تست
+    # =========================
+
+    if data == "get_free_test":
+
+        result = give_free_test(user_id)
+
+        if result["status"] == "already_used":
+
+            await query.edit_message_text(
+                "❌ شما قبلاً تست رایگان دریافت کرده‌اید.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🛒 خرید سرویس",
+                            callback_data="buy"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🔙 بازگشت",
+                            callback_data="home"
+                        )
+                    ]
+                ])
+            )
+
+            return
+
+        if result["status"] == "no_stock":
+
+            await query.edit_message_text(
+                "❌ متأسفانه تست رایگان تمام شده است.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🔙 بازگشت",
+                            callback_data="home"
+                        )
+                    ]
+                ])
+            )
+
+            return
+
+        test_link = result["link"]
+
+        await query.edit_message_text(
+            "🎉 تست رایگان شما فعال شد!\n\n"
+            "🌐 HanzuVPN\n\n"
+            "📦 حجم: 100 مگابایت\n"
+            "⏳ اعتبار: 1 روز\n\n"
+            "🔗 لینک Subscription:\n\n"
+            f"{test_link}\n\n"
+            "📌 لینک را در برنامه VPN خود وارد کنید.\n\n"
+            "⚠️ هر کاربر فقط یک بار می‌تواند تست رایگان دریافت کند.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🛒 خرید سرویس",
+                        callback_data="buy"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="home"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # =========================
     # خرید
+    # =========================
+
     if data == "buy":
+
         await show_buy_menu(query)
         return
 
+    # =========================
     # پلن‌ها
+    # =========================
+
     if data.startswith("plan_"):
 
         volume = data.split("_")[1]
@@ -694,10 +1242,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not price:
             return
 
-        await show_payment(query, volume, price)
+        await show_payment(
+            query,
+            volume,
+            price
+        )
+
         return
 
+    # =========================
     # حجم دلخواه
+    # =========================
+
     if data == "custom":
 
         context.user_data["waiting_custom_volume"] = True
@@ -708,9 +1264,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "مثال:\n"
             "25"
         )
+
         return
 
+    # =========================
     # پرداخت کردم
+    # =========================
+
     if data.startswith("paid_"):
 
         parts = data.split("_")
@@ -737,9 +1297,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📸 حالا تصویر رسید پرداخت را همینجا ارسال کنید.\n\n"
             "پس از بررسی، سرویس برای شما ارسال می‌شود."
         )
+
         return
 
+    # =========================
     # سرویس‌های من
+    # =========================
+
     if data == "my_services":
 
         conn = get_db()
@@ -762,11 +1326,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
         if not rows:
-            text = "📦 سرویس‌های شما\n\nهنوز سرویس فعالی ندارید."
+
+            text = (
+                "📦 سرویس‌های شما\n\n"
+                "هنوز سرویس فعالی ندارید."
+            )
+
         else:
+
             text = "📦 سرویس‌های شما\n\n"
 
             for row in rows:
+
                 text += (
                     f"🧾 سفارش #{row['id']}\n"
                     f"📦 حجم: {row['volume']} گیگ\n"
@@ -787,9 +1358,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             ])
         )
+
         return
 
+    # =========================
     # پشتیبانی
+    # =========================
+
     if data == "support":
 
         await query.edit_message_text(
@@ -805,9 +1380,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             ])
         )
+
         return
 
+    # =========================
     # پنل مدیریت
+    # =========================
+
     if data == "admin":
 
         if user_id != ADMIN_ID:
@@ -816,7 +1395,87 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_admin(query)
         return
 
-    # موجودی
+    # =========================
+    # مدیریت تست
+    # =========================
+
+    if data == "admin_tests":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_test_admin(query)
+        return
+
+    # افزودن تست
+    if data == "admin_test_add":
+
+        if user_id != ADMIN_ID:
+            return
+
+        context.user_data["admin_waiting_test_link"] = True
+
+        await query.edit_message_text(
+            "➕ افزودن لینک تست رایگان\n\n"
+            "لینک Subscription تست را ارسال کن.\n\n"
+            "⚠️ مشخصات تست:\n"
+            "📦 100 مگابایت\n"
+            "⏳ 1 روز"
+        )
+
+        return
+
+    # موجودی تست
+    if data == "admin_test_stock":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_test_stock(query)
+        return
+
+    # حذف تست
+    if data == "admin_test_delete":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_test_delete(query)
+        return
+
+    # حذف تست مشخص
+    if data.startswith("delete_test_"):
+
+        if user_id != ADMIN_ID:
+            return
+
+        test_id = int(
+            data.replace(
+                "delete_test_",
+                ""
+            )
+        )
+
+        delete_free_test(test_id)
+
+        await query.edit_message_text(
+            "✅ تست با موفقیت حذف شد.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 مدیریت تست",
+                        callback_data="admin_tests"
+                    )
+                ]
+            ])
+        )
+
+        return
+
+    # =========================
+    # موجودی سرویس
+    # =========================
+
     if data == "admin_stock":
 
         if user_id != ADMIN_ID:
@@ -825,7 +1484,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_stock(query)
         return
 
+    # =========================
     # آمار
+    # =========================
+
     if data == "admin_stats":
 
         if user_id != ADMIN_ID:
@@ -834,7 +1496,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_stats(query)
         return
 
+    # =========================
     # سفارش‌ها
+    # =========================
+
     if data == "admin_orders":
 
         if user_id != ADMIN_ID:
@@ -843,7 +1508,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_orders(query)
         return
 
-    # افزودن لینک
+    # =========================
+    # افزودن لینک سرویس
+    # =========================
+
     if data == "admin_add":
 
         if user_id != ADMIN_ID:
@@ -860,9 +1528,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "50\n"
             "یا حتی حجم دلخواه مثل 25"
         )
+
         return
 
-    # حذف
+    # =========================
+    # حذف سرویس
+    # =========================
+
     if data == "admin_delete":
 
         if user_id != ADMIN_ID:
@@ -877,7 +1549,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        subscription_id = int(data.split("_")[1])
+        subscription_id = int(
+            data.split("_")[1]
+        )
 
         delete_subscription(subscription_id)
 
@@ -892,15 +1566,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             ])
         )
+
         return
 
+    # =========================
     # تأیید سفارش
+    # =========================
+
     if data.startswith("approve_"):
 
         if user_id != ADMIN_ID:
             return
 
-        order_id = int(data.split("_")[1])
+        order_id = int(
+            data.split("_")[1]
+        )
 
         result = approve_order(order_id)
 
@@ -909,6 +1589,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_caption(
                 caption="❌ سفارش پیدا نشد."
             )
+
             return
 
         if result["status"] == "already_processed":
@@ -917,12 +1598,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if status == "approved":
                 message = "⚠️ این سفارش قبلاً تأیید شده است."
+
             elif status == "rejected":
                 message = "⚠️ این سفارش قبلاً رد شده است."
+
             else:
                 message = "⚠️ این سفارش قبلاً پردازش شده است."
 
-            await query.answer(message, show_alert=True)
+            await query.answer(
+                message,
+                show_alert=True
+            )
+
             return
 
         if result["status"] == "no_stock":
@@ -937,6 +1624,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "پرداخت هنوز تأیید نشده چون لینک این حجم موجود نیست.\n"
                 "ابتدا لینک مناسب را از پنل مدیریت اضافه کن."
             )
+
             return
 
         order = result["order"]
@@ -967,28 +1655,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
+    # =========================
     # رد سفارش
+    # =========================
+
     if data.startswith("reject_"):
 
         if user_id != ADMIN_ID:
             return
 
-        order_id = int(data.split("_")[1])
+        order_id = int(
+            data.split("_")[1]
+        )
 
         changed, order = reject_order(order_id)
 
         if not order:
+
             await query.answer(
                 "❌ سفارش پیدا نشد.",
                 show_alert=True
             )
+
             return
 
         if not changed:
+
             await query.answer(
                 "⚠️ این سفارش قبلاً پردازش شده است.",
                 show_alert=True
             )
+
             return
 
         await context.bot.send_message(
@@ -1012,7 +1709,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# دریافت پیام متنی
+# پیام‌های متنی
 # =========================
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1020,12 +1717,57 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text.strip()
 
+    # =========================
+    # افزودن لینک تست
+    # =========================
+
+    if (
+        user.id == ADMIN_ID
+        and context.user_data.get("admin_waiting_test_link")
+    ):
+
+        link = text
+
+        if not (
+            link.startswith("http://")
+            or link.startswith("https://")
+        ):
+
+            await update.message.reply_text(
+                "❌ لینک معتبر نیست.\n\n"
+                "لینک باید با http:// یا https:// شروع شود."
+            )
+
+            return
+
+        add_free_test(link)
+
+        context.user_data.pop(
+            "admin_waiting_test_link",
+            None
+        )
+
+        stock = get_free_test_stock()
+
+        await update.message.reply_text(
+            "✅ لینک تست با موفقیت اضافه شد.\n\n"
+            "📦 حجم: 100 مگابایت\n"
+            "⏳ اعتبار: 1 روز\n\n"
+            f"📊 موجودی تست: {stock} عدد"
+        )
+
+        return
+
+    # =========================
     # حجم دلخواه مشتری
+    # =========================
+
     if context.user_data.get("waiting_custom_volume"):
 
         context.user_data["waiting_custom_volume"] = False
 
         try:
+
             volume = int(text)
 
             if volume <= 0 or volume > 1000:
@@ -1038,6 +1780,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "لطفاً یک عدد معتبر وارد کنید.\n"
                 "مثلاً: 25"
             )
+
             return
 
         price = volume * PRICE_PER_GB
@@ -1068,10 +1811,17 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
+    # =========================
     # حجم لینک برای ادمین
-    if user.id == ADMIN_ID and context.user_data.get("admin_waiting_volume"):
+    # =========================
+
+    if (
+        user.id == ADMIN_ID
+        and context.user_data.get("admin_waiting_volume")
+    ):
 
         try:
+
             volume = int(text)
 
             if volume <= 0 or volume > 1000:
@@ -1083,6 +1833,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ حجم نامعتبر است.\n"
                 "مثلاً 10 یا 20 یا 50 وارد کن."
             )
+
             return
 
         context.user_data["admin_waiting_volume"] = False
@@ -1096,8 +1847,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
+    # =========================
     # لینک جدید ادمین
-    if user.id == ADMIN_ID and context.user_data.get("admin_waiting_link"):
+    # =========================
+
+    if (
+        user.id == ADMIN_ID
+        and context.user_data.get("admin_waiting_link")
+    ):
 
         link = text
 
@@ -1105,18 +1862,32 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             link.startswith("http://")
             or link.startswith("https://")
         ):
+
             await update.message.reply_text(
                 "❌ لینک معتبر نیست.\n\n"
                 "لینک باید با http:// یا https:// شروع شود."
             )
+
             return
 
-        volume = context.user_data.get("admin_add_volume")
+        volume = context.user_data.get(
+            "admin_add_volume"
+        )
 
-        add_subscription(volume, link)
+        add_subscription(
+            volume,
+            link
+        )
 
-        context.user_data.pop("admin_waiting_link", None)
-        context.user_data.pop("admin_add_volume", None)
+        context.user_data.pop(
+            "admin_waiting_link",
+            None
+        )
+
+        context.user_data.pop(
+            "admin_add_volume",
+            None
+        )
 
         await update.message.reply_text(
             "✅ لینک با موفقیت به موجودی اضافه شد.\n\n"
@@ -1134,7 +1905,9 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
-    order = get_latest_pending_order(user.id)
+    order = get_latest_pending_order(
+        user.id
+    )
 
     if not order:
 
@@ -1142,6 +1915,7 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ سفارش در انتظار پرداختی برای شما پیدا نشد.\n\n"
             "ابتدا از بخش خرید، سرویس موردنظر را انتخاب کنید."
         )
+
         return
 
     caption = (
@@ -1190,16 +1964,27 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
 
     if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
+        raise RuntimeError(
+            "BOT_TOKEN تنظیم نشده است."
+        )
 
     init_db()
 
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
+    app = Application.builder().token(
+        BOT_TOKEN
+    ).build()
 
     app.add_handler(
-        CallbackQueryHandler(button_handler)
+        CommandHandler(
+            "start",
+            start
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            button_handler
+        )
     )
 
     app.add_handler(
@@ -1216,7 +2001,9 @@ def main():
         )
     )
 
-    print("HanzuVPN Bot is running...")
+    print(
+        "HanzuVPN Bot is running..."
+    )
 
     app.run_polling()
 

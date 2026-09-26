@@ -43,6 +43,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "buy":
+
         keyboard = [
             [InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="p10")],
             [InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="p20")],
@@ -60,6 +61,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data.startswith("p"):
+
         volume = query.data[1:]
         volume_name, price = PLANS[volume]
 
@@ -81,6 +83,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "custom":
+
         context.user_data["custom"] = True
 
         await query.edit_message_text(
@@ -91,20 +94,30 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "paid":
+
+        if not context.user_data.get("volume"):
+            await query.edit_message_text(
+                "❌ ابتدا یک سرویس انتخاب کنید."
+            )
+            return
+
         context.user_data["receipt"] = True
 
         await query.edit_message_text(
-            "📸 ارسال رسید\n\n"
-            "لطفاً عکس رسید پرداخت را همینجا ارسال کنید."
+            "💳 پرداخت ثبت شد.\n\n"
+            "📸 حالا عکس رسید پرداخت را همینجا ارسال کنید.\n\n"
+            "⚠️ لطفاً فقط عکس رسید را ارسال کنید."
         )
 
     elif query.data == "services":
+
         await query.edit_message_text(
             "📦 سرویس‌های من\n\n"
             "در حال حاضر سرویس فعالی ثبت نشده است."
         )
 
     elif query.data == "support":
+
         await query.edit_message_text(
             "💬 پشتیبانی HanzuVPN\n\n"
             "برای پشتیبانی با مدیریت در ارتباط باشید."
@@ -112,18 +125,22 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not context.user_data.get("custom"):
         return
 
     try:
         volume = int(update.message.text)
     except ValueError:
+
         await update.message.reply_text(
-            "❌ فقط عدد وارد کنید.\nمثال: 25"
+            "❌ فقط عدد وارد کنید.\n\n"
+            "مثال: 25"
         )
         return
 
     if volume <= 0:
+
         await update.message.reply_text(
             "❌ حجم باید بیشتر از صفر باشد."
         )
@@ -151,6 +168,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not context.user_data.get("receipt"):
         return
 
@@ -171,21 +189,87 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 مبلغ: {price:,} تومان"
     )
 
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ تأیید پرداخت",
+                callback_data=f"approve_{user.id}"
+            ),
+            InlineKeyboardButton(
+                "❌ رد پرداخت",
+                callback_data=f"reject_{user.id}"
+            ),
+        ]
+    ]
+
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=photo.file_id,
         caption=message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
     context.user_data["receipt"] = False
 
     await update.message.reply_text(
-        "✅ رسید دریافت شد.\n\n"
-        "پرداخت شما توسط مدیریت بررسی می‌شود."
+        "✅ رسید شما دریافت شد.\n\n"
+        "⏳ پرداخت توسط مدیریت بررسی می‌شود.\n"
+        "بعد از تأیید، سرویس برای شما فعال خواهد شد."
     )
 
 
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    if query.from_user.id != ADMIN_ID:
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True
+        )
+        return
+
+    await query.answer()
+
+    data = query.data
+
+    if data.startswith("approve_"):
+
+        user_id = int(data.split("_")[1])
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "✅ پرداخت شما تأیید شد.\n\n"
+                "🌐 HanzuVPN\n"
+                "سرویس شما با موفقیت فعال شد.\n\n"
+                "📌 کانفیگ سرویس در مرحله بعد برای شما ارسال خواهد شد."
+            )
+        )
+
+        await query.edit_message_caption(
+            caption=query.message.caption + "\n\n✅ پرداخت تأیید شد."
+        )
+
+    elif data.startswith("reject_"):
+
+        user_id = int(data.split("_")[1])
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "❌ پرداخت شما تأیید نشد.\n\n"
+                "لطفاً رسید صحیح را بررسی و مجدداً ارسال کنید."
+            )
+        )
+
+        await query.edit_message_caption(
+            caption=query.message.caption + "\n\n❌ پرداخت رد شد."
+        )
+
+
 def main():
+
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است.")
 
@@ -198,6 +282,13 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_buttons,
+            pattern=r"^(approve_|reject_)"
+        )
+    )
 
     app.add_handler(
         CallbackQueryHandler(buttons)

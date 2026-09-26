@@ -43,6 +43,711 @@ TRIAL_DAYS = 1
 
 
 # =========================================================
+# ترجمه
+# =========================================================
+
+LANGUAGES = {
+    "fa": "🇮🇷 فارسی",
+    "ku": "🟢 کوردی",
+    "en": "🇬🇧 English",
+}
+
+
+TEXTS = {
+
+    "fa": {
+        "language_title":
+            "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
+
+        "language_changed":
+            "✅ زبان با موفقیت تغییر کرد.",
+
+        "welcome":
+            "🌐 HanzuVPN\n\n"
+            "به ربات HanzuVPN خوش آمدید ❤️\n\n"
+            "از منوی زیر انتخاب کنید:",
+
+        "buy": "🛒 خرید سرویس",
+        "trial": "🎁 تست رایگان",
+        "services": "📦 سرویس‌های من",
+        "renew": "🔄 تمدید",
+        "coupon": "🎟 کد تخفیف",
+        "referral": "👥 دعوت دوستان",
+        "support": "🎫 پشتیبانی",
+        "language": "🌐 تغییر زبان",
+        "admin": "⚙️ پنل مدیریت",
+        "back": "🔙 بازگشت",
+        "main_menu": "🔙 منوی اصلی",
+
+        "buy_title":
+            "🛒 انتخاب سرویس\n\n"
+            "⏳ مدت تمام سرویس‌ها: 30 روز\n\n"
+            "حجم موردنظر خود را انتخاب کنید:",
+
+        "custom":
+            "✏️ حجم دلخواه",
+
+        "trial_already":
+            "⚠️ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\n"
+            "هر کاربر فقط یک‌بار می‌تواند از تست رایگان استفاده کند.",
+
+        "trial_empty":
+            "😔 در حال حاضر تست رایگان موجود نیست.\n\n"
+            "لطفاً بعداً دوباره امتحان کنید.",
+
+        "trial_success":
+            "🎁 تست رایگان HanzuVPN\n\n"
+            "📦 حجم: 100 مگابایت\n"
+            "⏳ مدت: 1 روز\n\n"
+            "🔗 لینک Subscription:\n\n"
+            "{link}\n\n"
+            "📌 لینک را در برنامه VPN خود وارد کنید.",
+
+        "payment":
+            "💳 اطلاعات پرداخت\n\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 مبلغ: {price:,} تومان\n"
+            "⏳ مدت: 30 روز\n",
+
+        "original_price":
+            "\n🏷 مبلغ اصلی: {original:,} تومان\n"
+            "🎟 کد تخفیف: {coupon}\n",
+
+        "card":
+            "\n💳 شماره کارت:\n"
+            "`{card}`\n\n"
+            "بعد از انتقال مبلغ، روی «پرداخت کردم» بزنید "
+            "و سپس تصویر رسید را ارسال کنید.",
+
+        "paid": "💳 پرداخت کردم",
+
+        "order_created":
+            "✅ درخواست شما ثبت شد.\n\n"
+            "🧾 سفارش: #{order}\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 مبلغ: {price:,} تومان\n\n"
+            "📸 حالا تصویر رسید را ارسال کنید.",
+
+        "receipt_received":
+            "✅ رسید شما دریافت شد.\n\n"
+            "🧾 سفارش #{order}\n\n"
+            "پس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
+
+        "no_pending":
+            "❌ سفارش در انتظار پرداختی پیدا نشد.",
+
+        "services_title":
+            "📦 سرویس‌های شما\n\n",
+
+        "no_services":
+            "📦 سرویس‌های شما\n\n"
+            "هنوز سرویس فعالی ندارید.",
+
+        "service_item":
+            "🧾 سفارش #{id}\n"
+            "📦 حجم: {volume} گیگ\n"
+            "⏳ انقضا: {expires}\n\n"
+            "🔗 لینک:\n{link}\n\n"
+            "━━━━━━━━━━━━\n\n",
+
+        "renew_no_services":
+            "🔄 تمدید سرویس\n\n"
+            "شما سرویس فعالی ندارید.",
+
+        "renew_choose":
+            "🔄 تمدید سرویس\n\n"
+            "سرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
+
+        "renew_payment":
+            "🔄 تمدید سرویس\n\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 مبلغ تمدید: {price:,} تومان\n"
+            "⏳ مدت: 30 روز\n\n"
+            "برای پرداخت روی دکمه زیر بزنید.",
+
+        "renew_paid":
+            "💳 پرداخت تمدید\n\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 مبلغ: {price:,} تومان\n"
+            "⏳ مدت: 30 روز\n\n"
+            "💳 شماره کارت:\n"
+            "`{card}`\n\n"
+            "بعد از پرداخت روی دکمه زیر بزنید.",
+
+        "renew_created":
+            "✅ درخواست تمدید ثبت شد.\n\n"
+            "🧾 سفارش: #{order}\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 مبلغ: {price:,} تومان\n\n"
+            "📸 حالا تصویر رسید را ارسال کنید.",
+
+        "custom_prompt":
+            "✏️ حجم دلخواه\n\n"
+            "حجم موردنظر را به گیگ وارد کن.\n\n"
+            "مثال:\n25",
+
+        "invalid_volume":
+            "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
+
+        "custom_summary":
+            "🛒 سرویس دلخواه\n\n"
+            "📦 حجم: {volume} گیگ\n"
+            "💰 قیمت: {price:,} تومان\n"
+            "⏳ مدت: 30 روز",
+
+        "support_title":
+            "🎫 پشتیبانی HanzuVPN\n\n"
+            "برای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
+
+        "create_ticket": "🎫 ایجاد تیکت",
+
+        "ticket_prompt":
+            "🎫 تیکت #{id}\n\n"
+            "پیام خود را ارسال کنید.",
+
+        "ticket_created":
+            "✅ پیام شما در تیکت #{id} ثبت شد.\n\n"
+            "پشتیبانی آن را بررسی می‌کند.",
+
+        "ticket_closed":
+            "🔒 تیکت #{id} بسته شد.\n\n"
+            "در صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
+
+        "referral_title":
+            "👥 دعوت دوستان\n\n"
+            "👤 تعداد دعوت‌ها: {count}\n\n"
+            "لینک اختصاصی شما:\n"
+            "{link}\n\n"
+            "لینک را برای دوستانت بفرست.",
+
+        "referral_error":
+            "❌ خطا در ساخت لینک دعوت.",
+
+        "coupon_prompt":
+            "🎟 کد تخفیف\n\n"
+            "کد تخفیف خود را ارسال کنید.",
+
+        "coupon_invalid":
+            "❌ کد تخفیف نامعتبر است.",
+
+        "coupon_used":
+            "⚠️ شما قبلاً از این کد استفاده کرده‌اید.",
+
+        "coupon_valid":
+            "✅ کد تخفیف معتبر است.\n\n"
+            "🎟 کد: {code}\n"
+            "💰 تخفیف: {percent}%\n\n"
+            "حالا سرویس موردنظر را انتخاب کنید:",
+
+        "help":
+            "📚 راهنمای HanzuVPN\n\n"
+            "/start - منوی اصلی\n"
+            "/buy - خرید سرویس\n"
+            "/services - سرویس‌های من\n"
+            "/trial - تست رایگان\n"
+            "/support - پشتیبانی\n"
+            "/help - راهنما\n\n"
+            "تمام امکانات از طریق منوی اصلی نیز قابل استفاده هستند.",
+
+        "payment_confirmed":
+            "✅ پرداخت شما تأیید شد.\n\n"
+            "🌐 HanzuVPN\n\n"
+            "📦 حجم: {volume} گیگ\n"
+            "⏳ مدت: 30 روز\n"
+            "📅 انقضا: {expires}\n"
+            "🧾 سفارش: #{order}\n\n"
+            "🔗 لینک Subscription:\n\n"
+            "{link}\n\n"
+            "📌 لینک را در برنامه VPN خود وارد کنید.",
+
+        "payment_rejected":
+            "❌ پرداخت سفارش شما تأیید نشد.\n\n"
+            "🧾 سفارش: #{order}\n\n"
+            "در صورت اشتباه با پشتیبانی تماس بگیرید.",
+
+        "reminder_3":
+            "⚠️ یادآوری HanzuVPN\n\n"
+            "سرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\n"
+            "برای تمدید از بخش «🔄 تمدید» استفاده کنید.",
+
+        "reminder_1":
+            "⏰ یادآوری HanzuVPN\n\n"
+            "سرویس #{order} شما حدود 1 روز دیگر منقضی می‌شود.\n\n"
+            "برای تمدید سرویس اقدام کنید.",
+
+        "select_language":
+            "🌐 زبان / زمان\n\n"
+            "زبان موردنظر خود را انتخاب کنید:",
+    },
+
+
+    "ku": {
+        "language_title":
+            "🌐 هەڵبژاردنی زمان\n\n"
+            "تکایە زمانی خۆت هەڵبژێرە:",
+
+        "language_changed":
+            "✅ زمان بە سەرکەوتوویی گۆڕدرا.",
+
+        "welcome":
+            "🌐 HanzuVPN\n\n"
+            "بەخێربێیت بۆ HanzuVPN ❤️\n\n"
+            "لە خوارەوە هەڵبژاردەیەک هەڵبژێرە:",
+
+        "buy": "🛒 کڕینی خزمەتگوزاری",
+        "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
+        "services": "📦 خزمەتگوزارییەکانم",
+        "renew": "🔄 نوێکردنەوە",
+        "coupon": "🎟 کۆدی داشکان",
+        "referral": "👥 بانگهێشتکردنی هاوڕێکان",
+        "support": "🎫 پشتگیری",
+        "language": "🌐 گۆڕینی زمان",
+        "admin": "⚙️ بەڕێوەبردن",
+        "back": "🔙 گەڕانەوە",
+        "main_menu": "🔙 پەڕەی سەرەکی",
+
+        "buy_title":
+            "🛒 هەڵبژاردنی خزمەتگوزاری\n\n"
+            "⏳ ماوەی هەموو خزمەتگوزارییەکان: 30 ڕۆژ\n\n"
+            "قەبارەی خۆت هەڵبژێرە:",
+
+        "custom": "✏️ قەبارەی دڵخواز",
+
+        "trial_already":
+            "⚠️ پێشتر تاقیکردنەوەی بەخۆڕاییت وەرگرتووە.\n\n"
+            "هەر بەکارهێنەرێک تەنها جارێک دەتوانێت تاقیکردنەوە وەربگرێت.",
+
+        "trial_empty":
+            "😔 لە ئێستادا تاقیکردنەوەی بەخۆڕایی بەردەست نییە.\n\n"
+            "تکایە دواتر هەوڵ بدەوە.",
+
+        "trial_success":
+            "🎁 تاقیکردنەوەی بەخۆڕایی HanzuVPN\n\n"
+            "📦 قەبارە: 100 مێگابایت\n"
+            "⏳ ماوە: 1 ڕۆژ\n\n"
+            "🔗 بەستەری Subscription:\n\n"
+            "{link}\n\n"
+            "📌 بەستەرەکە لە بەرنامەی VPN ـەکەت دابنێ.",
+
+        "payment":
+            "💳 زانیاری پارەدان\n\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 بڕی پارە: {price:,} تومان\n"
+            "⏳ ماوە: 30 ڕۆژ\n",
+
+        "original_price":
+            "\n🏷 بڕی سەرەکی: {original:,} تومان\n"
+            "🎟 کۆدی داشکان: {coupon}\n",
+
+        "card":
+            "\n💳 ژمارەی کارت:\n"
+            "`{card}`\n\n"
+            "دوای ناردنی پارە، «پارەم داوە» هەڵبژێرە "
+            "و پاشان وێنەی پسوڵەکە بنێرە.",
+
+        "paid": "💳 پارەم داوە",
+
+        "order_created":
+            "✅ داواکارییەکەت تۆمار کرا.\n\n"
+            "🧾 داواکاری: #{order}\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 بڕ: {price:,} تومان\n\n"
+            "📸 ئێستا وێنەی پسوڵەکە بنێرە.",
+
+        "receipt_received":
+            "✅ پسوڵەکەت وەرگیرا.\n\n"
+            "🧾 داواکاری #{order}\n\n"
+            "دوای پشکنینی بەڕێوەبەرایەتی ئەنجامەکە بۆت دەنێردرێت.",
+
+        "no_pending":
+            "❌ هیچ داواکارییەکی چاوەڕوانی پارەدان نەدۆزرایەوە.",
+
+        "services_title":
+            "📦 خزمەتگوزارییەکانت\n\n",
+
+        "no_services":
+            "📦 خزمەتگوزارییەکانت\n\n"
+            "هێشتا هیچ خزمەتگوزارییەکی چالاکت نییە.",
+
+        "service_item":
+            "🧾 داواکاری #{id}\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "⏳ بەسەرچوون: {expires}\n\n"
+            "🔗 بەستەر:\n{link}\n\n"
+            "━━━━━━━━━━━━\n\n",
+
+        "renew_no_services":
+            "🔄 نوێکردنەوەی خزمەتگوزاری\n\n"
+            "هیچ خزمەتگوزارییەکی چالاکت نییە.",
+
+        "renew_choose":
+            "🔄 نوێکردنەوەی خزمەتگوزاری\n\n"
+            "ئەو خزمەتگوزارییە هەڵبژێرە کە دەتەوێت نوێی بکەیتەوە:",
+
+        "renew_payment":
+            "🔄 نوێکردنەوەی خزمەتگوزاری\n\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 بڕی نوێکردنەوە: {price:,} تومان\n"
+            "⏳ ماوە: 30 ڕۆژ\n\n"
+            "بۆ پارەدان دوگمەی خوارەوە هەڵبژێرە.",
+
+        "renew_paid":
+            "💳 پارەدانی نوێکردنەوە\n\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 بڕ: {price:,} تومان\n"
+            "⏳ ماوە: 30 ڕۆژ\n\n"
+            "💳 ژمارەی کارت:\n"
+            "`{card}`\n\n"
+            "دوای پارەدان دوگمەی خوارەوە هەڵبژێرە.",
+
+        "renew_created":
+            "✅ داواکاریی نوێکردنەوە تۆمار کرا.\n\n"
+            "🧾 داواکاری: #{order}\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 بڕ: {price:,} تومان\n\n"
+            "📸 ئێستا وێنەی پسوڵەکە بنێرە.",
+
+        "custom_prompt":
+            "✏️ قەبارەی دڵخواز\n\n"
+            "قەبارەکە بە گیگ بنووسە.\n\n"
+            "نموونە:\n25",
+
+        "invalid_volume":
+            "❌ قەبارە نادروستە.\n\nنموونە 25 بنووسە.",
+
+        "custom_summary":
+            "🛒 خزمەتگوزاریی دڵخواز\n\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "💰 نرخ: {price:,} تومان\n"
+            "⏳ ماوە: 30 ڕۆژ",
+
+        "support_title":
+            "🎫 پشتگیری HanzuVPN\n\n"
+            "بۆ پەیوەندی لەگەڵ پشتگیری تیکەت دروست بکە.",
+
+        "create_ticket": "🎫 دروستکردنی تیکەت",
+
+        "ticket_prompt":
+            "🎫 تیکەتی #{id}\n\n"
+            "نامەکەت بنێرە.",
+
+        "ticket_created":
+            "✅ نامەکەت لە تیکەتی #{id} تۆمار کرا.\n\n"
+            "پشتگیری پشکنینی دەکات.",
+
+        "ticket_closed":
+            "🔒 تیکەتی #{id} داخرا.\n\n"
+            "ئەگەر پێویست بوو دەتوانیت تیکەتی نوێ دروست بکەیت.",
+
+        "referral_title":
+            "👥 بانگهێشتکردنی هاوڕێکان\n\n"
+            "👤 ژمارەی بانگهێشتەکان: {count}\n\n"
+            "بەستەری تایبەتی تۆ:\n"
+            "{link}\n\n"
+            "بەستەرەکە بۆ هاوڕێکانت بنێرە.",
+
+        "referral_error":
+            "❌ هەڵە لە دروستکردنی بەستەری بانگهێشت.",
+
+        "coupon_prompt":
+            "🎟 کۆدی داشکان\n\n"
+            "کۆدی داشکانەکەت بنێرە.",
+
+        "coupon_invalid":
+            "❌ کۆدی داشکان نادروستە.",
+
+        "coupon_used":
+            "⚠️ پێشتر ئەم کۆدە بەکارهێناوە.",
+
+        "coupon_valid":
+            "✅ کۆدی داشکان دروستە.\n\n"
+            "🎟 کۆد: {code}\n"
+            "💰 داشکان: {percent}%\n\n"
+            "ئێستا خزمەتگوزارییەکە هەڵبژێرە:",
+
+        "help":
+            "📚 ڕێنمایی HanzuVPN\n\n"
+            "/start - پەڕەی سەرەکی\n"
+            "/buy - کڕینی خزمەتگوزاری\n"
+            "/services - خزمەتگوزارییەکانم\n"
+            "/trial - تاقیکردنەوە\n"
+            "/support - پشتگیری\n"
+            "/help - ڕێنمایی",
+
+        "payment_confirmed":
+            "✅ پارەدانەکەت پشتڕاست کرایەوە.\n\n"
+            "🌐 HanzuVPN\n\n"
+            "📦 قەبارە: {volume} گیگ\n"
+            "⏳ ماوە: 30 ڕۆژ\n"
+            "📅 بەسەرچوون: {expires}\n"
+            "🧾 داواکاری: #{order}\n\n"
+            "🔗 بەستەری Subscription:\n\n"
+            "{link}\n\n"
+            "📌 بەستەرەکە لە بەرنامەی VPN ـەکەت دابنێ.",
+
+        "payment_rejected":
+            "❌ پارەدانی داواکارییەکەت پشتڕاست نەکرایەوە.\n\n"
+            "🧾 داواکاری: #{order}\n\n"
+            "ئەگەر هەڵەیەک هەیە لەگەڵ پشتگیری پەیوەندی بکە.",
+
+        "reminder_3":
+            "⚠️ بیرخستنەوەی HanzuVPN\n\n"
+            "خزمەتگوزاری #{order} ـەکەت نزیکەی 3 ڕۆژی تر بەسەر دەچێت.\n\n"
+            "بۆ نوێکردنەوە بەشی «🔄 نوێکردنەوە» بەکاربهێنە.",
+
+        "reminder_1":
+            "⏰ بیرخستنەوەی HanzuVPN\n\n"
+            "خزمەتگوزاری #{order} ـەکەت نزیکەی 1 ڕۆژی تر بەسەر دەچێت.\n\n"
+            "بۆ نوێکردنەوەی خزمەتگوزاری هەنگاو بنێ.",
+
+        "select_language":
+            "🌐 زمان\n\n"
+            "تکایە زمانی خۆت هەڵبژێرە:",
+    },
+
+
+    "en": {
+        "language_title":
+            "🌐 Choose Language\n\nPlease select your language:",
+
+        "language_changed":
+            "✅ Language changed successfully.",
+
+        "welcome":
+            "🌐 HanzuVPN\n\n"
+            "Welcome to HanzuVPN ❤️\n\n"
+            "Choose an option below:",
+
+        "buy": "🛒 Buy Service",
+        "trial": "🎁 Free Trial",
+        "services": "📦 My Services",
+        "renew": "🔄 Renew",
+        "coupon": "🎟 Coupon",
+        "referral": "👥 Invite Friends",
+        "support": "🎫 Support",
+        "language": "🌐 Change Language",
+        "admin": "⚙️ Admin Panel",
+        "back": "🔙 Back",
+        "main_menu": "🔙 Main Menu",
+
+        "buy_title":
+            "🛒 Choose a Service\n\n"
+            "⏳ All services are valid for 30 days.\n\n"
+            "Choose your desired volume:",
+
+        "custom": "✏️ Custom Volume",
+
+        "trial_already":
+            "⚠️ You have already received your free trial.\n\n"
+            "Each user can receive the free trial only once.",
+
+        "trial_empty":
+            "😔 No free trials are currently available.\n\n"
+            "Please try again later.",
+
+        "trial_success":
+            "🎁 HanzuVPN Free Trial\n\n"
+            "📦 Volume: 100 MB\n"
+            "⏳ Duration: 1 day\n\n"
+            "🔗 Subscription link:\n\n"
+            "{link}\n\n"
+            "📌 Add this link to your VPN application.",
+
+        "payment":
+            "💳 Payment Information\n\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Price: {price:,} Toman\n"
+            "⏳ Duration: 30 days\n",
+
+        "original_price":
+            "\n🏷 Original price: {original:,} Toman\n"
+            "🎟 Coupon: {coupon}\n",
+
+        "card":
+            "\n💳 Card number:\n"
+            "`{card}`\n\n"
+            "After transferring the money, tap "
+            "«I Paid» and send the payment receipt.",
+
+        "paid": "💳 I Paid",
+
+        "order_created":
+            "✅ Your request has been registered.\n\n"
+            "🧾 Order: #{order}\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Price: {price:,} Toman\n\n"
+            "📸 Now send the payment receipt.",
+
+        "receipt_received":
+            "✅ Your receipt has been received.\n\n"
+            "🧾 Order #{order}\n\n"
+            "The result will be sent after admin review.",
+
+        "no_pending":
+            "❌ No pending payment order was found.",
+
+        "services_title":
+            "📦 Your Services\n\n",
+
+        "no_services":
+            "📦 Your Services\n\n"
+            "You don't have any active services yet.",
+
+        "service_item":
+            "🧾 Order #{id}\n"
+            "📦 Volume: {volume} GB\n"
+            "⏳ Expires: {expires}\n\n"
+            "🔗 Link:\n{link}\n\n"
+            "━━━━━━━━━━━━\n\n",
+
+        "renew_no_services":
+            "🔄 Renew Service\n\n"
+            "You don't have any active services.",
+
+        "renew_choose":
+            "🔄 Renew Service\n\n"
+            "Choose the service you want to renew:",
+
+        "renew_payment":
+            "🔄 Renew Service\n\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Renewal price: {price:,} Toman\n"
+            "⏳ Duration: 30 days\n\n"
+            "Tap the button below to pay.",
+
+        "renew_paid":
+            "💳 Renewal Payment\n\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Price: {price:,} Toman\n"
+            "⏳ Duration: 30 days\n\n"
+            "💳 Card number:\n"
+            "`{card}`\n\n"
+            "After payment, tap the button below.",
+
+        "renew_created":
+            "✅ Renewal request registered.\n\n"
+            "🧾 Order: #{order}\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Price: {price:,} Toman\n\n"
+            "📸 Now send the payment receipt.",
+
+        "custom_prompt":
+            "✏️ Custom Volume\n\n"
+            "Enter the desired volume in GB.\n\n"
+            "Example:\n25",
+
+        "invalid_volume":
+            "❌ Invalid volume.\n\nPlease enter something like 25.",
+
+        "custom_summary":
+            "🛒 Custom Service\n\n"
+            "📦 Volume: {volume} GB\n"
+            "💰 Price: {price:,} Toman\n"
+            "⏳ Duration: 30 days",
+
+        "support_title":
+            "🎫 HanzuVPN Support\n\n"
+            "Create a ticket to contact support.",
+
+        "create_ticket": "🎫 Create Ticket",
+
+        "ticket_prompt":
+            "🎫 Ticket #{id}\n\n"
+            "Send your message.",
+
+        "ticket_created":
+            "✅ Your message was added to ticket #{id}.\n\n"
+            "Support will review it.",
+
+        "ticket_closed":
+            "🔒 Ticket #{id} has been closed.\n\n"
+            "You can create a new ticket if needed.",
+
+        "referral_title":
+            "👥 Invite Friends\n\n"
+            "👤 Referrals: {count}\n\n"
+            "Your personal link:\n"
+            "{link}\n\n"
+            "Send this link to your friends.",
+
+        "referral_error":
+            "❌ Error creating referral link.",
+
+        "coupon_prompt":
+            "🎟 Coupon\n\n"
+            "Send your coupon code.",
+
+        "coupon_invalid":
+            "❌ Invalid coupon code.",
+
+        "coupon_used":
+            "⚠️ You have already used this coupon.",
+
+        "coupon_valid":
+            "✅ Coupon is valid.\n\n"
+            "🎟 Code: {code}\n"
+            "💰 Discount: {percent}%\n\n"
+            "Now choose your service:",
+
+        "help":
+            "📚 HanzuVPN Help\n\n"
+            "/start - Main menu\n"
+            "/buy - Buy service\n"
+            "/services - My services\n"
+            "/trial - Free trial\n"
+            "/support - Support\n"
+            "/help - Help\n\n"
+            "All features are also available from the main menu.",
+
+        "payment_confirmed":
+            "✅ Your payment has been approved.\n\n"
+            "🌐 HanzuVPN\n\n"
+            "📦 Volume: {volume} GB\n"
+            "⏳ Duration: 30 days\n"
+            "📅 Expires: {expires}\n"
+            "🧾 Order: #{order}\n\n"
+            "🔗 Subscription link:\n\n"
+            "{link}\n\n"
+            "📌 Add this link to your VPN application.",
+
+        "payment_rejected":
+            "❌ Your payment was not approved.\n\n"
+            "🧾 Order: #{order}\n\n"
+            "Please contact support if you think this is an error.",
+
+        "reminder_3":
+            "⚠️ HanzuVPN Reminder\n\n"
+            "Your service #{order} expires in about 3 days.\n\n"
+            "Use «🔄 Renew» to renew it.",
+
+        "reminder_1":
+            "⏰ HanzuVPN Reminder\n\n"
+            "Your service #{order} expires in about 1 day.\n\n"
+            "Please renew your service.",
+
+        "select_language":
+            "🌐 Language\n\n"
+            "Please select your language:",
+    }
+}
+
+
+def t(lang, key, **kwargs):
+    if lang not in TEXTS:
+        lang = "fa"
+
+    text = TEXTS[lang].get(
+        key,
+        TEXTS["fa"].get(key, key)
+    )
+
+    try:
+        return text.format(**kwargs)
+    except Exception:
+        return text
+
+
+# =========================================================
 # ابزارهای عمومی
 # =========================================================
 
@@ -68,9 +773,10 @@ def ensure_user(user):
             user_id,
             username,
             first_name,
-            created_at
+            created_at,
+            language
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, NULL)
     """, (
         user.id,
         user.username or "",
@@ -92,6 +798,76 @@ def ensure_user(user):
     conn.close()
 
 
+def get_user_language(user_id):
+    # ادمین همیشه فارسی
+    if user_id == ADMIN_ID:
+        return "fa"
+
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT language
+        FROM users
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()
+
+    conn.close()
+
+    if row and row["language"] in LANGUAGES:
+        return row["language"]
+
+    return None
+
+
+def set_user_language(user_id, language):
+    if language not in LANGUAGES:
+        return
+
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE users
+        SET language = ?
+        WHERE user_id = ?
+    """, (
+        language,
+        user_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def language_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🇮🇷 فارسی",
+                callback_data="lang_fa"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🟢 کوردی",
+                callback_data="lang_ku"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🇬🇧 English",
+                callback_data="lang_en"
+            )
+        ]
+    ])
+
+
+async def show_language_selector_message(message):
+    await message.reply_text(
+        TEXTS["fa"]["language_title"],
+        reply_markup=language_keyboard()
+    )
+
+
 # =========================================================
 # دیتابیس
 # =========================================================
@@ -100,7 +876,6 @@ def init_db():
 
     conn = get_db()
 
-    # لینک‌های فروش
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +885,6 @@ def init_db():
         )
     """)
 
-    # سفارش‌ها
     conn.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,7 +901,6 @@ def init_db():
         )
     """)
 
-    # کاربران
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -135,11 +908,11 @@ def init_db():
             first_name TEXT,
             created_at TEXT NOT NULL,
             referred_by INTEGER,
-            referral_rewarded INTEGER DEFAULT 0
+            referral_rewarded INTEGER DEFAULT 0,
+            language TEXT
         )
     """)
 
-    # تست رایگان
     conn.execute("""
         CREATE TABLE IF NOT EXISTS free_trials (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,7 +921,6 @@ def init_db():
         )
     """)
 
-    # کسانی که تست گرفته‌اند
     conn.execute("""
         CREATE TABLE IF NOT EXISTS free_trial_users (
             user_id INTEGER PRIMARY KEY,
@@ -158,7 +930,6 @@ def init_db():
         )
     """)
 
-    # کوپن‌ها
     conn.execute("""
         CREATE TABLE IF NOT EXISTS coupons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,7 +942,6 @@ def init_db():
         )
     """)
 
-    # استفاده از کوپن
     conn.execute("""
         CREATE TABLE IF NOT EXISTS coupon_uses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,7 +953,6 @@ def init_db():
         )
     """)
 
-    # تیکت‌ها
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,7 +974,6 @@ def init_db():
         )
     """)
 
-    # یادآوری‌ها
     conn.execute("""
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -219,7 +987,8 @@ def init_db():
 
     conn.commit()
 
-    # سازگاری با دیتابیس قبلی
+    # سازگاری دیتابیس قبلی
+
     try:
         conn.execute(
             "ALTER TABLE orders ADD COLUMN expires_at TEXT"
@@ -241,6 +1010,13 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN language TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -251,51 +1027,59 @@ def init_db():
 
 def home_keyboard(user_id):
 
+    lang = get_user_language(user_id) or "fa"
+
     keyboard = [
         [
             InlineKeyboardButton(
-                "🛒 خرید سرویس",
+                t(lang, "buy"),
                 callback_data="buy"
             )
         ],
         [
             InlineKeyboardButton(
-                "🎁 تست رایگان",
+                t(lang, "trial"),
                 callback_data="trial"
             )
         ],
         [
             InlineKeyboardButton(
-                "📦 سرویس‌های من",
+                t(lang, "services"),
                 callback_data="my_services"
             ),
             InlineKeyboardButton(
-                "🔄 تمدید",
+                t(lang, "renew"),
                 callback_data="renew"
             ),
         ],
         [
             InlineKeyboardButton(
-                "🎟 کد تخفیف",
+                t(lang, "coupon"),
                 callback_data="coupon"
             ),
             InlineKeyboardButton(
-                "👥 دعوت دوستان",
+                t(lang, "referral"),
                 callback_data="referral"
             ),
         ],
         [
             InlineKeyboardButton(
-                "🎫 پشتیبانی",
+                t(lang, "support"),
                 callback_data="support"
             ),
         ],
+        [
+            InlineKeyboardButton(
+                t(lang, "language"),
+                callback_data="language"
+            )
+        ]
     ]
 
     if user_id == ADMIN_ID:
         keyboard.append([
             InlineKeyboardButton(
-                "⚙️ پنل مدیریت",
+                t("fa", "admin"),
                 callback_data="admin"
             )
         ])
@@ -305,20 +1089,20 @@ def home_keyboard(user_id):
 
 async def show_home(query, user_id):
 
+    lang = get_user_language(user_id) or "fa"
+
     await query.edit_message_text(
-        "🌐 HanzuVPN\n\n"
-        "به ربات HanzuVPN خوش آمدید ❤️\n\n"
-        "از منوی زیر انتخاب کنید:",
+        t(lang, "welcome"),
         reply_markup=home_keyboard(user_id)
     )
 
 
 async def send_home(message, user_id):
 
+    lang = get_user_language(user_id) or "fa"
+
     await message.reply_text(
-        "🌐 HanzuVPN\n\n"
-        "به ربات HanzuVPN خوش آمدید ❤️\n\n"
-        "از منوی زیر انتخاب کنید:",
+        t(lang, "welcome"),
         reply_markup=home_keyboard(user_id)
     )
 
@@ -366,6 +1150,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    lang = get_user_language(user.id)
+
+    if not lang and user.id != ADMIN_ID:
+
+        await show_language_selector_message(
+            update.message
+        )
+
+        return
+
+    if user.id == ADMIN_ID:
+        set_user_language(user.id, "fa")
+
     await send_home(
         update.message,
         user.id
@@ -374,36 +1171,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    ensure_user(update.effective_user)
+    user = update.effective_user
+    ensure_user(user)
 
-    await send_buy_message(
-        update.message
-    )
+    if not get_user_language(user.id):
+        await show_language_selector_message(update.message)
+        return
+
+    await send_buy_message(update.message)
 
 
 async def services_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    ensure_user(update.effective_user)
+    user = update.effective_user
+    ensure_user(user)
+
+    if not get_user_language(user.id):
+        await show_language_selector_message(update.message)
+        return
 
     await send_services_message(
         update.message,
-        update.effective_user.id
+        user.id
     )
 
 
 async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    ensure_user(update.effective_user)
+    user = update.effective_user
+    ensure_user(user)
 
-    result = claim_trial(
-        update.effective_user
-    )
+    lang = get_user_language(user.id)
+
+    if not lang:
+        await show_language_selector_message(update.message)
+        return
+
+    result = claim_trial(user)
 
     if result["status"] == "already":
 
         await update.message.reply_text(
-            "⚠️ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\n"
-            "هر کاربر فقط یک‌بار می‌تواند از تست رایگان استفاده کند."
+            t(lang, "trial_already")
         )
 
         return
@@ -411,39 +1220,43 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if result["status"] == "empty":
 
         await update.message.reply_text(
-            "😔 در حال حاضر تست رایگان موجود نیست.\n\n"
-            "لطفاً بعداً دوباره امتحان کنید."
+            t(lang, "trial_empty")
         )
 
         return
 
     await update.message.reply_text(
-        "🎁 تست رایگان HanzuVPN\n\n"
-        "📦 حجم: 100 مگابایت\n"
-        "⏳ مدت: 1 روز\n\n"
-        "🔗 لینک Subscription:\n\n"
-        f"{result['link']}\n\n"
-        "📌 لینک را در برنامه VPN خود وارد کنید."
+        t(
+            lang,
+            "trial_success",
+            link=result["link"]
+        )
     )
 
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    ensure_user(update.effective_user)
+    user = update.effective_user
+    ensure_user(user)
+
+    lang = get_user_language(user.id)
+
+    if not lang:
+        await show_language_selector_message(update.message)
+        return
 
     await update.message.reply_text(
-        "🎫 پشتیبانی HanzuVPN\n\n"
-        "برای ارتباط با پشتیبانی روی گزینه زیر بزنید.",
+        t(lang, "support_title"),
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "🎫 ایجاد تیکت",
+                    t(lang, "create_ticket"),
                     callback_data="new_ticket"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "🔙 منوی اصلی",
+                    t(lang, "main_menu"),
                     callback_data="home"
                 )
             ]
@@ -453,31 +1266,44 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    user = update.effective_user
+    ensure_user(user)
+
+    lang = get_user_language(user.id)
+
+    if not lang:
+        await show_language_selector_message(update.message)
+        return
+
     await update.message.reply_text(
-        "📚 راهنمای HanzuVPN\n\n"
-        "/start - منوی اصلی\n"
-        "/buy - خرید سرویس\n"
-        "/services - سرویس‌های من\n"
-        "/trial - تست رایگان\n"
-        "/support - پشتیبانی\n"
-        "/help - راهنما\n\n"
-        "تمام امکانات از طریق منوی اصلی نیز قابل استفاده هستند."
+        t(lang, "help")
+    )
+
+
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user
+    ensure_user(user)
+
+    await show_language_selector_message(
+        update.message
     )
 
 
 # =========================================================
-# دستورات منوی تلگرام
+# دستورات تلگرام
 # =========================================================
 
 async def set_bot_commands(application):
 
     commands = [
-        BotCommand("start", "منوی اصلی"),
-        BotCommand("buy", "خرید سرویس"),
-        BotCommand("services", "سرویس‌های من"),
-        BotCommand("trial", "تست رایگان"),
-        BotCommand("support", "پشتیبانی"),
-        BotCommand("help", "راهنما"),
+        BotCommand("start", "Start / شروع"),
+        BotCommand("buy", "Buy Service / خرید سرویس"),
+        BotCommand("services", "My Services / سرویس‌های من"),
+        BotCommand("trial", "Free Trial / تست رایگان"),
+        BotCommand("support", "Support / پشتیبانی"),
+        BotCommand("language", "Change Language / تغییر زبان"),
+        BotCommand("help", "Help / راهنما"),
     ]
 
     await application.bot.set_my_commands(commands)
@@ -487,48 +1313,56 @@ async def set_bot_commands(application):
 # خرید
 # =========================================================
 
-def buy_keyboard():
+def buy_keyboard(user_id):
+
+    lang = get_user_language(user_id) or "fa"
 
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "10 گیگ | 35,000 تومان",
+                f"10 GB | 35,000 Toman" if lang == "en"
+                else f"10 گیگ | 35,000 تومان" if lang == "fa"
+                else f"10 گیگ | 35,000 تومان",
                 callback_data="plan_10"
             )
         ],
         [
             InlineKeyboardButton(
-                "20 گیگ | 70,000 تومان",
+                f"20 GB | 70,000 Toman" if lang == "en"
+                else f"20 گیگ | 70,000 تومان",
                 callback_data="plan_20"
             )
         ],
         [
             InlineKeyboardButton(
-                "30 گیگ | 105,000 تومان",
+                f"30 GB | 105,000 Toman" if lang == "en"
+                else f"30 گیگ | 105,000 تومان",
                 callback_data="plan_30"
             )
         ],
         [
             InlineKeyboardButton(
-                "40 گیگ | 140,000 تومان",
+                f"40 GB | 140,000 Toman" if lang == "en"
+                else f"40 گیگ | 140,000 تومان",
                 callback_data="plan_40"
             )
         ],
         [
             InlineKeyboardButton(
-                "50 گیگ | 175,000 تومان",
+                f"50 GB | 175,000 Toman" if lang == "en"
+                else f"50 گیگ | 175,000 تومان",
                 callback_data="plan_50"
             )
         ],
         [
             InlineKeyboardButton(
-                "✏️ حجم دلخواه",
+                t(lang, "custom"),
                 callback_data="custom"
             )
         ],
         [
             InlineKeyboardButton(
-                "🔙 بازگشت",
+                t(lang, "back"),
                 callback_data="home"
             )
         ]
@@ -537,21 +1371,22 @@ def buy_keyboard():
 
 async def send_buy_message(message):
 
+    user_id = message.from_user.id
+    lang = get_user_language(user_id) or "fa"
+
     await message.reply_text(
-        "🛒 انتخاب سرویس\n\n"
-        "⏳ مدت تمام سرویس‌ها: 30 روز\n\n"
-        "حجم موردنظر خود را انتخاب کنید:",
-        reply_markup=buy_keyboard()
+        t(lang, "buy_title"),
+        reply_markup=buy_keyboard(user_id)
     )
 
 
 async def show_buy_menu(query):
 
+    lang = get_user_language(query.from_user.id) or "fa"
+
     await query.edit_message_text(
-        "🛒 انتخاب سرویس\n\n"
-        "⏳ مدت تمام سرویس‌ها: 30 روز\n\n"
-        "حجم موردنظر خود را انتخاب کنید:",
-        reply_markup=buy_keyboard()
+        t(lang, "buy_title"),
+        reply_markup=buy_keyboard(query.from_user.id)
     )
 
 
@@ -567,39 +1402,44 @@ async def show_payment(
     coupon_code=None
 ):
 
+    user_id = query.from_user.id
+    lang = get_user_language(user_id) or "fa"
+
     if original_price is None:
         original_price = price
 
-    caption = (
-        "💳 اطلاعات پرداخت\n\n"
-        f"📦 حجم: {volume} گیگ\n"
-        f"💰 مبلغ: {price:,} تومان\n"
-        "⏳ مدت: 30 روز\n"
+    caption = t(
+        lang,
+        "payment",
+        volume=volume,
+        price=price
     )
 
     if original_price != price:
-        caption += (
-            f"\n🏷 مبلغ اصلی: {original_price:,} تومان\n"
-            f"🎟 کد تخفیف: {coupon_code}\n"
+
+        caption += t(
+            lang,
+            "original_price",
+            original=original_price,
+            coupon=coupon_code
         )
 
-    caption += (
-        "\n💳 شماره کارت:\n"
-        f"`{CARD_NUMBER}`\n\n"
-        "بعد از انتقال مبلغ، روی «پرداخت کردم» بزنید "
-        "و سپس تصویر رسید را ارسال کنید."
+    caption += t(
+        lang,
+        "card",
+        card=CARD_NUMBER
     )
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "💳 پرداخت کردم",
+                t(lang, "paid"),
                 callback_data=f"paid_{volume}_{price}"
             )
         ],
         [
             InlineKeyboardButton(
-                "🔙 بازگشت",
+                t(lang, "back"),
                 callback_data="buy"
             )
         ]
@@ -764,9 +1604,7 @@ def claim_trial(user):
 
             conn.rollback()
 
-            return {
-                "status": "already"
-            }
+            return {"status": "already"}
 
         trial = conn.execute("""
             SELECT id, link
@@ -780,9 +1618,7 @@ def claim_trial(user):
 
             conn.rollback()
 
-            return {
-                "status": "empty"
-            }
+            return {"status": "empty"}
 
         claimed_at = datetime.now()
         expires_at = claimed_at + timedelta(
@@ -808,12 +1644,8 @@ def claim_trial(user):
         """, (
             user.id,
             trial["id"],
-            claimed_at.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            expires_at.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+            claimed_at.strftime("%Y-%m-%d %H:%M:%S"),
+            expires_at.strftime("%Y-%m-%d %H:%M:%S"),
         ))
 
         conn.commit()
@@ -909,10 +1741,7 @@ def approve_order(order_id):
         if not order:
 
             conn.rollback()
-
-            return {
-                "status": "not_found"
-            }
+            return {"status": "not_found"}
 
         if order["status"] != "pending":
 
@@ -958,12 +1787,8 @@ def approve_order(order_id):
             AND status = 'pending'
         """, (
             subscription["id"],
-            approved_at.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            expires_at.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+            approved_at.strftime("%Y-%m-%d %H:%M:%S"),
+            expires_at.strftime("%Y-%m-%d %H:%M:%S"),
             order_id,
         ))
 
@@ -1050,29 +1875,27 @@ def get_user_services(user_id):
 
 async def send_services_message(message, user_id):
 
+    lang = get_user_language(user_id) or "fa"
+
     rows = get_user_services(user_id)
 
     if not rows:
 
-        text = (
-            "📦 سرویس‌های شما\n\n"
-            "هنوز سرویس فعالی ندارید."
-        )
+        text = t(lang, "no_services")
 
     else:
 
-        text = "📦 سرویس‌های شما\n\n"
+        text = t(lang, "services_title")
 
         for row in rows:
 
-            text += (
-                f"🧾 سفارش #{row['id']}\n"
-                f"📦 حجم: {row['volume']} گیگ\n"
-                f"⏳ اعتبار تا: "
-                f"{row['expires_at'] or '30 روز'}\n\n"
-                f"🔗 لینک:\n"
-                f"{row['link']}\n\n"
-                "━━━━━━━━━━━━\n\n"
+            text += t(
+                lang,
+                "service_item",
+                id=row["id"],
+                volume=row["volume"],
+                expires=row["expires_at"] or "-",
+                link=row["link"]
             )
 
     await message.reply_text(
@@ -1080,13 +1903,13 @@ async def send_services_message(message, user_id):
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "🔄 تمدید",
+                    t(lang, "renew"),
                     callback_data="renew"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "🔙 منوی اصلی",
+                    t(lang, "main_menu"),
                     callback_data="home"
                 )
             ]
@@ -1100,25 +1923,25 @@ async def send_services_message(message, user_id):
 
 async def show_renew(query):
 
-    rows = get_user_services(
-        query.from_user.id
-    )
+    user_id = query.from_user.id
+    lang = get_user_language(user_id) or "fa"
+
+    rows = get_user_services(user_id)
 
     if not rows:
 
         await query.edit_message_text(
-            "🔄 تمدید سرویس\n\n"
-            "شما سرویس فعالی ندارید.",
+            t(lang, "renew_no_services"),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "🛒 خرید سرویس",
+                        t(lang, "buy"),
                         callback_data="buy"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 بازگشت",
+                        t(lang, "back"),
                         callback_data="home"
                     )
                 ]
@@ -1131,23 +1954,28 @@ async def show_renew(query):
 
     for row in rows[:10]:
 
+        label = (
+            f"🔄 Renew #{row['id']} | {row['volume']} GB"
+            if lang == "en"
+            else f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
+        )
+
         keyboard.append([
             InlineKeyboardButton(
-                f"🔄 تمدید #{row['id']} | {row['volume']} گیگ",
+                label,
                 callback_data=f"renew_{row['id']}"
             )
         ])
 
     keyboard.append([
         InlineKeyboardButton(
-            "🔙 بازگشت",
+            t(lang, "back"),
             callback_data="home"
         )
     ])
 
     await query.edit_message_text(
-        "🔄 تمدید سرویس\n\n"
-        "سرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
+        t(lang, "renew_choose"),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -1231,28 +2059,16 @@ def apply_coupon(code, user_id, price):
     coupon = get_coupon(code)
 
     if not coupon:
+        return {"status": "invalid"}
 
-        return {
-            "status": "invalid"
-        }
-
-    if user_used_coupon(
-        coupon["id"],
-        user_id
-    ):
-
-        return {
-            "status": "used"
-        }
+    if user_used_coupon(coupon["id"], user_id):
+        return {"status": "used"}
 
     if (
         coupon["max_uses"] > 0
         and coupon["used_count"] >= coupon["max_uses"]
     ):
-
-        return {
-            "status": "full"
-        }
+        return {"status": "full"}
 
     new_price = int(
         price * (100 - coupon["percent"]) / 100
@@ -1265,11 +2081,7 @@ def apply_coupon(code, user_id, price):
     }
 
 
-def record_coupon_use(
-    coupon_id,
-    user_id,
-    order_id
-):
+def record_coupon_use(coupon_id, user_id, order_id):
 
     conn = get_db()
 
@@ -1300,7 +2112,7 @@ def record_coupon_use(
 
 
 # =========================================================
-# دعوت دوستان
+# دعوت
 # =========================================================
 
 def referral_count(user_id):
@@ -1320,17 +2132,14 @@ def referral_count(user_id):
 
 def referral_link(bot_username, user_id):
 
-    return (
-        f"https://t.me/{bot_username}"
-        f"?start={user_id}"
-    )
+    return f"https://t.me/{bot_username}?start={user_id}"
 
 
 # =========================================================
 # تیکت
 # =========================================================
 
-def create_ticket(user_id, subject="پشتیبانی"):
+def create_ticket(user_id, subject="Support"):
 
     conn = get_db()
 
@@ -1375,11 +2184,7 @@ def get_open_ticket(user_id):
     return row
 
 
-def add_ticket_message(
-    ticket_id,
-    sender_id,
-    message
-):
+def add_ticket_message(ticket_id, sender_id, message):
 
     conn = get_db()
 
@@ -1411,56 +2216,41 @@ def get_stats():
 
     conn = get_db()
 
-    total_users = conn.execute("""
-        SELECT COUNT(*)
-        FROM users
-    """).fetchone()[0]
+    total_users = conn.execute(
+        "SELECT COUNT(*) FROM users"
+    ).fetchone()[0]
 
-    total_orders = conn.execute("""
-        SELECT COUNT(*)
-        FROM orders
-    """).fetchone()[0]
+    total_orders = conn.execute(
+        "SELECT COUNT(*) FROM orders"
+    ).fetchone()[0]
 
-    approved = conn.execute("""
-        SELECT COUNT(*)
-        FROM orders
-        WHERE status = 'approved'
-    """).fetchone()[0]
+    approved = conn.execute(
+        "SELECT COUNT(*) FROM orders WHERE status='approved'"
+    ).fetchone()[0]
 
-    pending = conn.execute("""
-        SELECT COUNT(*)
-        FROM orders
-        WHERE status = 'pending'
-    """).fetchone()[0]
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM orders WHERE status='pending'"
+    ).fetchone()[0]
 
-    rejected = conn.execute("""
-        SELECT COUNT(*)
-        FROM orders
-        WHERE status = 'rejected'
-    """).fetchone()[0]
+    rejected = conn.execute(
+        "SELECT COUNT(*) FROM orders WHERE status='rejected'"
+    ).fetchone()[0]
 
-    sales = conn.execute("""
-        SELECT COALESCE(SUM(price), 0)
-        FROM orders
-        WHERE status = 'approved'
-    """).fetchone()[0]
+    sales = conn.execute(
+        "SELECT COALESCE(SUM(price),0) FROM orders WHERE status='approved'"
+    ).fetchone()[0]
 
-    trials = conn.execute("""
-        SELECT COUNT(*)
-        FROM free_trial_users
-    """).fetchone()[0]
+    trials = conn.execute(
+        "SELECT COUNT(*) FROM free_trial_users"
+    ).fetchone()[0]
 
-    referrals = conn.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE referred_by IS NOT NULL
-    """).fetchone()[0]
+    referrals = conn.execute(
+        "SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL"
+    ).fetchone()[0]
 
-    open_tickets = conn.execute("""
-        SELECT COUNT(*)
-        FROM tickets
-        WHERE status = 'open'
-    """).fetchone()[0]
+    open_tickets = conn.execute(
+        "SELECT COUNT(*) FROM tickets WHERE status='open'"
+    ).fetchone()[0]
 
     conn.close()
 
@@ -1560,10 +2350,7 @@ async def show_admin_stock(query):
 
         for volume, count in stock.items():
 
-            text += (
-                f"🔹 {volume} گیگ: "
-                f"{count} عدد\n"
-            )
+            text += f"🔹 {volume} گیگ: {count} عدد\n"
 
     else:
 
@@ -1825,9 +2612,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    # -------------------------
+    # =====================================================
+    # زبان
+    # =====================================================
+
+    if data == "language":
+
+        await query.edit_message_text(
+            TEXTS["fa"]["language_title"],
+            reply_markup=language_keyboard()
+        )
+
+        return
+
+    if data.startswith("lang_"):
+
+        language = data.split("_", 1)[1]
+
+        if language not in LANGUAGES:
+            return
+
+        set_user_language(
+            user_id,
+            language
+        )
+
+        await query.edit_message_text(
+            t(language, "language_changed") +
+            "\n\n" +
+            t(language, "welcome"),
+            reply_markup=home_keyboard(user_id)
+        )
+
+        return
+
+    # اگر زبان انتخاب نشده
+    lang = get_user_language(user_id)
+
+    if not lang and user_id != ADMIN_ID:
+
+        await query.edit_message_text(
+            TEXTS["fa"]["language_title"],
+            reply_markup=language_keyboard()
+        )
+
+        return
+
+    if user_id == ADMIN_ID:
+        lang = "fa"
+
+    # =====================================================
     # خانه
-    # -------------------------
+    # =====================================================
 
     if data == "home":
 
@@ -1838,9 +2674,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # خرید
-    # -------------------------
+    # =====================================================
 
     if data == "buy":
 
@@ -1848,17 +2684,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # پلن
-    # -------------------------
+    # =====================================================
 
     if data.startswith("plan_"):
 
         volume = data.split("_")[1]
-
         price = PLANS.get(volume)
 
         if price:
+
+            # اگر کوپن فعال باشد
+            coupon_code = context.user_data.get("coupon_code")
+
+            if coupon_code:
+
+                result = apply_coupon(
+                    coupon_code,
+                    user_id,
+                    price
+                )
+
+                if result["status"] == "success":
+
+                    await show_payment(
+                        query,
+                        volume,
+                        result["price"],
+                        price,
+                        coupon_code
+                    )
+
+                    return
 
             await show_payment(
                 query,
@@ -1868,9 +2726,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
+    # پرداخت خرید عادی
+    # =====================================================
+
+    if data.startswith("paid_"):
+
+        parts = data.split("_")
+
+        if len(parts) != 3:
+            return
+
+        volume = parts[1]
+        price = int(parts[2])
+
+        order_id = create_order(
+            user,
+            volume,
+            price
+        )
+
+        context.user_data[
+            "last_order_id"
+        ] = order_id
+
+        await query.edit_message_text(
+            t(
+                lang,
+                "order_created",
+                order=order_id,
+                volume=volume,
+                price=price
+            )
+        )
+
+        return
+
+    # =====================================================
     # حجم دلخواه
-    # -------------------------
+    # =====================================================
 
     if data == "custom":
 
@@ -1879,17 +2773,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = True
 
         await query.edit_message_text(
-            "✏️ حجم دلخواه\n\n"
-            "حجم موردنظر را به گیگ وارد کن.\n\n"
-            "مثال:\n"
-            "25"
+            t(lang, "custom_prompt")
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # تست
-    # -------------------------
+    # =====================================================
 
     if data == "trial":
 
@@ -1898,18 +2789,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if result["status"] == "already":
 
             await query.edit_message_text(
-                "⚠️ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\n"
-                "هر کاربر فقط یک‌بار می‌تواند تست بگیرد.",
+                t(lang, "trial_already"),
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton(
-                            "🛒 خرید سرویس",
+                            t(lang, "buy"),
                             callback_data="buy"
                         )
                     ],
                     [
                         InlineKeyboardButton(
-                            "🔙 بازگشت",
+                            t(lang, "back"),
                             callback_data="home"
                         )
                     ]
@@ -1921,12 +2811,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if result["status"] == "empty":
 
             await query.edit_message_text(
-                "😔 فعلاً تست رایگان موجود نیست.\n\n"
-                "بعداً دوباره امتحان کنید.",
+                t(lang, "trial_empty"),
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton(
-                            "🔙 بازگشت",
+                            t(lang, "back"),
                             callback_data="home"
                         )
                     ]
@@ -1936,22 +2825,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await query.edit_message_text(
-            "🎁 تست رایگان HanzuVPN\n\n"
-            "📦 حجم: 100 مگابایت\n"
-            "⏳ مدت: 1 روز\n\n"
-            "🔗 لینک Subscription:\n\n"
-            f"{result['link']}\n\n"
-            "📌 لینک را در برنامه VPN خود وارد کنید.",
+            t(
+                lang,
+                "trial_success",
+                link=result["link"]
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "🛒 خرید سرویس",
+                        t(lang, "buy"),
                         callback_data="buy"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 منوی اصلی",
+                        t(lang, "main_menu"),
                         callback_data="home"
                     )
                 ]
@@ -1960,9 +2848,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # سرویس‌های من
-    # -------------------------
+    # =====================================================
 
     if data == "my_services":
 
@@ -1970,24 +2858,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not rows:
 
-            text = (
-                "📦 سرویس‌های شما\n\n"
-                "هنوز سرویس فعالی ندارید."
-            )
+            text = t(lang, "no_services")
 
         else:
 
-            text = "📦 سرویس‌های شما\n\n"
+            text = t(lang, "services_title")
 
             for row in rows:
 
-                text += (
-                    f"🧾 سفارش #{row['id']}\n"
-                    f"📦 {row['volume']} گیگ\n"
-                    f"⏳ انقضا: "
-                    f"{row['expires_at'] or '-'}\n\n"
-                    f"🔗 {row['link']}\n\n"
-                    "━━━━━━━━━━━━\n\n"
+                text += t(
+                    lang,
+                    "service_item",
+                    id=row["id"],
+                    volume=row["volume"],
+                    expires=row["expires_at"] or "-",
+                    link=row["link"]
                 )
 
         await query.edit_message_text(
@@ -1995,13 +2880,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "🔄 تمدید",
+                        t(lang, "renew"),
                         callback_data="renew"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 بازگشت",
+                        t(lang, "back"),
                         callback_data="home"
                     )
                 ]
@@ -2010,9 +2895,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # تمدید
-    # -------------------------
+    # =====================================================
 
     if data == "renew":
 
@@ -2020,7 +2905,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    if data.startswith("renew_"):
+    if data.startswith("renew_") and not data.startswith("renewpay_") and not data.startswith("renewpaid_"):
 
         order_id = int(
             data.split("_")[1]
@@ -2051,33 +2936,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         volume = order["volume"]
-
         price = int(volume) * PRICE_PER_GB
 
         context.user_data[
             "renew_order_id"
         ] = order_id
 
-        context.user_data[
-            "renew_volume"
-        ] = volume
-
         await query.edit_message_text(
-            "🔄 تمدید سرویس\n\n"
-            f"📦 حجم: {volume} گیگ\n"
-            f"💰 مبلغ تمدید: {price:,} تومان\n"
-            "⏳ مدت: 30 روز\n\n"
-            "برای پرداخت روی دکمه زیر بزنید.",
+            t(
+                lang,
+                "renew_payment",
+                volume=volume,
+                price=price
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "💳 پرداخت تمدید",
+                        t(lang, "paid"),
                         callback_data=f"renewpay_{volume}_{price}"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 بازگشت",
+                        t(lang, "back"),
                         callback_data="renew"
                     )
                 ]
@@ -2098,24 +2979,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = True
 
         await query.edit_message_text(
-            "💳 پرداخت تمدید\n\n"
-            f"📦 حجم: {volume} گیگ\n"
-            f"💰 مبلغ: {price:,} تومان\n"
-            "⏳ مدت: 30 روز\n\n"
-            "💳 شماره کارت:\n"
-            f"`{CARD_NUMBER}`\n\n"
-            "بعد از پرداخت روی دکمه زیر بزنید.",
+            t(
+                lang,
+                "renew_paid",
+                volume=volume,
+                price=price,
+                card=CARD_NUMBER
+            ),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "💳 پرداخت کردم",
+                        t(lang, "paid"),
                         callback_data=f"renewpaid_{volume}_{price}"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 بازگشت",
+                        t(lang, "back"),
                         callback_data="renew"
                     )
                 ]
@@ -2142,34 +3023,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = order_id
 
         await query.edit_message_text(
-            "✅ درخواست تمدید ثبت شد.\n\n"
-            f"🧾 سفارش: #{order_id}\n"
-            f"📦 حجم: {volume} گیگ\n"
-            f"💰 مبلغ: {price:,} تومان\n\n"
-            "📸 حالا تصویر رسید را ارسال کنید."
+            t(
+                lang,
+                "renew_created",
+                order=order_id,
+                volume=volume,
+                price=price
+            )
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # پشتیبانی
-    # -------------------------
+    # =====================================================
 
     if data == "support":
 
         await query.edit_message_text(
-            "🎫 پشتیبانی HanzuVPN\n\n"
-            "برای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
+            t(lang, "support_title"),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "🎫 ایجاد تیکت",
+                        t(lang, "create_ticket"),
                         callback_data="new_ticket"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 بازگشت",
+                        t(lang, "back"),
                         callback_data="home"
                     )
                 ]
@@ -2193,15 +3075,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = True
 
         await query.edit_message_text(
-            f"🎫 تیکت #{ticket_id}\n\n"
-            "پیام خود را ارسال کنید."
+            t(
+                lang,
+                "ticket_prompt",
+                id=ticket_id
+            )
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # دعوت
-    # -------------------------
+    # =====================================================
 
     if data == "referral":
 
@@ -2219,15 +3104,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             await query.edit_message_text(
-                "👥 دعوت دوستان\n\n"
-                f"👤 تعداد دعوت‌ها: {count}\n\n"
-                "لینک اختصاصی شما:\n"
-                f"{link}\n\n"
-                "لینک را برای دوستانت بفرست.",
+                t(
+                    lang,
+                    "referral_title",
+                    count=count,
+                    link=link
+                ),
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton(
-                            "🔙 بازگشت",
+                            t(lang, "back"),
                             callback_data="home"
                         )
                     ]
@@ -2237,14 +3123,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
 
             await query.edit_message_text(
-                "❌ خطا در ساخت لینک دعوت."
+                t(lang, "referral_error")
             )
 
         return
 
-    # -------------------------
+    # =====================================================
     # کوپن
-    # -------------------------
+    # =====================================================
 
     if data == "coupon":
 
@@ -2253,15 +3139,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = True
 
         await query.edit_message_text(
-            "🎟 کد تخفیف\n\n"
-            "کد تخفیف خود را ارسال کنید."
+            t(lang, "coupon_prompt")
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # پنل ادمین
-    # -------------------------
+    # =====================================================
 
     if data == "admin":
 
@@ -2272,10 +3157,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
-    # موجودی
-    # -------------------------
-
     if data == "admin_stock":
 
         if user_id != ADMIN_ID:
@@ -2284,10 +3165,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_admin_stock(query)
 
         return
-
-    # -------------------------
-    # آمار
-    # -------------------------
 
     if data == "admin_stats":
 
@@ -2298,10 +3175,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
-    # سفارش‌ها
-    # -------------------------
-
     if data == "admin_orders":
 
         if user_id != ADMIN_ID:
@@ -2311,9 +3184,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # افزودن لینک
-    # -------------------------
+    # =====================================================
 
     if data == "admin_add":
 
@@ -2331,10 +3204,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         return
-
-    # -------------------------
-    # حذف لینک
-    # -------------------------
 
     if data == "admin_delete":
 
@@ -2372,9 +3241,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # مدیریت تست
-    # -------------------------
+    # =====================================================
 
     if data == "admin_trial":
 
@@ -2461,9 +3330,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # کوپن ادمین
-    # -------------------------
+    # =====================================================
 
     if data == "admin_coupon":
 
@@ -2479,15 +3348,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "فرمت:\n"
             "CODE درصد تعداد\n\n"
             "مثال:\n"
-            "HANZU20 20 100\n\n"
-            "یعنی 20٪ تخفیف برای حداکثر 100 استفاده."
+            "HANZU20 20 100"
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # پیام همگانی
-    # -------------------------
+    # =====================================================
 
     if data == "admin_broadcast":
 
@@ -2505,9 +3373,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # تیکت‌های ادمین
-    # -------------------------
+    # =====================================================
 
     if data == "admin_tickets":
 
@@ -2542,7 +3410,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
 
             text = "🎫 تیکت‌های باز\n\n"
-
             keyboard = []
 
             for row in rows:
@@ -2573,9 +3440,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # باز کردن تیکت
-    # -------------------------
+    # =====================================================
 
     if data.startswith("ticket_"):
 
@@ -2654,9 +3521,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # بستن تیکت
-    # -------------------------
+    # =====================================================
 
     if data.startswith("close_ticket_"):
 
@@ -2692,11 +3559,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try:
 
+                recipient_lang = (
+                    get_user_language(ticket["user_id"])
+                    or "fa"
+                )
+
                 await context.bot.send_message(
                     chat_id=ticket["user_id"],
-                    text=(
-                        f"🔒 تیکت #{ticket_id} بسته شد.\n\n"
-                        "در صورت نیاز می‌توانید تیکت جدید ایجاد کنید."
+                    text=t(
+                        recipient_lang,
+                        "ticket_closed",
+                        id=ticket_id
                     )
                 )
 
@@ -2717,9 +3590,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # تأیید سفارش
-    # -------------------------
+    # =====================================================
 
     if data.startswith("approve_"):
 
@@ -2763,18 +3636,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         order = result["order"]
 
+        recipient_lang = (
+            get_user_language(order["user_id"])
+            or "fa"
+        )
+
         await context.bot.send_message(
             chat_id=order["user_id"],
-            text=(
-                "✅ پرداخت شما تأیید شد.\n\n"
-                "🌐 HanzuVPN\n\n"
-                f"📦 حجم: {order['volume']} گیگ\n"
-                "⏳ مدت: 30 روز\n"
-                f"📅 انقضا: {result['expires_at']}\n"
-                f"🧾 سفارش: #{order_id}\n\n"
-                "🔗 لینک Subscription:\n\n"
-                f"{result['link']}\n\n"
-                "📌 لینک را در برنامه VPN خود وارد کنید."
+            text=t(
+                recipient_lang,
+                "payment_confirmed",
+                volume=order["volume"],
+                expires=result["expires_at"],
+                order=order_id,
+                link=result["link"]
             )
         )
 
@@ -2789,9 +3664,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # رد سفارش
-    # -------------------------
+    # =====================================================
 
     if data.startswith("reject_"):
 
@@ -2824,12 +3699,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
+        recipient_lang = (
+            get_user_language(order["user_id"])
+            or "fa"
+        )
+
         await context.bot.send_message(
             chat_id=order["user_id"],
-            text=(
-                "❌ پرداخت سفارش شما تأیید نشد.\n\n"
-                f"🧾 سفارش: #{order_id}\n\n"
-                "در صورت اشتباه با پشتیبانی تماس بگیرید."
+            text=t(
+                recipient_lang,
+                "payment_rejected",
+                order=order_id
             )
         )
 
@@ -2855,9 +3735,19 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ensure_user(user)
 
-    # -------------------------
+    lang = get_user_language(user.id)
+
+    if not lang:
+
+        await show_language_selector_message(
+            update.message
+        )
+
+        return
+
+    # =====================================================
     # پیام تیکت کاربر
-    # -------------------------
+    # =====================================================
 
     if context.user_data.get(
         "waiting_ticket_message"
@@ -2899,15 +3789,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(
-            f"✅ پیام شما در تیکت #{ticket_id} ثبت شد.\n\n"
-            "پشتیبانی آن را بررسی می‌کند."
+            t(
+                lang,
+                "ticket_created",
+                id=ticket_id
+            )
         )
 
         return
 
-    # -------------------------
-    # پاسخ ادمین به تیکت
-    # -------------------------
+    # =====================================================
+    # پاسخ ادمین
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -2939,10 +3832,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text
         )
 
+        recipient_lang = (
+            get_user_language(ticket["user_id"])
+            or "fa"
+        )
+
         await context.bot.send_message(
             chat_id=ticket["user_id"],
             text=(
-                f"💬 پاسخ پشتیبانی\n\n"
+                "💬 پاسخ پشتیبانی\n\n"
                 f"🎫 تیکت #{ticket_id}\n\n"
                 f"{text}"
             )
@@ -2958,9 +3856,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # پیام همگانی
-    # -------------------------
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -3010,9 +3908,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # ساخت کوپن
-    # -------------------------
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -3082,9 +3980,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # افزودن تست
-    # -------------------------
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -3118,9 +4016,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # حجم دلخواه
-    # -------------------------
+    # =====================================================
 
     if context.user_data.get(
         "waiting_custom_volume"
@@ -3140,8 +4038,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
 
             await update.message.reply_text(
-                "❌ حجم نامعتبر است.\n\n"
-                "مثلاً 25 وارد کن."
+                t(lang, "invalid_volume")
             )
 
             return
@@ -3149,20 +4046,22 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = volume * PRICE_PER_GB
 
         await update.message.reply_text(
-            "🛒 سرویس دلخواه\n\n"
-            f"📦 حجم: {volume} گیگ\n"
-            f"💰 قیمت: {price:,} تومان\n"
-            "⏳ مدت: 30 روز",
+            t(
+                lang,
+                "custom_summary",
+                volume=volume,
+                price=price
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "💳 پرداخت کردم",
+                        t(lang, "paid"),
                         callback_data=f"paid_{volume}_{price}"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        "🔙 خرید",
+                        t(lang, "back"),
                         callback_data="buy"
                     )
                 ]
@@ -3171,9 +4070,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
-    # وارد کردن کوپن
-    # -------------------------
+    # =====================================================
+    # کوپن کاربر
+    # =====================================================
 
     if context.user_data.get(
         "waiting_coupon"
@@ -3190,7 +4089,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not coupon:
 
             await update.message.reply_text(
-                "❌ کد تخفیف نامعتبر است."
+                t(lang, "coupon_invalid")
             )
 
             return
@@ -3201,7 +4100,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ):
 
             await update.message.reply_text(
-                "⚠️ شما قبلاً از این کد استفاده کرده‌اید."
+                t(lang, "coupon_used")
             )
 
             return
@@ -3211,18 +4110,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ] = coupon["code"]
 
         await update.message.reply_text(
-            "✅ کد تخفیف معتبر است.\n\n"
-            f"🎟 کد: {coupon['code']}\n"
-            f"💰 تخفیف: {coupon['percent']}%\n\n"
-            "حالا سرویس موردنظر را انتخاب کنید:",
-            reply_markup=buy_keyboard()
+            t(
+                lang,
+                "coupon_valid",
+                code=coupon["code"],
+                percent=coupon["percent"]
+            ),
+            reply_markup=buy_keyboard(user.id)
         )
 
         return
 
-    # -------------------------
+    # =====================================================
     # حجم لینک ادمین
-    # -------------------------
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -3265,9 +4166,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # -------------------------
+    # =====================================================
     # لینک سرویس ادمین
-    # -------------------------
+    # =====================================================
 
     if (
         user.id == ADMIN_ID
@@ -3324,6 +4225,8 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ensure_user(user)
 
+    lang = get_user_language(user.id) or "fa"
+
     order = get_latest_pending_order(
         user.id
     )
@@ -3331,7 +4234,7 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not order:
 
         await update.message.reply_text(
-            "❌ سفارش در انتظار پرداختی پیدا نشد."
+            t(lang, "no_pending")
         )
 
         return
@@ -3369,9 +4272,11 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        "✅ رسید شما دریافت شد.\n\n"
-        f"🧾 سفارش #{order['id']}\n\n"
-        "پس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود."
+        t(
+            lang,
+            "receipt_received",
+            order=order["id"]
+        )
     )
 
 
@@ -3417,22 +4322,29 @@ async def expiration_checker(application):
                 reminder_type = None
                 message = None
 
+                lang = (
+                    get_user_language(row["user_id"])
+                    or "fa"
+                )
+
                 if 2.5 <= days <= 3.5:
+
                     reminder_type = "3days"
-                    message = (
-                        "⚠️ یادآوری HanzuVPN\n\n"
-                        f"سرویس #{row['id']} شما "
-                        "حدود 3 روز دیگر منقضی می‌شود.\n\n"
-                        "برای تمدید از بخش «🔄 تمدید» استفاده کنید."
+
+                    message = t(
+                        lang,
+                        "reminder_3",
+                        order=row["id"]
                     )
 
                 elif 0.5 <= days <= 1.5:
+
                     reminder_type = "1day"
-                    message = (
-                        "⏰ یادآوری HanzuVPN\n\n"
-                        f"سرویس #{row['id']} شما "
-                        "حدود 1 روز دیگر منقضی می‌شود.\n\n"
-                        "برای تمدید سرویس اقدام کنید."
+
+                    message = t(
+                        lang,
+                        "reminder_1",
+                        order=row["id"]
                     )
 
                 if not reminder_type:
@@ -3560,6 +4472,13 @@ def main():
         CommandHandler(
             "support",
             support_command
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "language",
+            language_command
         )
     )
 

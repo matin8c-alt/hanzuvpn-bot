@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,12 +12,15 @@ from telegram.ext import (
     filters,
 )
 
+# =========================
+# تنظیمات
+# =========================
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
-
 
 PLANS = {
     "10": 35000,
@@ -26,34 +30,60 @@ PLANS = {
     "50": 175000,
 }
 
+PRICE_PER_GB = 3500
+
 
 # =========================
-# DATABASE
+# دیتابیس
 # =========================
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db()
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             volume TEXT NOT NULL,
             link TEXT NOT NULL,
             used INTEGER DEFAULT 0
         )
-        """
-    )
-    conn.commit()
-    return conn
+    """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT,
+            first_name TEXT,
+            volume TEXT NOT NULL,
+            price INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            subscription_id INTEGER,
+            created_at TEXT NOT NULL,
+            approved_at TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# =========================
+# لینک‌های سرویس
+# =========================
 
 def add_subscription(volume, link):
-
     conn = get_db()
 
     conn.execute(
         "INSERT INTO subscriptions (volume, link, used) VALUES (?, ?, 0)",
-        (volume, link)
+        (str(volume), link)
     )
 
     conn.commit()
@@ -61,35 +91,25 @@ def add_subscription(volume, link):
 
 
 def get_available_subscription(volume):
-
     conn = get_db()
 
-    row = conn.execute(
-        """
+    row = conn.execute("""
         SELECT id, link
         FROM subscriptions
         WHERE volume = ? AND used = 0
         ORDER BY id ASC
         LIMIT 1
-        """,
-        (volume,)
-    ).fetchone()
+    """, (str(volume),)).fetchone()
 
     conn.close()
-
     return row
 
 
-def use_subscription(subscription_id):
-
+def delete_subscription(subscription_id):
     conn = get_db()
 
     conn.execute(
-        """
-        UPDATE subscriptions
-        SET used = 1
-        WHERE id = ?
-        """,
+        "DELETE FROM subscriptions WHERE id = ? AND used = 0",
         (subscription_id,)
     )
 
@@ -98,764 +118,929 @@ def use_subscription(subscription_id):
 
 
 def get_stock():
-
     conn = get_db()
 
-    rows = conn.execute(
-        """
-        SELECT volume, COUNT(*)
+    rows = conn.execute("""
+        SELECT volume, COUNT(*) AS count
         FROM subscriptions
         WHERE used = 0
         GROUP BY volume
-        """
-    ).fetchall()
+        ORDER BY CAST(volume AS INTEGER)
+    """).fetchall()
 
     conn.close()
 
     stock = {}
 
-    for volume, count in rows:
-        stock[volume] = count
+    for row in rows:
+        stock[row["volume"]] = row["count"]
 
     return stock
 
 
-def delete_subscription(subscription_id):
-
-    conn = get_db()
-
-    conn.execute(
-        "DELETE FROM subscriptions WHERE id = ?",
-        (subscription_id,)
-    )
-
-    conn.commit()
-    conn.close()
-
-
 def get_subscription_list():
-
     conn = get_db()
 
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT id, volume, link
         FROM subscriptions
         WHERE used = 0
-        ORDER BY id ASC
-        """
-    ).fetchall()
+        ORDER BY CAST(volume AS INTEGER), id
+    """).fetchall()
 
     conn.close()
-
     return rows
 
 
 # =========================
-# START
+# سفارش‌ها
+# =========================
+
+def create_order(user, volume, price):
+    conn = get_db()
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor = conn.execute("""
+        INSERT INTO orders
+        (
+            user_id,
+            username,
+            first_name,
+            volume,
+            price,
+            status,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+    """, (
+        user.id,
+        user.username or "",
+        user.first_name or "",
+        str(volume),
+        int(price),
+        now,
+    ))
+
+    order_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return order_id
+
+
+def get_order(order_id):
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM orders
+        WHERE id = ?
+    """, (order_id,)).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_latest_pending_order(user_id):
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM orders
+        WHERE user_id = ?
+        AND status = 'pending'
+        ORDER BY id DESC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def approve_order(order_id):
+    conn = get_db()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        order = conn.execute("""
+            SELECT *
+            FROM orders
+            WHERE id = ?
+        """, (order_id,)).fetchone()
+
+        if not order:
+            conn.rollback()
+            return {"status": "not_found"}
+
+        if order["status"] != "pending":
+            conn.rollback()
+            return {
+                "status": "already_processed",
+                "order": order,
+            }
+
+        subscription = conn.execute("""
+            SELECT id, link
+            FROM subscriptions
+            WHERE volume = ?
+            AND used = 0
+            ORDER BY id ASC
+            LIMIT 1
+        """, (order["volume"],)).fetchone()
+
+        if not subscription:
+            conn.rollback()
+            return {
+                "status": "no_stock",
+                "order": order,
+            }
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        updated = conn.execute("""
+            UPDATE orders
+            SET status = 'approved',
+                subscription_id = ?,
+                approved_at = ?
+            WHERE id = ?
+            AND status = 'pending'
+        """, (
+            subscription["id"],
+            now,
+            order_id,
+        ))
+
+        if updated.rowcount != 1:
+            conn.rollback()
+            return {"status": "already_processed"}
+
+        conn.execute("""
+            UPDATE subscriptions
+            SET used = 1
+            WHERE id = ?
+            AND used = 0
+        """, (subscription["id"],))
+
+        conn.commit()
+
+        return {
+            "status": "approved",
+            "order": order,
+            "link": subscription["link"],
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def reject_order(order_id):
+    conn = get_db()
+
+    updated = conn.execute("""
+        UPDATE orders
+        SET status = 'rejected'
+        WHERE id = ?
+        AND status = 'pending'
+    """, (order_id,))
+
+    conn.commit()
+
+    order = conn.execute("""
+        SELECT *
+        FROM orders
+        WHERE id = ?
+    """, (order_id,)).fetchone()
+
+    conn.close()
+
+    return updated.rowcount == 1, order
+
+
+# =========================
+# آمار
+# =========================
+
+def get_stats():
+    conn = get_db()
+
+    total_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM orders
+    """).fetchone()[0]
+
+    approved_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM orders
+        WHERE status = 'approved'
+    """).fetchone()[0]
+
+    pending_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM orders
+        WHERE status = 'pending'
+    """).fetchone()[0]
+
+    rejected_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM orders
+        WHERE status = 'rejected'
+    """).fetchone()[0]
+
+    total_sales = conn.execute("""
+        SELECT COALESCE(SUM(price), 0)
+        FROM orders
+        WHERE status = 'approved'
+    """).fetchone()[0]
+
+    customers = conn.execute("""
+        SELECT COUNT(DISTINCT user_id)
+        FROM orders
+    """).fetchone()[0]
+
+    conn.close()
+
+    return {
+        "total_orders": total_orders,
+        "approved_orders": approved_orders,
+        "pending_orders": pending_orders,
+        "rejected_orders": rejected_orders,
+        "total_sales": total_sales,
+        "customers": customers,
+    }
+
+
+# =========================
+# منوی اصلی
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
-            InlineKeyboardButton(
-                "🛒 خرید سرویس",
-                callback_data="buy"
-            )
+            InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy")
         ],
-
         [
-            InlineKeyboardButton(
-                "📦 سرویس‌های من",
-                callback_data="services"
-            )
+            InlineKeyboardButton("📦 سرویس‌های من", callback_data="my_services"),
+            InlineKeyboardButton("💬 پشتیبانی", callback_data="support"),
         ],
-
-        [
-            InlineKeyboardButton(
-                "💬 پشتیبانی",
-                callback_data="support"
-            )
-        ]
     ]
 
-    # پنل مدیریت فقط برای ادمین
     if update.effective_user.id == ADMIN_ID:
-
         keyboard.append([
-            InlineKeyboardButton(
-                "⚙️ پنل مدیریت",
-                callback_data="admin"
-            )
+            InlineKeyboardButton("⚙️ پنل مدیریت", callback_data="admin")
         ])
 
     await update.message.reply_text(
         "🌐 HanzuVPN\n\n"
-        "به ربات فروش HanzuVPN خوش آمدید.\n\n"
-        "یکی از گزینه‌های زیر را انتخاب کنید:",
+        "به ربات فروش خودکار HanzuVPN خوش آمدید ❤️\n\n"
+        "از منوی زیر انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 # =========================
-# BUTTONS
+# خرید
 # =========================
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_buy_menu(query):
+
+    keyboard = [
+        [
+            InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="plan_10"),
+        ],
+        [
+            InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="plan_20"),
+        ],
+        [
+            InlineKeyboardButton("30 گیگ | 105,000 تومان", callback_data="plan_30"),
+        ],
+        [
+            InlineKeyboardButton("40 گیگ | 140,000 تومان", callback_data="plan_40"),
+        ],
+        [
+            InlineKeyboardButton("50 گیگ | 175,000 تومان", callback_data="plan_50"),
+        ],
+        [
+            InlineKeyboardButton("✏️ حجم دلخواه", callback_data="custom"),
+        ],
+        [
+            InlineKeyboardButton("🔙 بازگشت", callback_data="home"),
+        ],
+    ]
+
+    await query.edit_message_text(
+        "🛒 انتخاب سرویس\n\n"
+        "⏳ مدت تمام سرویس‌ها: 30 روز\n\n"
+        "حجم موردنظر خود را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_payment(query, volume, price):
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "💳 پرداخت کردم",
+                callback_data=f"paid_{volume}_{price}"
+            )
+        ],
+        [
+            InlineKeyboardButton("🔙 بازگشت", callback_data="buy")
+        ],
+    ]
+
+    await query.edit_message_text(
+        "💳 اطلاعات پرداخت\n\n"
+        f"📦 حجم: {volume} گیگ\n"
+        f"💰 مبلغ: {price:,} تومان\n"
+        "⏳ مدت: 30 روز\n\n"
+        "💳 شماره کارت:\n"
+        f"`{CARD_NUMBER}`\n\n"
+        "بعد از انتقال مبلغ، روی دکمه «پرداخت کردم» بزنید و سپس تصویر رسید را ارسال کنید.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# =========================
+# پنل مدیریت
+# =========================
+
+async def show_admin(query):
+
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ افزودن لینک ساب", callback_data="admin_add")
+        ],
+        [
+            InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"),
+            InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete"),
+        ],
+        [
+            InlineKeyboardButton("📊 آمار فروش", callback_data="admin_stats")
+        ],
+        [
+            InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
+        ],
+        [
+            InlineKeyboardButton("🔙 بازگشت", callback_data="home")
+        ],
+    ]
+
+    await query.edit_message_text(
+        "⚙️ پنل مدیریت HanzuVPN\n\n"
+        "مدیریت فروش و سرویس‌ها:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_stock(query):
+
+    stock = get_stock()
+
+    text = "📦 موجودی سرویس‌ها\n\n"
+
+    if not stock:
+        text += "❌ موجودی خالی است."
+    else:
+        for volume, count in stock.items():
+            text += f"🔹 {volume} گیگ: {count} عدد\n"
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+            ]
+        ])
+    )
+
+
+async def show_stats(query):
+
+    stats = get_stats()
+
+    text = (
+        "📊 آمار فروش HanzuVPN\n\n"
+        f"🧾 کل سفارش‌ها: {stats['total_orders']}\n"
+        f"✅ سفارش‌های تأییدشده: {stats['approved_orders']}\n"
+        f"⏳ در انتظار پرداخت: {stats['pending_orders']}\n"
+        f"❌ ردشده: {stats['rejected_orders']}\n\n"
+        f"👥 تعداد مشتری‌ها: {stats['customers']}\n"
+        f"💰 مجموع فروش: {stats['total_sales']:,} تومان"
+    )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+            ]
+        ])
+    )
+
+
+async def show_orders(query):
+
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM orders
+        ORDER BY id DESC
+        LIMIT 15
+    """).fetchall()
+
+    conn.close()
+
+    if not rows:
+        text = "🧾 هنوز سفارشی ثبت نشده است."
+    else:
+        text = "🧾 آخرین سفارش‌ها\n\n"
+
+        for row in rows:
+            status = {
+                "pending": "⏳ در انتظار",
+                "approved": "✅ تأیید",
+                "rejected": "❌ رد",
+            }.get(row["status"], row["status"])
+
+            name = row["first_name"] or "بدون نام"
+
+            text += (
+                f"#{row['id']} | {name}\n"
+                f"📦 {row['volume']} گیگ | "
+                f"💰 {row['price']:,} تومان\n"
+                f"{status}\n"
+                f"🕐 {row['created_at']}\n\n"
+            )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+            ]
+        ])
+    )
+
+
+async def show_delete_menu(query):
+
+    rows = get_subscription_list()
+
+    if not rows:
+        await query.edit_message_text(
+            "🗑 حذف لینک\n\n"
+            "❌ هیچ لینک استفاده‌نشده‌ای وجود ندارد.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 پنل مدیریت",
+                        callback_data="admin"
+                    )
+                ]
+            ])
+        )
+        return
+
+    keyboard = []
+
+    for row in rows:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🗑 #{row['id']} | {row['volume']} گیگ",
+                callback_data=f"delete_{row['id']}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")
+    ])
+
+    await query.edit_message_text(
+        "🗑 کدام لینک حذف شود؟",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# =========================
+# Callback ها
+# =========================
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
-
-    try:
-
-        await query.answer()
-
-        data = query.data
-
-        # =========================
-        # HOME
-        # =========================
-
-        if data == "home":
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "🛒 خرید سرویس",
-                        callback_data="buy"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "📦 سرویس‌های من",
-                        callback_data="services"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "💬 پشتیبانی",
-                        callback_data="support"
-                    )
-                ]
-            ]
-
-            if query.from_user.id == ADMIN_ID:
-
-                keyboard.append([
-                    InlineKeyboardButton(
-                        "⚙️ پنل مدیریت",
-                        callback_data="admin"
-                    )
-                ])
-
-            await query.edit_message_text(
-                "🌐 HanzuVPN\n\n"
-                "یکی از گزینه‌های زیر را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # BUY
-        # =========================
-
-        elif data == "buy":
-
-            keyboard = [
-
-                [
-                    InlineKeyboardButton(
-                        "10 گیگ | 35,000 تومان",
-                        callback_data="plan_10"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "20 گیگ | 70,000 تومان",
-                        callback_data="plan_20"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "30 گیگ | 105,000 تومان",
-                        callback_data="plan_30"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "40 گیگ | 140,000 تومان",
-                        callback_data="plan_40"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "50 گیگ | 175,000 تومان",
-                        callback_data="plan_50"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔹 حجم دلخواه",
-                        callback_data="custom"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="home"
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                "🛒 سرویس‌های HanzuVPN\n\n"
-                "⏳ مدت همه سرویس‌ها: 30 روز\n\n"
-                "حجم موردنظر را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # PLAN
-        # =========================
-
-        elif data.startswith("plan_"):
-
-            volume = data.replace("plan_", "")
-
-            if volume not in PLANS:
-
-                await query.edit_message_text(
-                    "❌ سرویس پیدا نشد."
-                )
-                return
-
-            price = PLANS[volume]
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "💳 پرداخت کردم",
-                        callback_data=f"paid_{volume}_{price}"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="buy"
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                f"🌐 سرویس: {volume} گیگ\n"
-                f"⏳ مدت: 30 روز\n"
-                f"💰 مبلغ: {price:,} تومان\n\n"
-                f"💳 شماره کارت:\n"
-                f"{CARD_NUMBER}\n\n"
-                "بعد از پرداخت روی دکمه زیر بزنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # PAYMENT
-        # =========================
-
-        elif data.startswith("paid_"):
-
-            parts = data.split("_")
-
-            if len(parts) != 3:
-
-                await query.edit_message_text(
-                    "❌ اطلاعات پرداخت نامعتبر است."
-                )
-                return
-
-            volume = parts[1]
-            price = int(parts[2])
-
-            context.user_data["volume"] = volume
-            context.user_data["price"] = price
-            context.user_data["waiting_receipt"] = True
-
-            await query.edit_message_text(
-                "✅ درخواست پرداخت ثبت شد.\n\n"
-                "📸 حالا عکس رسید پرداخت را همینجا ارسال کنید."
-            )
-
-        # =========================
-        # CUSTOM
-        # =========================
-
-        elif data == "custom":
-
-            context.user_data["waiting_custom"] = True
-
-            await query.edit_message_text(
-                "🔹 حجم دلخواه\n\n"
-                "حجم موردنظر را به صورت عدد ارسال کنید.\n\n"
-                "مثال:\n"
-                "25\n\n"
-                "💰 قیمت هر گیگ: 3,500 تومان"
-            )
-
-        # =========================
-        # SERVICES
-        # =========================
-
-        elif data == "services":
-
-            await query.edit_message_text(
-                "📦 سرویس‌های من\n\n"
-                "فعلاً سرویس فعالی ثبت نشده است.",
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "🔙 بازگشت",
-                            callback_data="home"
-                        )
-                    ]
-                ])
-            )
-
-        # =========================
-        # SUPPORT
-        # =========================
-
-        elif data == "support":
-
-            await query.edit_message_text(
-                "💬 پشتیبانی HanzuVPN\n\n"
-                "برای پشتیبانی با مدیریت در ارتباط باشید.",
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "🔙 بازگشت",
-                            callback_data="home"
-                        )
-                    ]
-                ])
-            )
-
-        # =========================
-        # ADMIN PANEL
-        # =========================
-
-        elif data == "admin":
-
-            if query.from_user.id != ADMIN_ID:
-                await query.answer(
-                    "⛔ دسترسی ندارید.",
-                    show_alert=True
-                )
-                return
-
-            keyboard = [
-
-                [
-                    InlineKeyboardButton(
-                        "➕ افزودن لینک ساب",
-                        callback_data="admin_add"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "📦 موجودی",
-                        callback_data="admin_stock"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🗑 حذف لینک",
-                        callback_data="admin_delete"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="home"
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                "⚙️ پنل مدیریت HanzuVPN\n\n"
-                "عملیات موردنظر را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # ADD LINK
-        # =========================
-
-        elif data == "admin_add":
-
-            if query.from_user.id != ADMIN_ID:
-                return
-
-            keyboard = [
-
-                [
-                    InlineKeyboardButton(
-                        "10 گیگ",
-                        callback_data="add_10"
-                    ),
-
-                    InlineKeyboardButton(
-                        "20 گیگ",
-                        callback_data="add_20"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "30 گیگ",
-                        callback_data="add_30"
-                    ),
-
-                    InlineKeyboardButton(
-                        "40 گیگ",
-                        callback_data="add_40"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "50 گیگ",
-                        callback_data="add_50"
-                    )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="admin"
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                "➕ افزودن لینک ساب\n\n"
-                "حجم لینک را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # SELECT VOLUME FOR ADD
-        # =========================
-
-        elif data.startswith("add_"):
-
-            if query.from_user.id != ADMIN_ID:
-                return
-
-            volume = data.replace("add_", "")
-
-            context.user_data["adding_subscription"] = volume
-
-            await query.edit_message_text(
-                f"➕ افزودن لینک\n\n"
-                f"📦 حجم: {volume} گیگ\n\n"
-                "حالا لینک Subscription را همینجا ارسال کن.\n\n"
-                "مثال:\n"
-                "https://example.com/sub/..."
-            )
-
-        # =========================
-        # STOCK
-        # =========================
-
-        elif data == "admin_stock":
-
-            if query.from_user.id != ADMIN_ID:
-                return
-
-            stock = get_stock()
-
-            text = "📦 موجودی لینک‌ها\n\n"
-
-            for volume in ["10", "20", "30", "40", "50"]:
-
-                count = stock.get(volume, 0)
-
-                text += f"🔹 {volume} گیگ: {count} لینک\n"
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "🔙 بازگشت",
-                        callback_data="admin"
-                    )
-                ]
-            ]
-
-            await query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        # =========================
-        # DELETE MENU
-        # =========================
-
-        elif data == "admin_delete":
-
-            if query.from_user.id != ADMIN_ID:
-                return
-
-            rows = get_subscription_list()
-
-            if not rows:
-
-                await query.edit_message_text(
-                    "📦 هیچ لینک فعالی برای حذف وجود ندارد.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                "🔙 بازگشت",
-                                callback_data="admin"
-                            )
-                        ]
-                    ])
-                )
-
-                return
-
-            keyboard = []
-
-            for row_id, volume, link in rows:
-
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"🗑 {volume} گیگ | ID {row_id}",
-                        callback_data=f"del_{row_id}"
-                    )
-                ])
-
+    await query.answer()
+
+    data = query.data
+    user_id = query.from_user.id
+
+    # خانه
+    if data == "home":
+
+        keyboard = [
+            [
+                InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy")
+            ],
+            [
+                InlineKeyboardButton(
+                    "📦 سرویس‌های من",
+                    callback_data="my_services"
+                ),
+                InlineKeyboardButton(
+                    "💬 پشتیبانی",
+                    callback_data="support"
+                ),
+            ],
+        ]
+
+        if user_id == ADMIN_ID:
             keyboard.append([
                 InlineKeyboardButton(
-                    "🔙 بازگشت",
+                    "⚙️ پنل مدیریت",
                     callback_data="admin"
                 )
             ])
 
-            await query.edit_message_text(
-                "🗑 حذف لینک\n\n"
-                "لینک موردنظر را انتخاب کنید:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+        await query.edit_message_text(
+            "🌐 HanzuVPN\n\n"
+            "منوی اصلی:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
 
-        # =========================
-        # DELETE
-        # =========================
+    # خرید
+    if data == "buy":
+        await show_buy_menu(query)
+        return
 
-        elif data.startswith("del_"):
+    # پلن‌ها
+    if data.startswith("plan_"):
 
-            if query.from_user.id != ADMIN_ID:
-                return
+        volume = data.split("_")[1]
+        price = PLANS.get(volume)
 
-            subscription_id = int(
-                data.replace("del_", "")
-            )
+        if not price:
+            return
 
-            delete_subscription(subscription_id)
+        await show_payment(query, volume, price)
+        return
 
-            await query.edit_message_text(
-                "✅ لینک با موفقیت حذف شد.",
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "⚙️ پنل مدیریت",
-                            callback_data="admin"
-                        )
-                    ]
-                ])
-            )
+    # حجم دلخواه
+    if data == "custom":
 
-        # =========================
-        # APPROVE PAYMENT
-        # =========================
+        context.user_data["waiting_custom_volume"] = True
 
-        elif data.startswith("approve_"):
+        await query.edit_message_text(
+            "✏️ حجم دلخواه\n\n"
+            "لطفاً حجم موردنظر را به گیگ وارد کنید.\n\n"
+            "مثال:\n"
+            "25"
+        )
+        return
 
-            if query.from_user.id != ADMIN_ID:
+    # پرداخت کردم
+    if data.startswith("paid_"):
 
-                await query.answer(
-                    "⛔ دسترسی ندارید.",
-                    show_alert=True
+        parts = data.split("_")
+
+        if len(parts) != 3:
+            return
+
+        volume = parts[1]
+        price = int(parts[2])
+
+        order_id = create_order(
+            query.from_user,
+            volume,
+            price
+        )
+
+        context.user_data["last_order_id"] = order_id
+
+        await query.edit_message_text(
+            "✅ سفارش شما ثبت شد.\n\n"
+            f"📦 حجم: {volume} گیگ\n"
+            f"💰 مبلغ: {price:,} تومان\n"
+            f"🧾 شماره سفارش: #{order_id}\n\n"
+            "📸 حالا تصویر رسید پرداخت را همینجا ارسال کنید.\n\n"
+            "پس از بررسی، سرویس برای شما ارسال می‌شود."
+        )
+        return
+
+    # سرویس‌های من
+    if data == "my_services":
+
+        conn = get_db()
+
+        rows = conn.execute("""
+            SELECT
+                o.id,
+                o.volume,
+                o.price,
+                o.approved_at,
+                s.link
+            FROM orders o
+            LEFT JOIN subscriptions s
+            ON o.subscription_id = s.id
+            WHERE o.user_id = ?
+            AND o.status = 'approved'
+            ORDER BY o.id DESC
+        """, (user_id,)).fetchall()
+
+        conn.close()
+
+        if not rows:
+            text = "📦 سرویس‌های شما\n\nهنوز سرویس فعالی ندارید."
+        else:
+            text = "📦 سرویس‌های شما\n\n"
+
+            for row in rows:
+                text += (
+                    f"🧾 سفارش #{row['id']}\n"
+                    f"📦 حجم: {row['volume']} گیگ\n"
+                    f"⏳ مدت: 30 روز\n"
+                    f"🕐 تاریخ: {row['approved_at']}\n\n"
+                    f"🔗 لینک:\n{row['link']}\n\n"
+                    "━━━━━━━━━━━━\n\n"
                 )
 
-                return
-
-            parts = data.split("_")
-
-            if len(parts) != 3:
-                return
-
-            user_id = int(parts[1])
-            volume = parts[2]
-
-            subscription = get_available_subscription(volume)
-
-            if not subscription:
-
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=(
-                        "✅ پرداخت شما تأیید شد.\n\n"
-                        "⚠️ اما در حال حاضر لینک Subscription "
-                        "مربوط به حجم خریداری‌شده موجود نیست.\n\n"
-                        "لطفاً با پشتیبانی در ارتباط باشید."
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="home"
                     )
-                )
+                ]
+            ])
+        )
+        return
 
-                await query.edit_message_caption(
-                    caption=query.message.caption +
-                    "\n\n⚠️ پرداخت تأیید شد ولی لینک موجود نبود."
-                )
+    # پشتیبانی
+    if data == "support":
 
-                return
+        await query.edit_message_text(
+            "💬 پشتیبانی HanzuVPN\n\n"
+            "در صورت وجود مشکل در خرید یا فعال‌سازی سرویس، "
+            "پیام خود را برای پشتیبانی ارسال کنید.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="home"
+                    )
+                ]
+            ])
+        )
+        return
 
-            subscription_id = subscription[0]
-            subscription_link = subscription[1]
+    # پنل مدیریت
+    if data == "admin":
 
-            use_subscription(subscription_id)
+        if user_id != ADMIN_ID:
+            return
 
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "✅ پرداخت شما تأیید شد.\n\n"
-                    "🌐 HanzuVPN\n\n"
-                    f"📦 حجم: {volume} گیگ\n"
-                    "⏳ مدت: 30 روز\n\n"
-                    "🔗 لینک Subscription:\n\n"
-                    f"{subscription_link}\n\n"
-                    "📌 لینک را در برنامه VPN خود وارد کنید."
-                )
-            )
+        await show_admin(query)
+        return
+
+    # موجودی
+    if data == "admin_stock":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_stock(query)
+        return
+
+    # آمار
+    if data == "admin_stats":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_stats(query)
+        return
+
+    # سفارش‌ها
+    if data == "admin_orders":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_orders(query)
+        return
+
+    # افزودن لینک
+    if data == "admin_add":
+
+        if user_id != ADMIN_ID:
+            return
+
+        context.user_data["admin_waiting_volume"] = True
+
+        await query.edit_message_text(
+            "➕ افزودن لینک ساب\n\n"
+            "حجم لینک را به گیگ وارد کن.\n\n"
+            "مثال:\n"
+            "10\n"
+            "20\n"
+            "50\n"
+            "یا حتی حجم دلخواه مثل 25"
+        )
+        return
+
+    # حذف
+    if data == "admin_delete":
+
+        if user_id != ADMIN_ID:
+            return
+
+        await show_delete_menu(query)
+        return
+
+    # حذف لینک مشخص
+    if data.startswith("delete_"):
+
+        if user_id != ADMIN_ID:
+            return
+
+        subscription_id = int(data.split("_")[1])
+
+        delete_subscription(subscription_id)
+
+        await query.edit_message_text(
+            "✅ لینک با موفقیت حذف شد.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🔙 پنل مدیریت",
+                        callback_data="admin"
+                    )
+                ]
+            ])
+        )
+        return
+
+    # تأیید سفارش
+    if data.startswith("approve_"):
+
+        if user_id != ADMIN_ID:
+            return
+
+        order_id = int(data.split("_")[1])
+
+        result = approve_order(order_id)
+
+        if result["status"] == "not_found":
 
             await query.edit_message_caption(
-                caption=query.message.caption +
-                "\n\n✅ پرداخت تأیید شد و لینک ارسال گردید."
+                caption="❌ سفارش پیدا نشد."
             )
+            return
 
-        # =========================
-        # REJECT PAYMENT
-        # =========================
+        if result["status"] == "already_processed":
 
-        elif data.startswith("reject_"):
+            status = result["order"]["status"]
 
-            if query.from_user.id != ADMIN_ID:
-                return
+            if status == "approved":
+                message = "⚠️ این سفارش قبلاً تأیید شده است."
+            elif status == "rejected":
+                message = "⚠️ این سفارش قبلاً رد شده است."
+            else:
+                message = "⚠️ این سفارش قبلاً پردازش شده است."
 
-            parts = data.split("_")
+            await query.answer(message, show_alert=True)
+            return
 
-            user_id = int(parts[1])
+        if result["status"] == "no_stock":
 
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "❌ پرداخت شما تأیید نشد.\n\n"
-                    "لطفاً رسید پرداخت را بررسی کرده و "
-                    "در صورت نیاز مجدداً ارسال کنید."
-                )
-            )
-
-            await query.edit_message_caption(
-                caption=query.message.caption +
-                "\n\n❌ پرداخت توسط مدیریت رد شد."
-            )
-
-    except Exception as e:
-
-        print("ERROR:", repr(e))
-
-        try:
             await query.answer(
-                "❌ خطایی رخ داد.",
+                "❌ برای این حجم لینک موجود نیست.",
                 show_alert=True
             )
-        except Exception:
-            pass
 
-
-# =========================
-# TEXT HANDLER
-# =========================
-
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    # افزودن لینک توسط ادمین
-    if context.user_data.get("adding_subscription"):
-
-        if update.effective_user.id != ADMIN_ID:
-            return
-
-        volume = context.user_data["adding_subscription"]
-
-        link = update.message.text.strip()
-
-        if not link.startswith("http://") and not link.startswith("https://"):
-
-            await update.message.reply_text(
-                "❌ لینک معتبر نیست.\n\n"
-                "لینک باید با http:// یا https:// شروع شود."
+            await query.message.reply_text(
+                f"⚠️ سفارش #{order_id}\n\n"
+                "پرداخت هنوز تأیید نشده چون لینک این حجم موجود نیست.\n"
+                "ابتدا لینک مناسب را از پنل مدیریت اضافه کن."
             )
-
             return
 
-        add_subscription(volume, link)
+        order = result["order"]
+        subscription_link = result["link"]
 
-        context.user_data["adding_subscription"] = None
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=(
+                "✅ پرداخت شما تأیید شد.\n\n"
+                "🌐 HanzuVPN\n\n"
+                f"📦 حجم: {order['volume']} گیگ\n"
+                "⏳ مدت: 30 روز\n"
+                f"🧾 شماره سفارش: #{order_id}\n\n"
+                "🔗 لینک Subscription:\n\n"
+                f"{subscription_link}\n\n"
+                "📌 لینک را در برنامه VPN خود وارد کنید."
+            )
+        )
 
-        await update.message.reply_text(
-            f"✅ لینک با موفقیت اضافه شد.\n\n"
-            f"📦 حجم: {volume} گیگ\n"
-            f"🔗 لینک ذخیره شد.\n\n"
-            "برای افزودن لینک دیگر دوباره وارد پنل مدیریت شوید."
+        await query.edit_message_caption(
+            caption=(
+                f"✅ پرداخت سفارش #{order_id} تأیید شد.\n\n"
+                f"📦 حجم: {order['volume']} گیگ\n"
+                f"💰 مبلغ: {order['price']:,} تومان\n\n"
+                "🔗 لینک برای مشتری ارسال شد."
+            )
         )
 
         return
 
+    # رد سفارش
+    if data.startswith("reject_"):
+
+        if user_id != ADMIN_ID:
+            return
+
+        order_id = int(data.split("_")[1])
+
+        changed, order = reject_order(order_id)
+
+        if not order:
+            await query.answer(
+                "❌ سفارش پیدا نشد.",
+                show_alert=True
+            )
+            return
+
+        if not changed:
+            await query.answer(
+                "⚠️ این سفارش قبلاً پردازش شده است.",
+                show_alert=True
+            )
+            return
+
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=(
+                "❌ پرداخت سفارش شما تأیید نشد.\n\n"
+                f"🧾 شماره سفارش: #{order_id}\n\n"
+                "در صورت اشتباه، لطفاً با پشتیبانی تماس بگیرید."
+            )
+        )
+
+        await query.edit_message_caption(
+            caption=(
+                f"❌ سفارش #{order_id} رد شد.\n\n"
+                f"📦 حجم: {order['volume']} گیگ\n"
+                f"💰 مبلغ: {order['price']:,} تومان"
+            )
+        )
+
+        return
+
+
+# =========================
+# دریافت پیام متنی
+# =========================
+
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user
+    text = update.message.text.strip()
+
     # حجم دلخواه مشتری
-    if context.user_data.get("waiting_custom"):
+    if context.user_data.get("waiting_custom_volume"):
+
+        context.user_data["waiting_custom_volume"] = False
 
         try:
-            volume = int(update.message.text)
+            volume = int(text)
+
+            if volume <= 0 or volume > 1000:
+                raise ValueError
 
         except ValueError:
 
             await update.message.reply_text(
-                "❌ فقط عدد وارد کنید.\n\n"
-                "مثال: 25"
+                "❌ حجم واردشده صحیح نیست.\n\n"
+                "لطفاً یک عدد معتبر وارد کنید.\n"
+                "مثلاً: 25"
             )
-
             return
 
-        if volume <= 0:
-
-            await update.message.reply_text(
-                "❌ حجم باید بیشتر از صفر باشد."
-            )
-
-            return
-
-        price = volume * 3500
-
-        context.user_data["waiting_custom"] = False
-        context.user_data["volume"] = str(volume)
-        context.user_data["price"] = price
+        price = volume * PRICE_PER_GB
 
         keyboard = [
             [
@@ -864,135 +1049,163 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     callback_data=f"paid_{volume}_{price}"
                 )
             ],
-
             [
                 InlineKeyboardButton(
-                    "🔙 بازگشت",
+                    "🔙 خرید",
                     callback_data="buy"
                 )
-            ]
+            ],
         ]
 
         await update.message.reply_text(
-            f"🌐 سرویس: {volume} گیگ\n"
-            f"⏳ مدت: 30 روز\n"
-            f"💰 مبلغ: {price:,} تومان\n\n"
-            f"💳 شماره کارت:\n"
-            f"{CARD_NUMBER}\n\n"
-            "بعد از پرداخت روی دکمه زیر بزنید:",
+            "🛒 سرویس دلخواه شما\n\n"
+            f"📦 حجم: {volume} گیگ\n"
+            f"💰 قیمت: {price:,} تومان\n"
+            "⏳ مدت: 30 روز\n\n"
+            "برای ادامه روی «پرداخت کردم» بزنید.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-
-# =========================
-# PHOTO / RECEIPT
-# =========================
-
-async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not context.user_data.get("waiting_receipt"):
         return
 
-    photo = update.message.photo[-1]
+    # حجم لینک برای ادمین
+    if user.id == ADMIN_ID and context.user_data.get("admin_waiting_volume"):
+
+        try:
+            volume = int(text)
+
+            if volume <= 0 or volume > 1000:
+                raise ValueError
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ حجم نامعتبر است.\n"
+                "مثلاً 10 یا 20 یا 50 وارد کن."
+            )
+            return
+
+        context.user_data["admin_waiting_volume"] = False
+        context.user_data["admin_add_volume"] = str(volume)
+        context.user_data["admin_waiting_link"] = True
+
+        await update.message.reply_text(
+            f"✅ حجم {volume} گیگ ثبت شد.\n\n"
+            "حالا لینک Subscription را ارسال کن."
+        )
+
+        return
+
+    # لینک جدید ادمین
+    if user.id == ADMIN_ID and context.user_data.get("admin_waiting_link"):
+
+        link = text
+
+        if not (
+            link.startswith("http://")
+            or link.startswith("https://")
+        ):
+            await update.message.reply_text(
+                "❌ لینک معتبر نیست.\n\n"
+                "لینک باید با http:// یا https:// شروع شود."
+            )
+            return
+
+        volume = context.user_data.get("admin_add_volume")
+
+        add_subscription(volume, link)
+
+        context.user_data.pop("admin_waiting_link", None)
+        context.user_data.pop("admin_add_volume", None)
+
+        await update.message.reply_text(
+            "✅ لینک با موفقیت به موجودی اضافه شد.\n\n"
+            f"📦 حجم: {volume} گیگ"
+        )
+
+        return
+
+
+# =========================
+# دریافت رسید
+# =========================
+
+async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
 
-    volume = context.user_data.get(
-        "volume",
-        "نامشخص"
-    )
+    order = get_latest_pending_order(user.id)
 
-    price = context.user_data.get(
-        "price",
-        0
-    )
+    if not order:
 
-    username = user.username if user.username else "ندارد"
+        await update.message.reply_text(
+            "❌ سفارش در انتظار پرداختی برای شما پیدا نشد.\n\n"
+            "ابتدا از بخش خرید، سرویس موردنظر را انتخاب کنید."
+        )
+        return
 
     caption = (
-        "🔔 رسید پرداخت جدید\n\n"
-        f"👤 نام: {user.full_name}\n"
-        f"👤 Username: @{username}\n"
+        "💳 رسید پرداخت جدید\n\n"
+        f"🧾 سفارش: #{order['id']}\n"
+        f"👤 نام: {user.first_name or '-'}\n"
+        f"👤 Username: @{user.username if user.username else '-'}\n"
         f"🆔 User ID: {user.id}\n\n"
-        f"📦 سرویس: {volume} گیگ\n"
-        f"💰 مبلغ: {price:,} تومان"
+        f"📦 حجم: {order['volume']} گیگ\n"
+        f"💰 مبلغ: {order['price']:,} تومان\n"
+        f"🕐 زمان: {order['created_at']}"
     )
 
     keyboard = [
         [
             InlineKeyboardButton(
                 "✅ تأیید پرداخت",
-                callback_data=f"approve_{user.id}_{volume}"
+                callback_data=f"approve_{order['id']}"
             ),
-
             InlineKeyboardButton(
                 "❌ رد پرداخت",
-                callback_data=f"reject_{user.id}"
-            )
+                callback_data=f"reject_{order['id']}"
+            ),
         ]
     ]
 
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=photo.file_id,
+        photo=update.message.photo[-1].file_id,
         caption=caption,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    context.user_data["waiting_receipt"] = False
-
     await update.message.reply_text(
-        "✅ رسید دریافت شد.\n\n"
-        "⏳ رسید برای مدیریت ارسال شد.\n"
-        "پس از بررسی، نتیجه برای شما ارسال می‌شود."
+        "✅ رسید شما دریافت شد.\n\n"
+        f"🧾 شماره سفارش: #{order['id']}\n\n"
+        "رسید توسط مدیریت بررسی می‌شود و پس از تأیید، "
+        "لینک سرویس برای شما ارسال خواهد شد."
     )
 
 
 # =========================
-# MAIN
+# اجرای ربات
 # =========================
 
 def main():
 
     if not BOT_TOKEN:
-        raise ValueError(
-            "BOT_TOKEN تنظیم نشده است."
-        )
+        raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
 
-    if not ADMIN_ID:
-        raise ValueError(
-            "ADMIN_ID تنظیم نشده است."
-        )
+    init_db()
 
-    if not CARD_NUMBER:
-        raise ValueError(
-            "CARD_NUMBER تنظیم نشده است."
-        )
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    # ساخت دیتابیس
-    get_db().close()
-
-    app = Application.builder().token(
-        BOT_TOKEN
-    ).build()
+    app.add_handler(CommandHandler("start", start))
 
     app.add_handler(
-        CommandHandler(
-            "start",
-            start
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            buttons
-        )
+        CallbackQueryHandler(button_handler)
     )
 
     app.add_handler(
         MessageHandler(
             filters.PHOTO,
-            photo_handler
+            receipt_handler
         )
     )
 

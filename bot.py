@@ -98,10 +98,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif query.data == "paid":
 
-            print("PAID BUTTON CLICKED")
+    print("PAID BUTTON CLICKED")
+    print("USER DATA:", context.user_data)
 
-            volume = context.user_data.get("volume")
-            price = context.user_data.get("price")
+    volume = context.user_data.get("volume")
+    price = context.user_data.get("price")
 
             if not volume or not price:
                 await query.edit_message_text(

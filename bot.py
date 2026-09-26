@@ -40,6 +40,120 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+
+    try:
+        await query.answer()
+
+        print("BUTTON CLICKED:", query.data)
+
+        if query.data == "buy":
+
+            keyboard = [
+                [InlineKeyboardButton("10 گیگ | 35,000 تومان", callback_data="p10")],
+                [InlineKeyboardButton("20 گیگ | 70,000 تومان", callback_data="p20")],
+                [InlineKeyboardButton("30 گیگ | 105,000 تومان", callback_data="p30")],
+                [InlineKeyboardButton("40 گیگ | 140,000 تومان", callback_data="p40")],
+                [InlineKeyboardButton("50 گیگ | 175,000 تومان", callback_data="p50")],
+                [InlineKeyboardButton("حجم دلخواه", callback_data="custom")],
+            ]
+
+            await query.edit_message_text(
+                "🛒 سرویس‌های HanzuVPN\n\n"
+                "همه سرویس‌ها 30 روزه هستند.\n\n"
+                "حجم موردنظر را انتخاب کنید:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
+        elif query.data.startswith("p"):
+
+            volume = query.data[1:]
+            volume_name, price = PLANS[volume]
+
+            context.user_data["volume"] = volume_name
+            context.user_data["price"] = price
+
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        "💳 پرداخت کردم",
+                        callback_data="paid"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 بازگشت",
+                        callback_data="buy"
+                    )
+                ],
+            ]
+
+            await query.edit_message_text(
+                f"🌐 سرویس: {volume_name}\n"
+                f"⏳ مدت: 30 روز\n"
+                f"💰 مبلغ: {price:,} تومان\n\n"
+                f"💳 شماره کارت:\n{CARD_NUMBER}\n\n"
+                "بعد از پرداخت روی دکمه زیر بزنید.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
+        elif query.data == "paid":
+
+            print("PAID BUTTON CLICKED")
+
+            volume = context.user_data.get("volume")
+            price = context.user_data.get("price")
+
+            if not volume or not price:
+                await query.edit_message_text(
+                    "❌ اطلاعات خرید پیدا نشد.\n\n"
+                    "لطفاً دوباره از /start شروع کنید."
+                )
+                return
+
+            context.user_data["receipt"] = True
+
+            await query.edit_message_text(
+                "✅ پرداخت ثبت شد.\n\n"
+                "📸 لطفاً عکس رسید پرداخت را همینجا ارسال کنید."
+            )
+
+        elif query.data == "custom":
+
+            context.user_data["custom"] = True
+
+            await query.edit_message_text(
+                "🔹 حجم دلخواه\n\n"
+                "حجم را به صورت عدد ارسال کنید.\n\n"
+                "مثال:\n25\n\n"
+                "💰 قیمت هر گیگ: 3,500 تومان"
+            )
+
+        elif query.data == "services":
+
+            await query.edit_message_text(
+                "📦 سرویس‌های من\n\n"
+                "فعلاً سرویس فعالی ثبت نشده است."
+            )
+
+        elif query.data == "support":
+
+            await query.edit_message_text(
+                "💬 پشتیبانی HanzuVPN\n\n"
+                "برای پشتیبانی با مدیریت در ارتباط باشید."
+            )
+
+    except Exception as e:
+
+        print("BUTTON ERROR:", repr(e))
+
+        try:
+            await query.edit_message_text(
+                "❌ یک خطا رخ داد.\n\n"
+                "لطفاً دوباره تلاش کنید."
+            )
+        except Exception:
+            pass
+    query = update.callback_query
     await query.answer()
 
     if query.data == "buy":

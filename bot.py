@@ -223,30 +223,30 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data.startswith("approve_"):
-        user_id = int(query.data.replace("approve_", ""))
+    user_id = int(query.data.replace("approve_", ""))
 
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "✅ پرداخت شما تأیید شد.\n\n"
-                "کانفیگ سرویس پس از آماده‌سازی برای شما ارسال می‌شود."
-            ),
-        )
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=(
+            "✅ پرداخت شما تأیید شد.\n\n"
+            "کانفیگ سرویس پس از آماده‌سازی برای شما ارسال می‌شود."
+        ),
+    )
 
         await query.edit_message_caption(
             caption=query.message.caption + "\n\n✅ پرداخت تأیید شد."
         )
 
     elif query.data.startswith("reject_"):
-        user_id = int(query.data.replace("reject_", ""))
+    user_id = int(query.data.replace("reject_", ""))
 
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "❌ پرداخت شما تأیید نشد.\n\n"
-                "لطفاً با پشتیبانی تماس بگیرید."
-            ),
-        )
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=(
+            "❌ پرداخت شما تأیید نشد.\n\n"
+            "لطفاً با پشتیبانی تماس بگیرید."
+        ),
+    )
 
         await query.edit_message_caption(
             caption=query.message.caption + "\n\n❌ پرداخت رد شد."

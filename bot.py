@@ -503,6 +503,8 @@ def init_db():
     for col, default in [
         ("expires_at", "TEXT"),
         ("is_charge", "INTEGER DEFAULT 0"),
+        ("subscription_id", "INTEGER"),
+        ("approved_at", "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -2330,7 +2332,7 @@ def _api_purchase_wallet(user, volume, price):
         balance = int(row["balance"] or 0) if row else 0
         if balance < price:
             conn.rollback(); return {"status":"insufficient_balance", "balance":balance}
-        sub = conn.execute("SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1", (str(volume),)).fetchone()
+        sub = conn.execute("SELECT id, link FROM subscriptions WHERE CAST(volume AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1", (int(volume),)).fetchone()
         if not sub:
             conn.rollback(); return {"status":"no_stock", "balance":balance}
         now = datetime.now(); expires = now + timedelta(days=SERVICE_DAYS)
@@ -2418,10 +2420,26 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
                 finally: conn.close()
-            volume=str(payload.get("volume","")); price=TARIFF_PLANS.get(volume)
-            if not price: return self._send(400,{"ok":False,"error":"invalid_volume"})
+            raw_volume=str(payload.get("volume","")).strip().lower().replace("gb","").replace("گیگ","").strip()
+            try:
+                volume=str(int(float(raw_volume)))
+            except Exception:
+                return self._send(400,{"ok":False,"error":"invalid_volume"})
+            price=TARIFF_PLANS.get(volume)
+            if not price:
+                return self._send(400,{"ok":False,"error":"invalid_volume","volume":volume})
+            # خرید واقعی فقط در تراکنش اتمیک انجام می‌شود؛ موجودی/موجودی سرویس
+            # بین pre-check و خرید دیگر نمی‌تواند باعث race condition شود.
             r=_api_purchase_wallet(u,volume,price)
-            return self._send(200 if r["status"] in ("approved","insufficient_balance","no_stock") else 500,{"ok":r["status"]=="approved",**r})
+            status=r.get("status")
+            if status=="approved":
+                return self._send(200,{"ok":True,**r})
+            if status=="insufficient_balance":
+                return self._send(200,{"ok":False,"error":"insufficient_balance","balance":r.get("balance",0),"price":price,"required":max(price-int(r.get("balance",0)),0)})
+            if status=="no_stock":
+                return self._send(200,{"ok":False,"error":"no_stock","volume":volume,"balance":r.get("balance",0)})
+            print("MiniApp purchase error:", r.get("error","unknown"))
+            return self._send(500,{"ok":False,"error":"purchase_failed"})
         if path=="/api/language":
             language=str(payload.get("language", "fa"))
             if language not in LANGUAGES: return self._send(400,{"ok":False,"error":"invalid_language"})

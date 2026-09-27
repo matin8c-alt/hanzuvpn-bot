@@ -10,6 +10,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     BotCommand,
+    WebAppInfo,
 )
 from telegram.ext import (
     Application,
@@ -53,6 +54,7 @@ TARIFF_PLANS = {
 
 SUPPORT_USERNAME = "ByHxnzu"
 SUPPORT_URL = "https://t.me/ByHxnzu"
+MINI_APP_URL = "https://fancy-lab-d5e0.matin8c.workers.dev"
 
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
@@ -603,6 +605,9 @@ def get_wallet_history(user_id, limit=15):
 def home_keyboard(user_id):
     # منوی اصلی پایین صفحه (Reply Keyboard)؛ مشابه دکمه‌های پایین تلگرام
     keyboard = [
+        [
+            KeyboardButton("🚀 ورود به HanzuVPN", web_app=WebAppInfo(url=MINI_APP_URL)),
+        ],
         [
             KeyboardButton("🛍 خرید اشتراک"),
             KeyboardButton("♻️ تمدید سرویس"),

@@ -799,7 +799,6 @@ def ensure_user(user):
 
 
 def get_user_language(user_id):
-    # ادمین همیشه فارسی
     if user_id == ADMIN_ID:
         return "fa"
 
@@ -866,6 +865,32 @@ async def show_language_selector_message(message):
         TEXTS["fa"]["language_title"],
         reply_markup=language_keyboard()
     )
+
+
+def clear_user_states(context):
+    """پاک کردن stateهای موقت کاربر"""
+    keys_to_remove = [
+        "waiting_custom_volume",
+        "waiting_coupon",
+        "waiting_ticket_message",
+        "ticket_id",
+        "custom_volume",
+        "custom_price",
+        "coupon_code",
+        "renew_order_id",
+        "renew_payment",
+        "admin_waiting_volume",
+        "admin_waiting_link",
+        "admin_add_volume",
+        "admin_waiting_trial_link",
+        "admin_waiting_coupon",
+        "admin_broadcast",
+        "admin_ticket_id",
+        "admin_waiting_ticket_reply",
+        "last_order_id",
+    ]
+    for key in keys_to_remove:
+        context.user_data.pop(key, None)
 
 
 # =========================================================
@@ -988,32 +1013,23 @@ def init_db():
     conn.commit()
 
     # سازگاری دیتابیس قبلی
-
     try:
-        conn.execute(
-            "ALTER TABLE orders ADD COLUMN expires_at TEXT"
-        )
+        conn.execute("ALTER TABLE orders ADD COLUMN expires_at TEXT")
     except sqlite3.OperationalError:
         pass
 
     try:
-        conn.execute(
-            "ALTER TABLE users ADD COLUMN referred_by INTEGER"
-        )
+        conn.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
     except sqlite3.OperationalError:
         pass
 
     try:
-        conn.execute(
-            "ALTER TABLE users ADD COLUMN referral_rewarded INTEGER DEFAULT 0"
-        )
+        conn.execute("ALTER TABLE users ADD COLUMN referral_rewarded INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
 
     try:
-        conn.execute(
-            "ALTER TABLE users ADD COLUMN language TEXT"
-        )
+        conn.execute("ALTER TABLE users ADD COLUMN language TEXT")
     except sqlite3.OperationalError:
         pass
 
@@ -1115,6 +1131,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     ensure_user(user)
+    clear_user_states(context)
 
     # سیستم دعوت
     if context.args:
@@ -1173,6 +1190,7 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     ensure_user(user)
+    clear_user_states(context)
 
     if not get_user_language(user.id):
         await show_language_selector_message(update.message)
@@ -1185,6 +1203,7 @@ async def services_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     ensure_user(user)
+    clear_user_states(context)
 
     if not get_user_language(user.id):
         await show_language_selector_message(update.message)
@@ -1200,6 +1219,7 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     ensure_user(user)
+    clear_user_states(context)
 
     lang = get_user_language(user.id)
 
@@ -1238,6 +1258,7 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     ensure_user(user)
+    clear_user_states(context)
 
     lang = get_user_language(user.id)
 
@@ -1317,56 +1338,50 @@ def buy_keyboard(user_id):
 
     lang = get_user_language(user_id) or "fa"
 
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                f"10 GB | 35,000 Toman" if lang == "en"
-                else f"10 گیگ | 35,000 تومان" if lang == "fa"
-                else f"10 گیگ | 35,000 تومان",
-                callback_data="plan_10"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                f"20 GB | 70,000 Toman" if lang == "en"
-                else f"20 گیگ | 70,000 تومان",
-                callback_data="plan_20"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                f"30 GB | 105,000 Toman" if lang == "en"
-                else f"30 گیگ | 105,000 تومان",
-                callback_data="plan_30"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                f"40 GB | 140,000 Toman" if lang == "en"
-                else f"40 گیگ | 140,000 تومان",
-                callback_data="plan_40"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                f"50 GB | 175,000 Toman" if lang == "en"
-                else f"50 گیگ | 175,000 تومان",
-                callback_data="plan_50"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                t(lang, "custom"),
-                callback_data="custom"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                t(lang, "back"),
-                callback_data="home"
-            )
+    if lang == "en":
+        buttons = [
+            ("10 GB | 35,000 Toman", "plan_10"),
+            ("20 GB | 70,000 Toman", "plan_20"),
+            ("30 GB | 105,000 Toman", "plan_30"),
+            ("40 GB | 140,000 Toman", "plan_40"),
+            ("50 GB | 175,000 Toman", "plan_50"),
         ]
+    elif lang == "ku":
+        buttons = [
+            ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("20 گیگ | 70,000 تومان", "plan_20"),
+            ("30 گیگ | 105,000 تومان", "plan_30"),
+            ("40 گیگ | 140,000 تومان", "plan_40"),
+            ("50 گیگ | 175,000 تومان", "plan_50"),
+        ]
+    else:  # fa
+        buttons = [
+            ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("20 گیگ | 70,000 تومان", "plan_20"),
+            ("30 گیگ | 105,000 تومان", "plan_30"),
+            ("40 گیگ | 140,000 تومان", "plan_40"),
+            ("50 گیگ | 175,000 تومان", "plan_50"),
+        ]
+
+    keyboard = [
+        [InlineKeyboardButton(text, callback_data=cb)]
+        for text, cb in buttons
+    ]
+
+    keyboard.append([
+        InlineKeyboardButton(
+            t(lang, "custom"),
+            callback_data="custom"
+        )
     ])
+    keyboard.append([
+        InlineKeyboardButton(
+            t(lang, "back"),
+            callback_data="home"
+        )
+    ])
+
+    return InlineKeyboardMarkup(keyboard)
 
 
 async def send_buy_message(message):
@@ -1415,7 +1430,7 @@ async def show_payment(
         price=price
     )
 
-    if original_price != price:
+    if original_price != price and coupon_code:
 
         caption += t(
             lang,
@@ -1430,11 +1445,12 @@ async def show_payment(
         card=CARD_NUMBER
     )
 
+    # فقط volume رو در callback می‌ذاریم (قیمت دوباره محاسبه می‌شه)
     keyboard = [
         [
             InlineKeyboardButton(
                 t(lang, "paid"),
-                callback_data=f"paid_{volume}_{price}"
+                callback_data=f"paid_{volume}"
             )
         ],
         [
@@ -1669,7 +1685,23 @@ def claim_trial(user):
 # سفارش
 # =========================================================
 
-def create_order(user, volume, price):
+def cancel_pending_orders(user_id):
+    """لغو تمام سفارش‌های pending قبلی کاربر"""
+    conn = get_db()
+    conn.execute("""
+        UPDATE orders
+        SET status = 'cancelled'
+        WHERE user_id = ?
+        AND status = 'pending'
+    """, (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def create_order(user, volume, price, coupon_code=None):
+
+    # لغو سفارش‌های pending قبلی
+    cancel_pending_orders(user.id)
 
     conn = get_db()
 
@@ -1695,6 +1727,35 @@ def create_order(user, volume, price):
     ))
 
     order_id = cursor.lastrowid
+
+    # ثبت استفاده از کوپن (اگر وجود داشته باشد)
+    if coupon_code:
+        coupon = get_coupon(coupon_code)
+        if coupon:
+            try:
+                conn.execute("""
+                    INSERT OR IGNORE INTO coupon_uses
+                    (
+                        coupon_id,
+                        user_id,
+                        order_id,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    coupon["id"],
+                    user.id,
+                    order_id,
+                    now_text()
+                ))
+
+                conn.execute("""
+                    UPDATE coupons
+                    SET used_count = used_count + 1
+                    WHERE id = ?
+                """, (coupon["id"],))
+            except Exception:
+                pass
 
     conn.commit()
     conn.close()
@@ -2077,38 +2138,8 @@ def apply_coupon(code, user_id, price):
     return {
         "status": "success",
         "coupon": coupon,
-        "price": new_price
+        "price": max(new_price, 0)  # جلوگیری از قیمت منفی
     }
-
-
-def record_coupon_use(coupon_id, user_id, order_id):
-
-    conn = get_db()
-
-    conn.execute("""
-        INSERT OR IGNORE INTO coupon_uses
-        (
-            coupon_id,
-            user_id,
-            order_id,
-            created_at
-        )
-        VALUES (?, ?, ?, ?)
-    """, (
-        coupon_id,
-        user_id,
-        order_id,
-        now_text()
-    ))
-
-    conn.execute("""
-        UPDATE coupons
-        SET used_count = used_count + 1
-        WHERE id = ?
-    """, (coupon_id,))
-
-    conn.commit()
-    conn.close()
 
 
 # =========================================================
@@ -2430,7 +2461,8 @@ async def show_admin_orders(query):
             status = {
                 "pending": "⏳ در انتظار",
                 "approved": "✅ تأیید",
-                "rejected": "❌ رد"
+                "rejected": "❌ رد",
+                "cancelled": "🚫 لغو شده"
             }.get(
                 row["status"],
                 row["status"]
@@ -2637,6 +2669,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             language
         )
 
+        clear_user_states(context)
+
         await query.edit_message_text(
             t(language, "language_changed") +
             "\n\n" +
@@ -2667,6 +2701,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "home":
 
+        clear_user_states(context)
         await show_home(
             query,
             user_id
@@ -2680,6 +2715,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "buy":
 
+        clear_user_states(context)
         await show_buy_menu(query)
 
         return
@@ -2691,64 +2727,91 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("plan_"):
 
         volume = data.split("_")[1]
-        price = PLANS.get(volume)
+        base_price = PLANS.get(volume)
 
-        if price:
+        if not base_price:
+            return
 
-            # اگر کوپن فعال باشد
-            coupon_code = context.user_data.get("coupon_code")
+        # بررسی کوپن
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+        original_price = base_price
 
-            if coupon_code:
+        if coupon_code:
 
-                result = apply_coupon(
-                    coupon_code,
-                    user_id,
-                    price
-                )
-
-                if result["status"] == "success":
-
-                    await show_payment(
-                        query,
-                        volume,
-                        result["price"],
-                        price,
-                        coupon_code
-                    )
-
-                    return
-
-            await show_payment(
-                query,
-                volume,
-                price
+            result = apply_coupon(
+                coupon_code,
+                user_id,
+                base_price
             )
+
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                # کوپن نامعتبر شد → پاکش کن
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+
+        await show_payment(
+            query,
+            volume,
+            price,
+            original_price,
+            coupon_code
+        )
 
         return
 
     # =====================================================
-    # پرداخت خرید عادی
+    # پرداخت خرید (امن)
     # =====================================================
 
     if data.startswith("paid_"):
 
         parts = data.split("_")
-
-        if len(parts) != 3:
+        if len(parts) < 2:
             return
 
         volume = parts[1]
-        price = int(parts[2])
+
+        # محاسبه امن قیمت
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            # حجم دلخواه
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
+                return
+
+            base_price = custom_price
+
+        # اعمال کوپن (اگر هنوز معتبر باشد)
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
 
         order_id = create_order(
             user,
             volume,
-            price
+            price,
+            coupon_code
         )
 
-        context.user_data[
-            "last_order_id"
-        ] = order_id
+        # پاک کردن stateها
+        context.user_data.pop("coupon_code", None)
+        context.user_data.pop("custom_volume", None)
+        context.user_data.pop("custom_price", None)
+        context.user_data["last_order_id"] = order_id
 
         await query.edit_message_text(
             t(
@@ -2768,9 +2831,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "custom":
 
-        context.user_data[
-            "waiting_custom_volume"
-        ] = True
+        context.user_data["waiting_custom_volume"] = True
+        # پاک کردن کوپن قبلی برای جلوگیری از تداخل (اختیاری)
+        # context.user_data.pop("coupon_code", None)
 
         await query.edit_message_text(
             t(lang, "custom_prompt")
@@ -2907,9 +2970,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("renew_") and not data.startswith("renewpay_") and not data.startswith("renewpaid_"):
 
-        order_id = int(
-            data.split("_")[1]
-        )
+        try:
+            order_id = int(data.split("_")[1])
+        except ValueError:
+            return
 
         conn = get_db()
 
@@ -2936,11 +3000,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         volume = order["volume"]
-        price = int(volume) * PRICE_PER_GB
+        # قیمت امن محاسبه می‌شود
+        try:
+            price = int(float(volume)) * PRICE_PER_GB
+        except (ValueError, TypeError):
+            await query.answer("حجم نامعتبر است.", show_alert=True)
+            return
 
-        context.user_data[
-            "renew_order_id"
-        ] = order_id
+        context.user_data["renew_order_id"] = order_id
+        context.user_data["renew_volume"] = volume
+        context.user_data["renew_price"] = price
 
         await query.edit_message_text(
             t(
@@ -2953,7 +3022,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     InlineKeyboardButton(
                         t(lang, "paid"),
-                        callback_data=f"renewpay_{volume}_{price}"
+                        callback_data=f"renewpay_{volume}"
                     )
                 ],
                 [
@@ -2970,13 +3039,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("renewpay_"):
 
         parts = data.split("_")
+        if len(parts) < 2:
+            return
 
         volume = parts[1]
-        price = int(parts[2])
 
-        context.user_data[
-            "renew_payment"
-        ] = True
+        # بررسی امن
+        stored_volume = context.user_data.get("renew_volume")
+        stored_price = context.user_data.get("renew_price")
+
+        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
+            await query.answer("سفارش نامعتبر است.", show_alert=True)
+            return
+
+        price = stored_price
 
         await query.edit_message_text(
             t(
@@ -2991,7 +3067,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     InlineKeyboardButton(
                         t(lang, "paid"),
-                        callback_data=f"renewpaid_{volume}_{price}"
+                        callback_data=f"renewpaid_{volume}"
                     )
                 ],
                 [
@@ -3008,19 +3084,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("renewpaid_"):
 
         parts = data.split("_")
+        if len(parts) < 2:
+            return
 
         volume = parts[1]
-        price = int(parts[2])
+
+        stored_volume = context.user_data.get("renew_volume")
+        stored_price = context.user_data.get("renew_price")
+
+        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
+            await query.answer("سفارش نامعتبر است.", show_alert=True)
+            return
+
+        price = stored_price
 
         order_id = create_order(
             user,
             volume,
-            price
+            price,
+            coupon_code=None  # تمدید فعلاً کوپن ندارد
         )
 
-        context.user_data[
-            "last_order_id"
-        ] = order_id
+        context.user_data["last_order_id"] = order_id
+        context.user_data.pop("renew_volume", None)
+        context.user_data.pop("renew_price", None)
+        context.user_data.pop("renew_order_id", None)
 
         await query.edit_message_text(
             t(
@@ -3066,13 +3154,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id
         )
 
-        context.user_data[
-            "ticket_id"
-        ] = ticket_id
-
-        context.user_data[
-            "waiting_ticket_message"
-        ] = True
+        context.user_data["ticket_id"] = ticket_id
+        context.user_data["waiting_ticket_message"] = True
 
         await query.edit_message_text(
             t(
@@ -3134,9 +3217,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "coupon":
 
-        context.user_data[
-            "waiting_coupon"
-        ] = True
+        context.user_data["waiting_coupon"] = True
 
         await query.edit_message_text(
             t(lang, "coupon_prompt")
@@ -3193,9 +3274,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        context.user_data[
-            "admin_waiting_volume"
-        ] = True
+        context.user_data["admin_waiting_volume"] = True
 
         await query.edit_message_text(
             "➕ افزودن لینک سرویس\n\n"
@@ -3219,9 +3298,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        subscription_id = int(
-            data.split("_")[1]
-        )
+        try:
+            subscription_id = int(data.split("_")[1])
+        except ValueError:
+            return
 
         delete_subscription(
             subscription_id
@@ -3259,9 +3339,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        context.user_data[
-            "admin_waiting_trial_link"
-        ] = True
+        context.user_data["admin_waiting_trial_link"] = True
 
         await query.edit_message_text(
             "➕ افزودن لینک تست\n\n"
@@ -3284,9 +3362,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        trial_id = int(
-            data.split("_")[2]
-        )
+        try:
+            trial_id = int(data.split("_")[2])
+        except ValueError:
+            return
 
         delete_free_trial(
             trial_id
@@ -3339,9 +3418,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        context.user_data[
-            "admin_waiting_coupon"
-        ] = True
+        context.user_data["admin_waiting_coupon"] = True
 
         await query.edit_message_text(
             "🎟 ساخت کد تخفیف\n\n"
@@ -3362,9 +3439,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        context.user_data[
-            "admin_broadcast"
-        ] = True
+        context.user_data["admin_broadcast"] = True
 
         await query.edit_message_text(
             "📢 پیام همگانی\n\n"
@@ -3449,9 +3524,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        ticket_id = int(
-            data.split("_")[1]
-        )
+        try:
+            ticket_id = int(data.split("_")[1])
+        except ValueError:
+            return
 
         conn = get_db()
 
@@ -3492,13 +3568,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{msg['message']}\n\n"
             )
 
-        context.user_data[
-            "admin_ticket_id"
-        ] = ticket_id
-
-        context.user_data[
-            "admin_waiting_ticket_reply"
-        ] = True
+        context.user_data["admin_ticket_id"] = ticket_id
+        context.user_data["admin_waiting_ticket_reply"] = True
 
         await query.edit_message_text(
             text +
@@ -3530,9 +3601,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        ticket_id = int(
-            data.split("_")[2]
-        )
+        try:
+            ticket_id = int(data.split("_")[2])
+        except ValueError:
+            return
 
         conn = get_db()
 
@@ -3599,9 +3671,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        order_id = int(
-            data.split("_")[1]
-        )
+        try:
+            order_id = int(data.split("_")[1])
+        except ValueError:
+            return
 
         result = approve_order(
             order_id
@@ -3653,14 +3726,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-        await query.edit_message_caption(
-            caption=(
+        try:
+            await query.edit_message_caption(
+                caption=(
+                    f"✅ سفارش #{order_id} تأیید شد.\n\n"
+                    f"📦 {order['volume']} گیگ\n"
+                    f"💰 {order['price']:,} تومان\n"
+                    f"📅 انقضا: {result['expires_at']}"
+                )
+            )
+        except Exception:
+            await query.edit_message_text(
                 f"✅ سفارش #{order_id} تأیید شد.\n\n"
                 f"📦 {order['volume']} گیگ\n"
                 f"💰 {order['price']:,} تومان\n"
                 f"📅 انقضا: {result['expires_at']}"
             )
-        )
 
         return
 
@@ -3673,9 +3754,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id != ADMIN_ID:
             return
 
-        order_id = int(
-            data.split("_")[1]
-        )
+        try:
+            order_id = int(data.split("_")[1])
+        except ValueError:
+            return
 
         changed, order = reject_order(
             order_id
@@ -3713,13 +3795,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-        await query.edit_message_caption(
-            caption=(
+        try:
+            await query.edit_message_caption(
+                caption=(
+                    f"❌ سفارش #{order_id} رد شد.\n\n"
+                    f"📦 {order['volume']} گیگ\n"
+                    f"💰 {order['price']:,} تومان"
+                )
+            )
+        except Exception:
+            await query.edit_message_text(
                 f"❌ سفارش #{order_id} رد شد.\n\n"
                 f"📦 {order['volume']} گیگ\n"
                 f"💰 {order['price']:,} تومان"
             )
-        )
 
         return
 
@@ -3749,13 +3838,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # پیام تیکت کاربر
     # =====================================================
 
-    if context.user_data.get(
-        "waiting_ticket_message"
-    ):
+    if context.user_data.get("waiting_ticket_message"):
 
-        ticket_id = context.user_data.get(
-            "ticket_id"
-        )
+        ticket_id = context.user_data.get("ticket_id")
 
         if not ticket_id:
             return
@@ -3766,9 +3851,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text
         )
 
-        context.user_data[
-            "waiting_ticket_message"
-        ] = False
+        context.user_data["waiting_ticket_message"] = False
 
         await context.bot.send_message(
             chat_id=ADMIN_ID,
@@ -3804,14 +3887,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_waiting_ticket_reply"
-        )
+        and context.user_data.get("admin_waiting_ticket_reply")
     ):
 
-        ticket_id = context.user_data.get(
-            "admin_ticket_id"
-        )
+        ticket_id = context.user_data.get("admin_ticket_id")
 
         conn = get_db()
 
@@ -3850,9 +3929,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ پاسخ برای کاربر ارسال شد."
         )
 
-        context.user_data[
-            "admin_waiting_ticket_reply"
-        ] = False
+        context.user_data["admin_waiting_ticket_reply"] = False
 
         return
 
@@ -3862,14 +3939,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_broadcast"
-        )
+        and context.user_data.get("admin_broadcast")
     ):
 
-        context.user_data[
-            "admin_broadcast"
-        ] = False
+        context.user_data["admin_broadcast"] = False
 
         conn = get_db()
 
@@ -3914,9 +3987,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_waiting_coupon"
-        )
+        and context.user_data.get("admin_waiting_coupon")
     ):
 
         parts = text.split()
@@ -3974,9 +4045,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ این کد تخفیف قبلاً وجود دارد."
             )
 
-        context.user_data[
-            "admin_waiting_coupon"
-        ] = False
+        context.user_data["admin_waiting_coupon"] = False
 
         return
 
@@ -3986,9 +4055,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_waiting_trial_link"
-        )
+        and context.user_data.get("admin_waiting_trial_link")
     ):
 
         if not (
@@ -4004,9 +4071,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         add_free_trial(text)
 
-        context.user_data[
-            "admin_waiting_trial_link"
-        ] = False
+        context.user_data["admin_waiting_trial_link"] = False
 
         await update.message.reply_text(
             "✅ لینک تست اضافه شد.\n\n"
@@ -4020,13 +4085,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # حجم دلخواه
     # =====================================================
 
-    if context.user_data.get(
-        "waiting_custom_volume"
-    ):
+    if context.user_data.get("waiting_custom_volume"):
 
-        context.user_data[
-            "waiting_custom_volume"
-        ] = False
+        context.user_data["waiting_custom_volume"] = False
 
         try:
 
@@ -4045,18 +4106,45 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         price = volume * PRICE_PER_GB
 
-        await update.message.reply_text(
-            t(
+        # ذخیره امن در user_data
+        context.user_data["custom_volume"] = volume
+        context.user_data["custom_price"] = price
+
+        # اعمال کوپن اگر وجود داشته باشد
+        coupon_code = context.user_data.get("coupon_code")
+        final_price = price
+        original_price = price
+
+        if coupon_code:
+            result = apply_coupon(coupon_code, user.id, price)
+            if result["status"] == "success":
+                final_price = result["price"]
+            else:
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+
+        caption = t(
+            lang,
+            "custom_summary",
+            volume=volume,
+            price=final_price
+        )
+
+        if original_price != final_price and coupon_code:
+            caption += t(
                 lang,
-                "custom_summary",
-                volume=volume,
-                price=price
-            ),
+                "original_price",
+                original=original_price,
+                coupon=coupon_code
+            )
+
+        await update.message.reply_text(
+            caption,
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
                         t(lang, "paid"),
-                        callback_data=f"paid_{volume}_{price}"
+                        callback_data=f"paid_{volume}"
                     )
                 ],
                 [
@@ -4074,13 +4162,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # کوپن کاربر
     # =====================================================
 
-    if context.user_data.get(
-        "waiting_coupon"
-    ):
+    if context.user_data.get("waiting_coupon"):
 
-        context.user_data[
-            "waiting_coupon"
-        ] = False
+        context.user_data["waiting_coupon"] = False
 
         coupon = get_coupon(
             text.upper()
@@ -4105,9 +4189,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
-        context.user_data[
-            "coupon_code"
-        ] = coupon["code"]
+        # بررسی ظرفیت
+        if coupon["max_uses"] > 0 and coupon["used_count"] >= coupon["max_uses"]:
+            await update.message.reply_text(
+                t(lang, "coupon_invalid")
+            )
+            return
+
+        context.user_data["coupon_code"] = coupon["code"]
 
         await update.message.reply_text(
             t(
@@ -4127,9 +4216,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_waiting_volume"
-        )
+        and context.user_data.get("admin_waiting_volume")
     ):
 
         try:
@@ -4147,17 +4234,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
-        context.user_data[
-            "admin_waiting_volume"
-        ] = False
-
-        context.user_data[
-            "admin_add_volume"
-        ] = str(volume)
-
-        context.user_data[
-            "admin_waiting_link"
-        ] = True
+        context.user_data["admin_waiting_volume"] = False
+        context.user_data["admin_add_volume"] = str(volume)
+        context.user_data["admin_waiting_link"] = True
 
         await update.message.reply_text(
             f"✅ حجم {volume} گیگ ثبت شد.\n\n"
@@ -4172,9 +4251,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if (
         user.id == ADMIN_ID
-        and context.user_data.get(
-            "admin_waiting_link"
-        )
+        and context.user_data.get("admin_waiting_link")
     ):
 
         if not (
@@ -4188,24 +4265,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
-        volume = context.user_data.get(
-            "admin_add_volume"
-        )
+        volume = context.user_data.get("admin_add_volume")
 
         add_subscription(
             volume,
             text
         )
 
-        context.user_data.pop(
-            "admin_waiting_link",
-            None
-        )
-
-        context.user_data.pop(
-            "admin_add_volume",
-            None
-        )
+        context.user_data.pop("admin_waiting_link", None)
+        context.user_data.pop("admin_add_volume", None)
 
         await update.message.reply_text(
             "✅ لینک اضافه شد.\n\n"
@@ -4507,7 +4575,7 @@ def main():
     # متن
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & \~filters.COMMAND,
             text_handler
         )
     )

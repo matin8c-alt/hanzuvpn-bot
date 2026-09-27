@@ -557,23 +557,37 @@ def get_wallet_history(user_id, limit=15):
 
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
+
+    # منوی اصلی به سبک دکمه‌های شیشه‌ای/Inline و چیدمان مشابه طرح مرجع
     keyboard = [
-        [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-        [InlineKeyboardButton(t(lang, "trial"), callback_data="trial")],
         [
-            InlineKeyboardButton(t(lang, "services"), callback_data="my_services"),
-            InlineKeyboardButton(t(lang, "renew"), callback_data="renew"),
+            InlineKeyboardButton("🛍 خرید اشتراک", callback_data="buy"),
+            InlineKeyboardButton("♻️ تمدید سرویس", callback_data="renew"),
         ],
         [
+            InlineKeyboardButton("📊 سرورهای من", callback_data="my_services"),
+            InlineKeyboardButton("💰 کیف پول + شارژ", callback_data="wallet"),
+        ],
+        [
+            InlineKeyboardButton("💵 تعرفه اشتراک", callback_data="buy"),
+        ],
+        [
+            InlineKeyboardButton("👨🏻‍💻 ارتباط با پشتیبانی", callback_data="support"),
+            InlineKeyboardButton("📚 آموزش و نحوه اتصال", callback_data="help"),
+        ],
+        [
+            InlineKeyboardButton(t(lang, "trial"), callback_data="trial"),
             InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon"),
-            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
         ],
-        [InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet")],
-        [InlineKeyboardButton(t(lang, "support"), callback_data="support")],
-        [InlineKeyboardButton(t(lang, "language"), callback_data="language")],
+        [
+            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
+            InlineKeyboardButton(t(lang, "language"), callback_data="language"),
+        ],
     ]
+
     if user_id == ADMIN_ID:
         keyboard.append([InlineKeyboardButton(t("fa", "admin"), callback_data="admin")])
+
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -1598,6 +1612,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("renew_volume", None)
         context.user_data.pop("renew_price", None)
         await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=stored_price))
+        return
+
+    # آموزش و نحوه اتصال
+    if data == "help":
+        await query.edit_message_text(
+            t(lang, "help"),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "back"), callback_data="home")]
+            ])
+        )
         return
 
     # پشتیبانی

@@ -7,6 +7,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     BotCommand,
 )
 from telegram.ext import (
@@ -104,7 +106,58 @@ TEXTS = {
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
         "coupon_used": "⚠️ شما قبلاً از این کد استفاده کرده‌اید.",
         "coupon_valid": "✅ کد تخفیف معتبر است.\n\n🎟 کد: {code}\n💰 تخفیف: {percent}%\n\nحالا سرویس موردنظر را انتخاب کنید:",
-        "help": "📚 راهنمای HanzuVPN\n\n/start - منوی اصلی\n/buy - خرید سرویس\n/services - سرویس‌های من\n/trial - تست رایگان\n/support - پشتیبانی\n/help - راهنما",
+        "help": """📚 <b>آموزش کامل نصب و اتصال HanzuVPN</b>
+
+<b>🤖 اندروید</b>
+<b>پیشنهاد: Hiddify</b>
+• <a href="https://play.google.com/store/apps/details?id=app.hiddify.com">▶️ Google Play</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk">📦 دانلود مستقیم APK</a>
+
+<b>گزینه جایگزین: v2rayNG</b>
+• <a href="https://github.com/2dust/v2rayNG/releases/latest">⬇️ دانلود رسمی v2rayNG</a>
+
+<b>🍎 آیفون / iOS</b>
+<b>پیشنهاد: Hiddify</b>
+• <a href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone"> App Store</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa">📦 دانلود IPA</a>
+
+<b>گزینه جایگزین: Streisand</b>
+• <a href="https://apps.apple.com/us/app/streisand/id6450534064"> App Store</a>
+
+<b>🪟 ویندوز</b>
+<b>پیشنهاد: Hiddify</b>
+• <a href="https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini">🛍 Microsoft Store</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe">📦 دانلود مستقیم EXE</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.Msix">📦 دانلود MSIX رسمی</a>
+
+<b>گزینه جایگزین: v2rayN</b>
+• <a href="https://github.com/2dust/v2rayN/releases/latest">⬇️ دانلود رسمی v2rayN</a>
+
+<b>🔗 آموزش اتصال — مرحله‌به‌مرحله</b>
+
+<b>1️⃣ دریافت لینک اشتراک</b>
+از «📊 سرورهای من» لینک Subscription را کپی کنید.
+
+<b>2️⃣ نصب برنامه</b>
+برنامه مناسب سیستم‌عامل خود را از لینک‌های بالا نصب کنید.
+
+<b>3️⃣ افزودن Subscription</b>
+داخل برنامه گزینه <b>Import / Add Profile / Subscription</b> را پیدا کنید.
+
+<b>4️⃣ وارد کردن لینک</b>
+گزینه <b>Import from URL</b> را بزنید و لینک را Paste کنید؛ یا اگر لینک را کپی کرده‌اید، <b>Import from Clipboard</b> را انتخاب کنید.
+
+<b>5️⃣ به‌روزرسانی</b>
+روی <b>Update</b> بزنید تا سرورها دریافت شوند.
+
+<b>6️⃣ اتصال</b>
+یکی از سرورها را انتخاب کنید و دکمه اتصال را روشن کنید. اگر اولین بار است، اجازه VPN را تأیید کنید.
+
+💡 <b>نکته:</b> لینک Subscription را با دیگران به اشتراک نگذارید؛ این لینک می‌تواند برای دسترسی به سرویس شما استفاده شود.
+
+🆘 اگر وصل نشد، اول Update را بزنید و سپس یک سرور دیگر را امتحان کنید.
+
+🔒 <i>لینک‌های بالا از صفحات رسمی پروژه‌ها، Google Play، App Store و Microsoft Store انتخاب شده‌اند.</i>""",
         "payment_confirmed": "✅ پرداخت شما تأیید شد.\n\n🌐 HanzuVPN\n\n📦 حجم: {volume} گیگ\n⏳ مدت: 30 روز\n📅 انقضا: {expires}\n🧾 سفارش: #{order}\n\n🔗 لینک Subscription:\n\n{link}\n\n📌 لینک را در برنامه VPN خود وارد کنید.",
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
@@ -174,7 +227,7 @@ TEXTS = {
         "coupon_invalid": "❌ کۆد نادروستە.",
         "coupon_used": "⚠️ پێشتر بەکارت هێناوە.",
         "coupon_valid": "✅ کۆد دروستە.\n\n🎟 {code}\n💰 {percent}%",
-        "help": "📚 ڕێنمایی\n\n/start - سەرەکی\n/buy - کڕین\n/services - خزمەتگوزارییەکان\n/trial - تاقیکردنەوە\n/support - پشتگیری",
+        "help": "📚 ڕێنمایی تەواوی HanzuVPN\n\n🤖 <b>Android</b>\n• Google Play ـی Hiddify: https://play.google.com/store/apps/details?id=app.hiddify.com\n• APK ـی ڕاستەوخۆ: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\n• v2rayNG: https://github.com/2dust/v2rayNG/releases/latest\n\n🍎 <b>iPhone / iOS</b>\n• App Store ـی Hiddify: https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\n• IPA: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa\n• Streisand: https://apps.apple.com/us/app/streisand/id6450534064\n\n🪟 <b>Windows</b>\n• Microsoft Store: https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\n• EXE: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\n• v2rayN: https://github.com/2dust/v2rayN/releases/latest\n\n🔗 <b>ڕێگای زیادکردنی کانفیگ</b>\n1️⃣ بەستەری Subscription لە «📊 سێرڤەرەکانم» کۆپی بکە.\n2️⃣ ئەپەکەی گونجاو دابەزێنە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ لینکەکە لە Import from URL یان Clipboard زیاد بکە.\n5️⃣ Update بکە، پاشان سێرڤەرێک هەڵبژێرە و Connect بکە.\n\n💡 بەستەری Subscription لەگەڵ کەسی تر هاوبەش مەکە.\n\n/start - سەرەکی\n/buy - کڕین\n/services - خزمەتگوزارییەکان\n/trial - تاقیکردنەوە\n/support - پشتگیری",
         "payment_confirmed": "✅ پارەدان پشتڕاست کرایەوە.\n\n📦 {volume} گیگ\n📅 {expires}\n🧾 #{order}\n\n🔗 {link}",
         "payment_rejected": "❌ پارەدان ڕەتکرایەوە.\n\n🧾 #{order}",
         "reminder_3": "⚠️ خزمەتگوزاری #{order} نزیکەی 3 ڕۆژی تر بەسەر دەچێت.",
@@ -244,7 +297,7 @@ TEXTS = {
         "coupon_invalid": "❌ Invalid coupon.",
         "coupon_used": "⚠️ You have already used this coupon.",
         "coupon_valid": "✅ Coupon valid.\n\n🎟 {code}\n💰 {percent}%",
-        "help": "📚 Help\n\n/start - Main menu\n/buy - Buy\n/services - My services\n/trial - Trial\n/support - Support",
+        "help": "📚 HanzuVPN Complete Connection Guide\n\n🤖 <b>Android</b>\n• Hiddify Google Play: https://play.google.com/store/apps/details?id=app.hiddify.com\n• Direct APK: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\n• v2rayNG: https://github.com/2dust/v2rayNG/releases/latest\n\n🍎 <b>iPhone / iOS</b>\n• Hiddify App Store: https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\n• Direct IPA: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa\n• Streisand App Store: https://apps.apple.com/us/app/streisand/id6450534064\n\n🪟 <b>Windows</b>\n• Hiddify Microsoft Store: https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\n• Direct EXE: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\n• v2rayN: https://github.com/2dust/v2rayN/releases/latest\n\n🔗 <b>Step-by-step: Add your configuration</b>\n1️⃣ Copy your Subscription link from «📊 My Servers».\n2️⃣ Install the app for your operating system.\n3️⃣ Open Import / Add Profile / Subscription.\n4️⃣ Choose Import from URL and paste the link, or use Import from Clipboard.\n5️⃣ Tap Update, select a server, then enable Connect.\n\n💡 Do not share your Subscription link with others.\n\n/start - Main menu\n/buy - Buy\n/services - My services\n/trial - Trial\n/support - Support",
         "payment_confirmed": "✅ Payment approved.\n\n📦 {volume} GB\n📅 {expires}\n🧾 #{order}\n\n🔗 {link}",
         "payment_rejected": "❌ Payment rejected.\n\n🧾 #{order}",
         "reminder_3": "⚠️ Service #{order} expires in about 3 days.",
@@ -556,49 +609,80 @@ def get_wallet_history(user_id, limit=15):
 # =========================================================
 
 def home_keyboard(user_id):
-    lang = get_user_language(user_id) or "fa"
-
-    # منوی اصلی به سبک دکمه‌های شیشه‌ای/Inline و چیدمان مشابه طرح مرجع
+    # منوی اصلی پایین صفحه (Reply Keyboard)؛ مشابه دکمه‌های پایین تلگرام
     keyboard = [
         [
-            InlineKeyboardButton("🛍 خرید اشتراک", callback_data="buy"),
-            InlineKeyboardButton("♻️ تمدید سرویس", callback_data="renew"),
+            KeyboardButton("🛍 خرید اشتراک"),
+            KeyboardButton("♻️ تمدید سرویس"),
         ],
         [
-            InlineKeyboardButton("📊 سرورهای من", callback_data="my_services"),
-            InlineKeyboardButton("💰 کیف پول + شارژ", callback_data="wallet"),
+            KeyboardButton("📊 سرورهای من"),
+            KeyboardButton("💰 کیف پول + شارژ"),
         ],
         [
-            InlineKeyboardButton("💵 تعرفه اشتراک", callback_data="buy"),
+            KeyboardButton("💵 تعرفه اشتراک"),
         ],
         [
-            InlineKeyboardButton("👨🏻‍💻 ارتباط با پشتیبانی", callback_data="support"),
-            InlineKeyboardButton("📚 آموزش و نحوه اتصال", callback_data="help"),
-        ],
-        [
-            InlineKeyboardButton(t(lang, "trial"), callback_data="trial"),
-            InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon"),
-        ],
-        [
-            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
-            InlineKeyboardButton(t(lang, "language"), callback_data="language"),
+            KeyboardButton("👨🏻‍💻 ارتباط با پشتیبانی"),
+            KeyboardButton("📚 آموزش و نحوه اتصال"),
         ],
     ]
 
-    if user_id == ADMIN_ID:
-        keyboard.append([InlineKeyboardButton(t("fa", "admin"), callback_data="admin")])
-
-    return InlineKeyboardMarkup(keyboard)
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True,
+    )
 
 
 async def show_home(query, user_id):
     lang = get_user_language(user_id) or "fa"
-    await query.edit_message_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    try:
+        await query.edit_message_text(t(lang, "welcome"))
+    except Exception:
+        pass
+
+    # Reply Keyboard را نمی‌توان روی همان callback message قرار داد؛
+    # بنابراین منوی اصلی را به‌صورت یک پیام جدید پایین صفحه نمایش می‌دهیم.
+    await query.message.reply_text(
+        t(lang, "welcome"),
+        reply_markup=home_keyboard(user_id)
+    )
 
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    await message.reply_text(
+        t(lang, "welcome"),
+        reply_markup=home_keyboard(user_id)
+    )
+
+
+async def send_renew_menu(message, user_id):
+    lang = get_user_language(user_id) or "fa"
+    rows = get_user_services(user_id)
+
+    if not rows:
+        await message.reply_text(
+            t(lang, "renew_no_services"),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")]
+            ])
+        )
+        return
+
+    keyboard = []
+    for row in rows[:10]:
+        label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
+        keyboard.append([
+            InlineKeyboardButton(label, callback_data=f"renew_{row['id']}")
+        ])
+
+    await message.reply_text(
+        t(lang, "renew_choose"),
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 # =========================================================
@@ -696,7 +780,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    await update.message.reply_text(t(lang, "help"))
+    await update.message.reply_text(t(lang, "help"), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1618,6 +1702,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "help":
         await query.edit_message_text(
             t(lang, "help"),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "back"), callback_data="home")]
             ])
@@ -1934,6 +2020,50 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not lang:
         await show_language_selector_message(update.message)
+        return
+
+    # دکمه‌های منوی اصلی پایین صفحه (Reply Keyboard)
+    # این دکمه‌ها پیام متنی می‌فرستند و از اینجا به بخش مربوطه هدایت می‌شوند.
+    if text == "🛍 خرید اشتراک":
+        clear_user_states(context)
+        await send_buy_message(update.message)
+        return
+
+    if text == "♻️ تمدید سرویس":
+        clear_user_states(context)
+        await send_renew_menu(update.message, user.id)
+        return
+
+    if text == "📊 سرورهای من":
+        clear_user_states(context)
+        await services_command(update, context)
+        return
+
+    if text == "💰 کیف پول + شارژ":
+        clear_user_states(context)
+        balance = get_balance(user.id)
+        await update.message.reply_text(
+            t(lang, "wallet_title", balance=balance),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
+                [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
+            ])
+        )
+        return
+
+    if text == "💵 تعرفه اشتراک":
+        clear_user_states(context)
+        await send_buy_message(update.message)
+        return
+
+    if text == "👨🏻‍💻 ارتباط با پشتیبانی":
+        clear_user_states(context)
+        await support_command(update, context)
+        return
+
+    if text == "📚 آموزش و نحوه اتصال":
+        clear_user_states(context)
+        await help_command(update, context)
         return
 
     # شارژ کیف پول - دریافت مبلغ

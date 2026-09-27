@@ -1,6 +1,14 @@
 import os
 import sqlite3
 import asyncio
+import json
+import hmac
+import hashlib
+import threading
+import time
+from urllib.parse import parse_qsl, unquote
+from urllib import request as urlrequest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
 
 from telegram import (
@@ -54,7 +62,9 @@ TARIFF_PLANS = {
 
 SUPPORT_USERNAME = "ByHxnzu"
 SUPPORT_URL = "https://t.me/ByHxnzu"
-MINI_APP_URL = "https://fancy-lab-d5e0.matin8c.workers.dev"
+MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
@@ -2549,6 +2559,376 @@ async def expiration_checker(application):
         await asyncio.sleep(6 * 60 * 60)
 
 
+
+# =========================================================
+# Mini App API — اتصال واقعی Mini App به دیتابیس ربات
+# =========================================================
+
+def _api_json(handler, payload, status=200):
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(raw)))
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.end_headers()
+    handler.wfile.write(raw)
+
+
+def _api_init_data(handler):
+    """Validate Telegram WebApp initData and return the Telegram user dict."""
+    raw = handler.headers.get("X-Telegram-Init-Data", "")
+    if not raw or not BOT_TOKEN:
+        return None
+    try:
+        pairs = dict(parse_qsl(raw, keep_blank_values=True))
+        received_hash = pairs.pop("hash", None)
+        if not received_hash:
+            return None
+        data_check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        calculated = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calculated, received_hash):
+            return None
+        auth_date = int(pairs.get("auth_date", "0"))
+        if auth_date and time.time() - auth_date > 86400:
+            return None
+        user_raw = pairs.get("user")
+        if not user_raw:
+            return None
+        return json.loads(unquote(user_raw))
+    except Exception:
+        return None
+
+
+def _api_user(handler):
+    user = _api_init_data(handler)
+    if not user or not user.get("id"):
+        return None
+    # Keep the same user record used by the Telegram bot.
+    class ApiUser:
+        pass
+    u = ApiUser()
+    u.id = int(user["id"])
+    u.username = user.get("username", "") or ""
+    u.first_name = user.get("first_name", "") or ""
+    u.last_name = user.get("last_name", "") or ""
+    ensure_user(u)
+    return u
+
+
+def _api_services(user_id):
+    rows = get_user_services(user_id)
+    result = []
+    for row in rows:
+        result.append({
+            "id": row["id"],
+            "volume": row["volume"],
+            "price": row["price"],
+            "approved_at": row["approved_at"],
+            "expires_at": row["expires_at"],
+            "link": row["link"],
+        })
+    return result
+
+
+def _api_wallet_history(user_id):
+    rows = get_wallet_history(user_id, 30)
+    return [{
+        "id": r["id"], "amount": r["amount"], "type": r["type"],
+        "description": r["description"] or r["type"], "order_id": r["order_id"],
+        "created_at": r["created_at"]
+    } for r in rows]
+
+
+def _api_purchase_from_wallet(user, volume, coupon_code=None):
+    volume = str(volume)
+    if volume not in PLANS:
+        return {"ok": False, "error": "این پلن در بخش خرید فعال نیست."}
+    base_price = int(PLANS[volume])
+    price = base_price
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        user_row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user.id,)).fetchone()
+        if not user_row:
+            conn.rollback()
+            return {"ok": False, "error": "کاربر پیدا نشد."}
+        balance = int(user_row["balance"] or 0)
+
+        coupon = None
+        if coupon_code:
+            coupon = conn.execute("SELECT * FROM coupons WHERE code = ? AND active = 1", (str(coupon_code).upper(),)).fetchone()
+            if coupon:
+                used = conn.execute("SELECT id FROM coupon_uses WHERE coupon_id = ? AND user_id = ?", (coupon["id"], user.id)).fetchone()
+                if used:
+                    coupon = None
+                elif coupon["max_uses"] > 0 and coupon["used_count"] >= coupon["max_uses"]:
+                    coupon = None
+                else:
+                    price = max(int(base_price * (100 - coupon["percent"]) / 100), 0)
+
+        if balance < price:
+            conn.rollback()
+            return {"ok": False, "error": "موجودی کیف پول کافی نیست.", "balance": balance, "price": price}
+
+        subscription = conn.execute(
+            "SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1",
+            (volume,)
+        ).fetchone()
+        if not subscription:
+            conn.rollback()
+            return {"ok": False, "error": "برای این حجم فعلاً موجودی سرویس نداریم.", "balance": balance}
+
+        now = datetime.now()
+        expires = now + timedelta(days=SERVICE_DAYS)
+        cursor = conn.execute("""
+            INSERT INTO orders
+            (user_id, username, first_name, volume, price, status, subscription_id, created_at, approved_at, expires_at, is_charge)
+            VALUES (?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, 0)
+        """, (
+            user.id, user.username, user.first_name, volume, price, subscription["id"],
+            now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S"),
+            expires.strftime("%Y-%m-%d %H:%M:%S")
+        ))
+        order_id = cursor.lastrowid
+        conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
+        conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, user.id))
+        conn.execute("""
+            INSERT INTO wallet_transactions
+            (user_id, amount, type, description, order_id, created_at)
+            VALUES (?, ?, 'purchase', ?, ?, ?)
+        """, (user.id, -price, f"خرید سرویس {volume} گیگ", order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
+        if coupon:
+            conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
+                         (coupon["id"], user.id, order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
+            conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
+        conn.commit()
+        return {
+            "ok": True, "order_id": order_id, "volume": volume, "price": price,
+            "balance": balance - price, "link": subscription["link"],
+            "expires_at": expires.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": "خطای داخلی هنگام خرید.", "detail": str(e)}
+    finally:
+        conn.close()
+
+
+def _api_renew_from_wallet(user, order_id):
+    try:
+        order_id = int(order_id)
+    except Exception:
+        return {"ok": False, "error": "شناسه سرویس نامعتبر است."}
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        order = conn.execute(
+            "SELECT * FROM orders WHERE id = ? AND user_id = ? AND status = 'approved' AND is_charge = 0",
+            (order_id, user.id)
+        ).fetchone()
+        if not order:
+            conn.rollback()
+            return {"ok": False, "error": "سرویس پیدا نشد."}
+        try:
+            volume = str(order["volume"])
+            price = int(float(volume)) * PRICE_PER_GB
+        except Exception:
+            conn.rollback()
+            return {"ok": False, "error": "حجم سرویس نامعتبر است."}
+        user_row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,)).fetchone()
+        balance = int(user_row["balance"] or 0) if user_row else 0
+        if balance < price:
+            conn.rollback()
+            return {"ok": False, "error": "موجودی کیف پول کافی نیست.", "balance": balance, "price": price}
+        now = datetime.now()
+        try:
+            old_exp = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else now
+        except Exception:
+            old_exp = now
+        start = max(now, old_exp)
+        expires = start + timedelta(days=SERVICE_DAYS)
+        conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, user.id))
+        conn.execute("UPDATE orders SET expires_at = ? WHERE id = ?", (expires.strftime("%Y-%m-%d %H:%M:%S"), order_id))
+        conn.execute("""
+            INSERT INTO wallet_transactions
+            (user_id, amount, type, description, order_id, created_at)
+            VALUES (?, ?, 'renewal', ?, ?, ?)
+        """, (user.id, -price, f"تمدید سرویس #{order_id}", order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return {"ok": True, "order_id": order_id, "volume": volume, "price": price,
+                "balance": balance - price, "expires_at": expires.strftime("%Y-%m-%d %H:%M:%S")}
+    except Exception as e:
+        conn.rollback()
+        return {"ok": False, "error": "خطای داخلی هنگام تمدید.", "detail": str(e)}
+    finally:
+        conn.close()
+
+
+def _api_create_charge(user, amount):
+    try:
+        amount = int(amount)
+        if amount < MIN_CHARGE:
+            return {"ok": False, "error": f"حداقل شارژ {MIN_CHARGE:,} تومان است."}
+    except Exception:
+        return {"ok": False, "error": "مبلغ شارژ نامعتبر است."}
+    cancel_pending_orders(user.id)
+    order_id = create_order(user, "CHARGE", amount, is_charge=1)
+    return {"ok": True, "order_id": order_id, "amount": amount, "card": CARD_NUMBER,
+            "message": "مبلغ را واریز کن و همین‌جا تصویر رسید را ارسال کن."}
+
+
+def _telegram_send_photo_from_base64(user, order_id, image_b64, filename="receipt.jpg"):
+    import base64, uuid
+    try:
+        conn = get_db()
+        try:
+            order = conn.execute("SELECT * FROM orders WHERE id = ? AND user_id = ? AND status = 'pending' AND is_charge = 1", (int(order_id), user.id)).fetchone()
+        finally:
+            conn.close()
+        if not order:
+            return {"ok": False, "error": "سفارش شارژ پیدا نشد یا قبلاً بررسی شده است."}
+        if not image_b64:
+            return {"ok": False, "error": "تصویر رسید دریافت نشد."}
+        if image_b64.startswith("data:"):
+            image_b64 = image_b64.split(",", 1)[1]
+        data = base64.b64decode(image_b64, validate=True)
+        if len(data) > 10 * 1024 * 1024:
+            return {"ok": False, "error": "حجم تصویر باید کمتر از ۱۰ مگابایت باشد."}
+        full_name = " ".join(part for part in [getattr(user, "first_name", ""), getattr(user, "last_name", "")] if part) or "-"
+        username = f"@{user.username}" if getattr(user, "username", "") else "-"
+        language = get_user_language(user.id) or "fa"
+        caption = (
+            f"💳 رسید پرداخت جدید (شارژ کیف پول)\n\n"
+            f"🧾 سفارش: #{order['id']}\n"
+            f"👤 نام کامل: {full_name}\n"
+            f"👤 Username: {username}\n"
+            f"🆔 User ID: {user.id}\n"
+            f"💬 Chat ID: {user.id}\n"
+            f"🌐 زبان: {language}\n\n"
+            f"📦 حجم: {order['volume']}\n"
+            f"💰 مبلغ: {order['price']:,} تومان\n"
+            f"🕐 زمان ثبت سفارش: {order['created_at']}"
+        )
+        boundary = ("----Hanzu" + uuid.uuid4().hex).encode()
+        parts = []
+        def field(name, value):
+            parts.append(b"--" + boundary + b"\r\n")
+            parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+            parts.append(str(value).encode())
+            parts.append(b"\r\n")
+        field("chat_id", ADMIN_ID)
+        field("caption", caption)
+        field("parse_mode", "HTML")
+        parts.append(b"--" + boundary + b"\r\n")
+        parts.append(f'Content-Disposition: form-data; name="photo"; filename="{filename or "receipt.jpg"}"\r\n'.encode())
+        parts.append(b"Content-Type: image/jpeg\r\n\r\n")
+        parts.append(data)
+        parts.append(b"\r\n--" + boundary + b"--\r\n")
+        body = b"".join(parts)
+        req = urlrequest.Request(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data=body, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary.decode()}", "Content-Length": str(len(body))}
+        )
+        with urlrequest.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        if not result.get("ok"):
+            return {"ok": False, "error": "ارسال رسید به ادمین ناموفق بود."}
+        return {"ok": True, "order_id": int(order_id)}
+    except Exception as e:
+        print("MiniApp receipt upload error:", e)
+        return {"ok": False, "error": "خطا در ارسال رسید. دوباره تلاش کن."}
+
+
+class HanzuAPIHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        print("MiniApp API:", fmt % args)
+
+    def do_OPTIONS(self):
+        _api_json(self, {"ok": True})
+
+    def _auth(self):
+        user = _api_user(self)
+        if not user:
+            _api_json(self, {"ok": False, "error": "احراز هویت Telegram معتبر نیست."}, 401)
+            return None
+        return user
+
+    def _body(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            return json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        except Exception:
+            return {}
+
+    def do_GET(self):
+        if not self.path.startswith("/api/"):
+            _api_json(self, {"ok": False, "error": "Not found"}, 404)
+            return
+        user = self._auth()
+        if not user:
+            return
+        path = self.path.split("?", 1)[0]
+        if path == "/api/bootstrap":
+            services = _api_services(user.id)
+            _api_json(self, {
+                "ok": True,
+                "user": {"id": user.id, "username": user.username, "first_name": user.first_name},
+                "balance": get_balance(user.id),
+                "services": services,
+                "history": _api_wallet_history(user.id),
+                "plans": [{"gb": int(k), "price": v} for k, v in PLANS.items()],
+                "tariffs": [{"gb": int(k) if k.isdigit() else k, "price": v} for k, v in TARIFF_PLANS.items()],
+                "support": SUPPORT_URL,
+            })
+            return
+        if path == "/api/services":
+            _api_json(self, {"ok": True, "services": _api_services(user.id)})
+            return
+        if path == "/api/wallet":
+            _api_json(self, {"ok": True, "balance": get_balance(user.id), "history": _api_wallet_history(user.id)})
+            return
+        _api_json(self, {"ok": False, "error": "Endpoint not found"}, 404)
+
+    def do_POST(self):
+        if not self.path.startswith("/api/"):
+            _api_json(self, {"ok": False, "error": "Not found"}, 404)
+            return
+        user = self._auth()
+        if not user:
+            return
+        path = self.path.split("?", 1)[0]
+        body = self._body()
+        if path == "/api/buy":
+            result = _api_purchase_from_wallet(user, body.get("gb"), body.get("coupon", ""))
+            _api_json(self, result, 200 if result.get("ok") else 400)
+            return
+        if path == "/api/renew":
+            result = _api_renew_from_wallet(user, body.get("order_id"))
+            _api_json(self, result, 200 if result.get("ok") else 400)
+            return
+        if path == "/api/charge":
+            result = _api_create_charge(user, body.get("amount"))
+            _api_json(self, result, 200 if result.get("ok") else 400)
+            return
+        if path == "/api/charge-receipt":
+            result = _telegram_send_photo_from_base64(user, body.get("order_id"), body.get("image"), body.get("filename", "receipt.jpg"))
+            _api_json(self, result, 200 if result.get("ok") else 400)
+            return
+        _api_json(self, {"ok": False, "error": "Endpoint not found"}, 404)
+
+
+def start_miniapp_api():
+    server = ThreadingHTTPServer((API_HOST, API_PORT), HanzuAPIHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print(f"HanzuVPN Mini App API listening on {API_HOST}:{API_PORT}")
+    return server
+
+
 # =========================================================
 # اجرای ربات
 # =========================================================
@@ -2562,6 +2942,7 @@ def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
     init_db()
+    start_miniapp_api()
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))

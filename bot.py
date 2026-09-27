@@ -2356,7 +2356,17 @@ def _telegram_send_photo_base64(user_id, volume, price, image_b64, order_id):
         def field(name, value):
             body.extend((f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").encode())
         field("chat_id", str(ADMIN_ID))
-        field("caption", f"💳 رسید Mini App\n\n🧾 سفارش: #{order_id}\n🆔 User ID: {user_id}\n📦 {volume}\n💰 مبلغ: {price:,} تومان")
+        
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT username, first_name, created_at FROM orders WHERE id=?", (order_id,)).fetchone()
+        finally:
+            conn.close()
+        username = (row["username"] if row else "") or "-"
+        first_name = (row["first_name"] if row else "") or "-"
+        caption = (f"💳 رسید Mini App\n\n🧾 سفارش: #{order_id}\n👤 نام: {first_name}\n🔗 Username: @{username.lstrip('@') if username != '-' else '-'}\n🆔 Telegram ID: {user_id}\n📦 نوع: {volume}\n💰 مبلغ: {price:,} تومان\n🕐 زمان ارسال: {now_text()}")
+        field("caption", caption)
+        field("reply_markup", json.dumps({"inline_keyboard":[[{"text":"✅ تأیید پرداخت","callback_data":f"approve_{order_id}"},{"text":"❌ رد پرداخت","callback_data":f"reject_{order_id}"}]]}, ensure_ascii=False))
         body.extend((f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"receipt.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").encode())
         body.extend(raw); body.extend(f"\r\n--{boundary}--\r\n".encode())
         req=urlrequest.Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data=bytes(body), headers={"Content-Type":f"multipart/form-data; boundary={boundary}"}, method="POST")
@@ -2381,7 +2391,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/bootstrap"):
             rows=get_user_services(u.id)
             plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()]
-            return self._send(200,{"ok":True,"user":{"id":u.id,"username":u.username,"first_name":u.first_name},"balance":get_balance(u.id),"plans":plans,"services":[dict(r) for r in rows],"card":CARD_NUMBER,"min_charge":MIN_CHARGE,"service_days":SERVICE_DAYS})
+            conn=get_db()
+            try:
+                tx=conn.execute("SELECT amount, type, description, created_at FROM wallet_transactions WHERE user_id=? ORDER BY id DESC LIMIT 20", (u.id,)).fetchall()
+            finally:
+                conn.close()
+            return self._send(200,{"ok":True,"user":{"id":u.id,"username":u.username,"first_name":u.first_name},"language":get_user_language(u.id) or "fa","balance":get_balance(u.id),"plans":plans,"services":[dict(r) for r in rows],"history":[dict(r) for r in tx],"card":CARD_NUMBER,"min_charge":MIN_CHARGE,"service_days":SERVICE_DAYS})
         return self._send(404,{"ok":False,"error":"not_found"})
     def do_POST(self):
         u=self._user()
@@ -2407,15 +2422,30 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if not price: return self._send(400,{"ok":False,"error":"invalid_volume"})
             r=_api_purchase_wallet(u,volume,price)
             return self._send(200 if r["status"] in ("approved","insufficient_balance","no_stock") else 500,{"ok":r["status"]=="approved",**r})
+        if path=="/api/language":
+            language=str(payload.get("language", "fa"))
+            if language not in LANGUAGES: return self._send(400,{"ok":False,"error":"invalid_language"})
+            set_user_language(u.id, language)
+            return self._send(200,{"ok":True,"language":language})
         if path=="/api/charge":
             amount=int(payload.get("amount",0))
             if amount<MIN_CHARGE: return self._send(400,{"ok":False,"error":"min_charge","min":MIN_CHARGE})
             oid=create_order(u,"CHARGE",amount,is_charge=1)
             return self._send(200,{"ok":True,"order_id":oid,"amount":amount,"card":CARD_NUMBER})
         if path=="/api/charge-receipt":
-            amount=int(payload.get("amount",0)); img=payload.get("image","")
-            if amount<MIN_CHARGE or not img: return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})
-            oid=create_order(u,"CHARGE",amount,is_charge=1); tg=_telegram_send_photo_base64(u.id,"CHARGE",amount,img,oid)
+            oid=int(payload.get("order_id",0) or 0); amount=int(payload.get("amount",0) or 0); img=payload.get("image","")
+            if not oid or not img: return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})
+            conn=get_db()
+            try:
+                order=conn.execute("SELECT id, user_id, price, status, is_charge FROM orders WHERE id=?",(oid,)).fetchone()
+                if not order or int(order["user_id"])!=int(u.id) or int(order["is_charge"] or 0)!=1 or order["status"]!="pending":
+                    return self._send(404,{"ok":False,"error":"charge_order_not_found"})
+                real_amount=int(order["price"] or 0)
+                if real_amount<MIN_CHARGE or (amount and amount!=real_amount):
+                    return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})
+            finally:
+                conn.close()
+            tg=_telegram_send_photo_base64(u.id,"شارژ کیف پول",real_amount,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         if path=="/api/buy-receipt":
             volume=str(payload.get("volume","")); price=TARIFF_PLANS.get(volume); img=payload.get("image","")
@@ -2437,14 +2467,15 @@ def start_miniapp_api():
 
 async def post_init(application):
     await set_bot_commands(application)
-    # Always point Telegram's main Mini App button to the current HanzuVPN app.
-    # The version query also prevents Telegram clients from reusing an older cached app.
-    await application.bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(
-            text="🛒 HanzuVPN",
-            web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260927-2"),
+    try:
+        await application.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="🛒 HanzuVPN",
+                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260928-1"),
+            )
         )
-    )
+    except Exception as e:
+        print("Mini App menu button setup error:", e)
     asyncio.create_task(expiration_checker(application))
 
 

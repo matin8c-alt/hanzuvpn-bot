@@ -1353,8 +1353,70 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # پرداخت عادی
+   # =====================================================
+    # پرداخت (خرید سرویس + شارژ کیف پول)
+    # =====================================================
     if data.startswith("paid_"):
         parts = data.split("_")
+        if len(parts) < 2:
+            await query.answer("داده نامعتبر", show_alert=True)
+            return
+
+        volume = parts[1]
+
+        # ---------- حالت شارژ کیف پول ----------
+        if volume == "CHARGE":
+            order_id = context.user_data.get("last_order_id")
+            amount = context.user_data.get("charge_amount")
+
+            if not order_id or not amount:
+                await query.answer("سفارش شارژ پیدا نشد. دوباره تلاش کنید.", show_alert=True)
+                return
+
+            await query.edit_message_text(
+                t(lang, "charge_created", order=order_id, amount=amount)
+            )
+            return
+
+        # ---------- حالت خرید سرویس ----------
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            # حجم دلخواه
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
+                return
+
+            base_price = custom_price
+
+        # اعمال کوپن (اگر وجود داشته باشد)
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+
+        # ساخت سفارش
+        order_id = create_order(user, volume, price, coupon_code)
+
+        # پاک کردن stateها
+        context.user_data.pop("coupon_code", None)
+        context.user_data.pop("custom_volume", None)
+        context.user_data.pop("custom_price", None)
+        context.user_data["last_order_id"] = order_id
+
+        await query.edit_message_text(
+            t(lang, "order_created", order=order_id, volume=volume, price=price)
+        )
+        return
         if len(parts) < 2:
             return
         volume = parts[1]

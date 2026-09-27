@@ -39,6 +39,21 @@ PLANS = {
     "50": 175000,
 }
 
+# تعرفه نمایشی — این لیست فقط برای نمایش قیمت است و امکان خرید از آن وجود ندارد.
+TARIFF_PLANS = {
+    "1": 3500,
+    "10": 35000,
+    "15": 52500,
+    "20": 70000,
+    "30": 105000,
+    "40": 140000,
+    "50": 175000,
+    "100": 350000,
+}
+
+SUPPORT_USERNAME = "ByHxnzo"
+SUPPORT_URL = "https://t.me/ByHxnzo"
+
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
@@ -834,6 +849,27 @@ async def send_buy_message(message):
     user_id = message.from_user.id
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "buy_title"), reply_markup=buy_keyboard(user_id))
+
+
+async def send_tariff_message(message):
+    lines = [
+        "💵 تعرفه اشتراک HanzuVPN",
+        "",
+        "📌 قیمت هر گیگ: ۳,۵۰۰ تومان",
+        "",
+    ]
+    for volume, price in TARIFF_PLANS.items():
+        lines.append(f"📦 {volume} گیگ | 💰 {price:,} تومان")
+    lines += [
+        "",
+        "♾ نامحدود | برای قیمت و تهیه سرویس نامحدود به پشتیبانی پیام دهید.",
+    ]
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👨🏻‍💻 پیام به پشتیبانی", url=SUPPORT_URL)],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+    ])
+    await message.reply_text("\n".join(lines), reply_markup=keyboard)
 
 
 async def show_buy_menu(query):
@@ -2053,7 +2089,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "💵 تعرفه اشتراک":
         clear_user_states(context)
-        await send_buy_message(update.message)
+        await send_tariff_message(update.message)
         return
 
     if text == "👨🏻‍💻 ارتباط با پشتیبانی":

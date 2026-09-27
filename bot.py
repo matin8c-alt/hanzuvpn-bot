@@ -51,8 +51,8 @@ TARIFF_PLANS = {
     "100": 350000,
 }
 
-SUPPORT_USERNAME = "ByHxnzo"
-SUPPORT_URL = "https://t.me/ByHxnzo"
+SUPPORT_USERNAME = "ByHxnzu"
+SUPPORT_URL = "https://t.me/ByHxnzu"
 
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
@@ -121,58 +121,35 @@ TEXTS = {
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
         "coupon_used": "⚠️ شما قبلاً از این کد استفاده کرده‌اید.",
         "coupon_valid": "✅ کد تخفیف معتبر است.\n\n🎟 کد: {code}\n💰 تخفیف: {percent}%\n\nحالا سرویس موردنظر را انتخاب کنید:",
-        "help": """📚 <b>آموزش کامل نصب و اتصال HanzuVPN</b>
+        "help": """📚 <b>راهنمای اتصال HanzuVPN</b>
 
-<b>🤖 اندروید</b>
-<b>پیشنهاد: Hiddify</b>
-• <a href="https://play.google.com/store/apps/details?id=app.hiddify.com">▶️ Google Play</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk">📦 دانلود مستقیم APK</a>
+<b>1️⃣ اندروید</b>
+• <a href="https://play.google.com/store/apps/details?id=app.hiddify.com">Hiddify از Google Play</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk">دانلود مستقیم Hiddify APK</a>
+• <a href="https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box">V2Box از Google Play</a>
+• <a href="https://github.com/2dust/v2rayNG/releases/latest">v2rayNG</a>
 
-<b>گزینه جایگزین: v2rayNG</b>
-• <a href="https://github.com/2dust/v2rayNG/releases/latest">⬇️ دانلود رسمی v2rayNG</a>
+<b>2️⃣ آیفون / iOS</b>
+• <a href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone">Hiddify از App Store</a>
+• <a href="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690">V2Box از App Store</a>
+• <a href="https://apps.apple.com/us/app/streisand/id6450534064">Streisand از App Store</a>
 
-<b>🍎 آیفون / iOS</b>
-<b>پیشنهاد: Hiddify</b>
-• <a href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone"> App Store</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa">📦 دانلود IPA</a>
+<b>3️⃣ ویندوز</b>
+• <a href="https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini">Hiddify از Microsoft Store</a>
+• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe">دانلود مستقیم Hiddify EXE</a>
+• <a href="https://github.com/2dust/v2rayN/releases/latest">v2rayN</a>
 
-<b>گزینه جایگزین: Streisand</b>
-• <a href="https://apps.apple.com/us/app/streisand/id6450534064"> App Store</a>
+<b>🔗 روش اتصال</b>
+1. از «📊 سرورهای من» لینک Subscription را کپی کن.
+2. یکی از برنامه‌های بالا را نصب و باز کن.
+3. گزینه <b>Import / Add Profile / Subscription</b> را بزن.
+4. لینک Subscription را Paste کن یا <b>Import from Clipboard</b> را بزن.
+5. <b>Update</b> را بزن.
+6. یک سرور انتخاب کن و <b>Connect</b> را بزن. ✅
 
-<b>🪟 ویندوز</b>
-<b>پیشنهاد: Hiddify</b>
-• <a href="https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini">🛍 Microsoft Store</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe">📦 دانلود مستقیم EXE</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.Msix">📦 دانلود MSIX رسمی</a>
+⚠️ <b>مهم:</b> لینک Subscription شخصی است؛ آن را برای دیگران ارسال نکن.
 
-<b>گزینه جایگزین: v2rayN</b>
-• <a href="https://github.com/2dust/v2rayN/releases/latest">⬇️ دانلود رسمی v2rayN</a>
-
-<b>🔗 آموزش اتصال — مرحله‌به‌مرحله</b>
-
-<b>1️⃣ دریافت لینک اشتراک</b>
-از «📊 سرورهای من» لینک Subscription را کپی کنید.
-
-<b>2️⃣ نصب برنامه</b>
-برنامه مناسب سیستم‌عامل خود را از لینک‌های بالا نصب کنید.
-
-<b>3️⃣ افزودن Subscription</b>
-داخل برنامه گزینه <b>Import / Add Profile / Subscription</b> را پیدا کنید.
-
-<b>4️⃣ وارد کردن لینک</b>
-گزینه <b>Import from URL</b> را بزنید و لینک را Paste کنید؛ یا اگر لینک را کپی کرده‌اید، <b>Import from Clipboard</b> را انتخاب کنید.
-
-<b>5️⃣ به‌روزرسانی</b>
-روی <b>Update</b> بزنید تا سرورها دریافت شوند.
-
-<b>6️⃣ اتصال</b>
-یکی از سرورها را انتخاب کنید و دکمه اتصال را روشن کنید. اگر اولین بار است، اجازه VPN را تأیید کنید.
-
-💡 <b>نکته:</b> لینک Subscription را با دیگران به اشتراک نگذارید؛ این لینک می‌تواند برای دسترسی به سرویس شما استفاده شود.
-
-🆘 اگر وصل نشد، اول Update را بزنید و سپس یک سرور دیگر را امتحان کنید.
-
-🔒 <i>لینک‌های بالا از صفحات رسمی پروژه‌ها، Google Play، App Store و Microsoft Store انتخاب شده‌اند.</i>""",
+❓ اگر وصل نشد، اول Update کن و یک سرور دیگر را امتحان کن.""",
         "payment_confirmed": "✅ پرداخت شما تأیید شد.\n\n🌐 HanzuVPN\n\n📦 حجم: {volume} گیگ\n⏳ مدت: 30 روز\n📅 انقضا: {expires}\n🧾 سفارش: #{order}\n\n🔗 لینک Subscription:\n\n{link}\n\n📌 لینک را در برنامه VPN خود وارد کنید.",
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
@@ -795,7 +772,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    await update.message.reply_text(t(lang, "help"), parse_mode="HTML", disable_web_page_preview=True)
+    await update.message.reply_text(
+        CONNECTION_MENU_TEXT.get(lang, CONNECTION_MENU_TEXT["fa"]),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=connection_menu_keyboard(lang),
+    )
 
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -815,6 +797,65 @@ async def set_bot_commands(application):
         BotCommand("help", "Help / راهنما"),
     ]
     await application.bot.set_my_commands(commands)
+
+
+# =========================================================
+# راهنمای اتصال — منوی جداگانه برای هر سیستم‌عامل
+# =========================================================
+
+CONNECTION_MENU_TEXT = {
+    "fa": "📚 <b>راهنمای اتصال HanzuVPN</b>\n\nسیستم‌عامل خودت را انتخاب کن:",
+    "ku": "📚 <b>ڕێنمایی بەستنی HanzuVPN</b>\n\nسیستەمی خۆت هەڵبژێرە:",
+    "en": "📚 <b>HanzuVPN Connection Guide</b>\n\nChoose your operating system:",
+}
+
+CONNECTION_BUTTONS = {
+    "fa": [
+        ("🤖 اندروید", "help_android"),
+        ("🍎 آیفون / iOS", "help_ios"),
+        ("🪟 ویندوز", "help_windows"),
+    ],
+    "ku": [
+        ("🤖 ئەندرۆید", "help_android"),
+        ("🍎 iPhone / iOS", "help_ios"),
+        ("🪟 Windows", "help_windows"),
+    ],
+    "en": [
+        ("🤖 Android", "help_android"),
+        ("🍎 iPhone / iOS", "help_ios"),
+        ("🪟 Windows", "help_windows"),
+    ],
+}
+
+CONNECTION_GUIDES = {
+    "fa": {
+        "help_android": """🤖 <b>آموزش اتصال — اندروید</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ نصب از Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 دانلود مستقیم APK</a>\n\n<b>گزینه جایگزین: V2Box</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ نصب V2Box از Google Play</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ برو به «📊 سرورهای من» و لینک Subscription را کپی کن.\n2️⃣ Hiddify یا V2Box را باز کن.\n3️⃣ گزینه Import / Add Profile / Subscription را بزن.\n4️⃣ لینک را Paste کن یا از Clipboard وارد کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription را برای کسی ارسال نکن.""",
+        "help_ios": """🍎 <b>آموزش اتصال — آیفون / iOS</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> نصب از App Store</a>\n\n<b>گزینه جایگزین: V2Box</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> نصب V2Box از App Store</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ از «📊 سرورهای من» لینک Subscription را کپی کن.\n2️⃣ Hiddify یا V2Box را باز کن.\n3️⃣ Add Profile / Subscription را انتخاب کن.\n4️⃣ لینک را Paste کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription شخصی است؛ آن را برای دیگران نفرست.""",
+        "help_windows": """🪟 <b>آموزش اتصال — ویندوز</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 نصب از Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 دانلود مستقیم EXE</a>\n\n<b>گزینه جایگزین: v2rayN</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ دانلود رسمی v2rayN</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ از «📊 سرورهای من» لینک Subscription را کپی کن.\n2️⃣ Hiddify یا v2rayN را نصب و باز کن.\n3️⃣ Import / Add Profile / Subscription را انتخاب کن.\n4️⃣ لینک را Paste کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription را برای دیگران ارسال نکن.""",
+    },
+    "ku": {
+        "help_android": """🤖 <b>ڕێنمایی بەستن — ئەندرۆید</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 APK</a>\n\n<b>V2Box:</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ Google Play</a>\n\n1️⃣ بەستەری Subscription لە «📊 سێرڤەرەکانم» کۆپی بکە.\n2️⃣ ئەپەکە بکەرەوە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
+        "help_ios": """🍎 <b>ڕێنمایی بەستن — iPhone / iOS</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> App Store</a>\n\n<b>V2Box:</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> App Store</a>\n\n1️⃣ بەستەری Subscription کۆپی بکە.\n2️⃣ ئەپەکە بکەرەوە.\n3️⃣ Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
+        "help_windows": """🪟 <b>ڕێنمایی بەستن — Windows</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 EXE</a>\n\n<b>v2rayN:</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ دانلود رسمی</a>\n\n1️⃣ بەستەری Subscription کۆپی بکە.\n2️⃣ Hiddify یان v2rayN دابەزێنە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
+    },
+    "en": {
+        "help_android": "🤖 <b>Android Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 Direct APK</a>\n\n<b>Alternative: V2Box</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ Google Play</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Open Hiddify or V2Box.\n3️⃣ Choose Import / Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
+        "help_ios": "🍎 <b>iPhone / iOS Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> App Store</a>\n\n<b>Alternative: V2Box</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> App Store</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Open Hiddify or V2Box.\n3️⃣ Choose Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
+        "help_windows": "🪟 <b>Windows Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 Direct EXE</a>\n\n<b>Alternative: v2rayN</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ Official download</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Install and open Hiddify or v2rayN.\n3️⃣ Choose Import / Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
+    },
+}
+
+def connection_menu_keyboard(lang):
+    rows = [[InlineKeyboardButton(label, callback_data=callback)] for label, callback in CONNECTION_BUTTONS.get(lang, CONNECTION_BUTTONS["fa"])]
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+    return InlineKeyboardMarkup(rows)
+
+def connection_guide_keyboard(lang):
+    rows = [[InlineKeyboardButton("🤖 Android" if lang == "en" else "🤖 اندروید" if lang == "fa" else "🤖 ئەندرۆید", callback_data="help_android")],
+            [InlineKeyboardButton("🍎 iPhone / iOS" if lang != "fa" else "🍎 آیفون / iOS", callback_data="help_ios")],
+            [InlineKeyboardButton("🪟 Windows" if lang == "en" else "🪟 ویندوز" if lang == "fa" else "🪟 Windows", callback_data="help_windows")],
+            [InlineKeyboardButton(t(lang, "back"), callback_data="help")]]
+    return InlineKeyboardMarkup(rows)
 
 
 # =========================================================
@@ -852,24 +893,34 @@ async def send_buy_message(message):
 
 
 async def send_tariff_message(message):
-    lines = [
-        "💵 تعرفه اشتراک HanzuVPN",
-        "",
-        "📌 قیمت هر گیگ: ۳,۵۰۰ تومان",
-        "",
-    ]
+    """نمایش تعرفه‌ها به‌صورت دکمه‌های شیشه‌ای؛ این دکمه‌ها فقط نمایشی هستند."""
+    keyboard = []
     for volume, price in TARIFF_PLANS.items():
-        lines.append(f"📦 {volume} گیگ | 💰 {price:,} تومان")
-    lines += [
-        "",
-        "♾ نامحدود | برای قیمت و تهیه سرویس نامحدود به پشتیبانی پیام دهید.",
-    ]
+        keyboard.append([
+            InlineKeyboardButton(
+                f"📦 {volume} گیگ  |  💰 {price:,} تومان",
+                callback_data=f"tariff_info_{volume}"
+            )
+        ])
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👨🏻‍💻 پیام به پشتیبانی", url=SUPPORT_URL)],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+    keyboard.append([
+        InlineKeyboardButton("♾ نامحدود | تماس با پشتیبانی", url=SUPPORT_URL)
     ])
-    await message.reply_text("\n".join(lines), reply_markup=keyboard)
+    keyboard.append([
+        InlineKeyboardButton("👨🏻‍💻 پیام مستقیم به پشتیبانی", url=SUPPORT_URL)
+    ])
+    keyboard.append([
+        InlineKeyboardButton("🔙 بازگشت", callback_data="home")
+    ])
+
+    await message.reply_text(
+        "💵 <b>تعرفه اشتراک HanzuVPN</b>\n\n"
+        "📌 مدت تمام سرویس‌ها: <b>۳۰ روز</b>\n"
+        "📌 قیمت هر گیگ: <b>۳,۵۰۰ تومان</b>\n\n"
+        "👇 حجم موردنظر را فقط برای مشاهده قیمت انتخاب کنید:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def show_buy_menu(query):
@@ -1737,16 +1788,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # آموزش و نحوه اتصال
     if data == "help":
         await query.edit_message_text(
-            t(lang, "help"),
+            CONNECTION_MENU_TEXT.get(lang, CONNECTION_MENU_TEXT["fa"]),
             parse_mode="HTML",
             disable_web_page_preview=True,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")]
-            ])
+            reply_markup=connection_menu_keyboard(lang),
         )
         return
 
+    if data in ("help_android", "help_ios", "help_windows"):
+        guide = CONNECTION_GUIDES.get(lang, CONNECTION_GUIDES["fa"]).get(data)
+        if guide:
+            await query.edit_message_text(
+                guide,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=connection_guide_keyboard(lang),
+            )
+        return
+
     # پشتیبانی
+    if data.startswith("tariff_info_"):
+        await query.answer("ℹ️ این دکمه فقط برای نمایش تعرفه است؛ برای خرید از «🛍 خرید اشتراک» استفاده کنید.", show_alert=True)
+        return
+
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "create_ticket"), callback_data="new_ticket")],

@@ -2367,7 +2367,19 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _send(self, status, obj):
         data=_json_bytes(obj); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Access-Control-Allow-Origin","*"); self.send_header("Access-Control-Allow-Headers","Content-Type, X-Telegram-Init-Data"); self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_OPTIONS(self): self._send(200,{"ok":True})
-    def _user(self): return _api_user(self.headers.get("X-Telegram-Init-Data", ""))
+    def _user(self):
+        init_data = self.headers.get("X-Telegram-Init-Data", "")
+        if not init_data:
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("tma "):
+                init_data = auth[4:]
+        if not init_data:
+            try:
+                from urllib.parse import urlparse, parse_qs
+                init_data = parse_qs(urlparse(self.path).query).get("initData", [""])[0]
+            except Exception:
+                init_data = ""
+        return _api_user(init_data)
     def do_GET(self):
         if self.path=="/health": return self._send(200,{"ok":True})
         u=self._user()

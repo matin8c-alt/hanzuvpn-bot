@@ -916,11 +916,55 @@ def approve_order(order_id):
 
         # اگر شارژ کیف پول باشد
         if order["is_charge"]:
-            change_balance(order["user_id"], order["price"], "charge", f"شارژ کیف پول - سفارش #{order_id}", order_id)
-            conn.execute("UPDATE orders SET status = 'approved', approved_at = ? WHERE id = ? AND status = 'pending'",
-                         (now_text(), order_id))
+            # افزایش موجودی با همان اتصال دیتابیسِ همین تراکنش.
+            # این کار جلوی خطای SQLite "database is locked" را می‌گیرد.
+            # قبلاً change_balance یک اتصال دوم باز می‌کرد و ممکن بود
+            # موجودی افزایش پیدا نکند ولی سفارش تأیید شود.
+
+            cursor = conn.execute(
+                """
+                UPDATE users
+                SET balance = COALESCE(balance, 0) + ?
+                WHERE user_id = ?
+                """,
+                (order["price"], order["user_id"])
+            )
+
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                return {"status": "user_not_found", "order": order}
+
+            conn.execute(
+                """
+                INSERT INTO wallet_transactions
+                (user_id, amount, type, description, order_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order["user_id"],
+                    order["price"],
+                    "charge",
+                    f"شارژ کیف پول - سفارش #{order_id}",
+                    order_id,
+                    now_text()
+                )
+            )
+
+            conn.execute(
+                """
+                UPDATE orders
+                SET status = 'approved', approved_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (now_text(), order_id)
+            )
+
             conn.commit()
-            return {"status": "charge_approved", "order": order}
+
+            return {
+                "status": "charge_approved",
+                "order": order
+            }
 
         subscription = conn.execute("SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1", (order["volume"],)).fetchone()
         if not subscription:
@@ -1213,78 +1257,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_user(user)
     data = query.data
 
+    # زبان کاربر را قبل از پردازش callback مشخص می‌کنیم
+    lang = get_user_language(user_id) or "fa"
+    if user_id == ADMIN_ID:
+        lang = "fa"
+
+    # تغییر زبان
+    if data.startswith("lang_"):
+        language = data.split("_", 1)[1]
+        if language not in LANGUAGES:
+            await query.answer("زبان نامعتبر است.", show_alert=True)
+            return
+        set_user_language(user_id, language)
+        clear_user_states(context)
+        await query.edit_message_text(
+            t(language, "language_changed") + "\\n\\n" + t(language, "welcome"),
+            reply_markup=home_keyboard(user_id)
+        )
+        return
+
     # زبان
     if data == "language":
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
 
-    if data.startswith("paid_"):
-        parts = data.split("_")
-        if len(parts) < 2:
-            return
-        volume = parts[1]
 
-        # ---------- شارژ کیف پول ----------
-        if volume == "CHARGE":
-            order_id = context.user_data.get("last_order_id")
-            if not order_id:
-                await query.answer("سفارش پیدا نشد. دوباره شارژ کنید.", show_alert=True)
-                return
-
-            amount = context.user_data.get("charge_amount", 0)
-            await query.edit_message_text(
-                t(lang, "charge_created", order=order_id, amount=amount)
-            )
-            return
-        # ------------------------------------
-
-        if volume in PLANS:
-            base_price = PLANS[volume]
-        else:
-            custom_volume = context.user_data.get("custom_volume")
-            custom_price = context.user_data.get("custom_price")
-            if not custom_volume or str(custom_volume) != str(volume):
-                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
-                return
-            base_price = custom_price
-
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                coupon_code = None
-                context.user_data.pop("coupon_code", None)
-
-        order_id = create_order(user, volume, price, coupon_code)
-        context.user_data.pop("coupon_code", None)
-        context.user_data.pop("custom_volume", None)
-        context.user_data.pop("custom_price", None)
-        context.user_data["last_order_id"] = order_id
-
-        await query.edit_message_text(
-            t(lang, "order_created", order=order_id, volume=volume, price=price)
-        )
-        return
-        language = data.split("_", 1)[1]
-        if language not in LANGUAGES:
-            return
-        set_user_language(user_id, language)
-        clear_user_states(context)
-        await query.edit_message_text(
-            t(language, "language_changed") + "\n\n" + t(language, "welcome"),
-            reply_markup=home_keyboard(user_id)
-        )
-        return
-
-    lang = get_user_language(user_id)
-    if not lang and user_id != ADMIN_ID:
+    if not get_user_language(user_id) and user_id != ADMIN_ID:
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
-    if user_id == ADMIN_ID:
-        lang = "fa"
 
     # خانه
     if data == "home":
@@ -1358,96 +1358,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =====================================================
     if data.startswith("paid_"):
         parts = data.split("_")
-        if len(parts) < 2:
-            await query.answer("داده نامعتبر", show_alert=True)
-            return
-
-        volume = parts[1]
-
-        # ---------- حالت شارژ کیف پول ----------
-        if volume == "CHARGE":
-            order_id = context.user_data.get("last_order_id")
-            amount = context.user_data.get("charge_amount")
-
-            if not order_id or not amount:
-                await query.answer("سفارش شارژ پیدا نشد. دوباره تلاش کنید.", show_alert=True)
-                return
-
-            await query.edit_message_text(
-                t(lang, "charge_created", order=order_id, amount=amount)
-            )
-            return
-
-        # ---------- حالت خرید سرویس ----------
-        if volume in PLANS:
-            base_price = PLANS[volume]
-        else:
-            # حجم دلخواه
-            custom_volume = context.user_data.get("custom_volume")
-            custom_price = context.user_data.get("custom_price")
-
-            if not custom_volume or str(custom_volume) != str(volume):
-                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
-                return
-
-            base_price = custom_price
-
-        # اعمال کوپن (اگر وجود داشته باشد)
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                coupon_code = None
-                context.user_data.pop("coupon_code", None)
-
-        # ساخت سفارش
-        order_id = create_order(user, volume, price, coupon_code)
-
-        # پاک کردن stateها
-        context.user_data.pop("coupon_code", None)
-        context.user_data.pop("custom_volume", None)
-        context.user_data.pop("custom_price", None)
-        context.user_data["last_order_id"] = order_id
-
-        await query.edit_message_text(
-            t(lang, "order_created", order=order_id, volume=volume, price=price)
-        )
-        return
-        if len(parts) < 2:
-            return
-        volume = parts[1]
-        if volume in PLANS:
-            base_price = PLANS[volume]
-        else:
-            custom_volume = context.user_data.get("custom_volume")
-            custom_price = context.user_data.get("custom_price")
-            if not custom_volume or str(custom_volume) != str(volume):
-                await query.answer("سفارش نامعتبر است.", show_alert=True)
-                return
-            base_price = custom_price
-
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                coupon_code = None
-                context.user_data.pop("coupon_code", None)
-
-        order_id = create_order(user, volume, price, coupon_code)
-        context.user_data.pop("coupon_code", None)
-        context.user_data.pop("custom_volume", None)
-        context.user_data.pop("custom_price", None)
-        context.user_data["last_order_id"] = order_id
-
-        await query.edit_message_text(t(lang, "order_created", order=order_id, volume=volume, price=price))
-        return
 
     # پرداخت از کیف پول
     if data.startswith("walletpay_"):

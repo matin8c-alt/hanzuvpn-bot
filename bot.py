@@ -16,6 +16,8 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     BotCommand,
+    MenuButtonWebApp,
+    WebAppInfo,
 )
 from telegram.ext import (
     Application,
@@ -2367,19 +2369,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _send(self, status, obj):
         data=_json_bytes(obj); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Access-Control-Allow-Origin","*"); self.send_header("Access-Control-Allow-Headers","Content-Type, X-Telegram-Init-Data"); self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_OPTIONS(self): self._send(200,{"ok":True})
-    def _user(self):
-        init_data = self.headers.get("X-Telegram-Init-Data", "")
-        if not init_data:
-            auth = self.headers.get("Authorization", "")
-            if auth.startswith("tma "):
-                init_data = auth[4:]
-        if not init_data:
-            try:
-                from urllib.parse import urlparse, parse_qs
-                init_data = parse_qs(urlparse(self.path).query).get("initData", [""])[0]
-            except Exception:
-                init_data = ""
-        return _api_user(init_data)
+    def _user(self): return _api_user(self.headers.get("X-Telegram-Init-Data", ""))
     def do_GET(self):
         if self.path=="/health": return self._send(200,{"ok":True})
         u=self._user()
@@ -2447,6 +2437,14 @@ def start_miniapp_api():
 
 async def post_init(application):
     await set_bot_commands(application)
+    # Always point Telegram's main Mini App button to the current HanzuVPN app.
+    # The version query also prevents Telegram clients from reusing an older cached app.
+    await application.bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(
+            text="🛒 HanzuVPN",
+            web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260927-2"),
+        )
+    )
     asyncio.create_task(expiration_checker(application))
 
 

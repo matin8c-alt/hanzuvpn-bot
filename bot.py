@@ -15,6 +15,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
@@ -574,6 +576,32 @@ def get_wallet_history(user_id, limit=15):
 # منوی اصلی
 # =========================================================
 
+def bottom_keyboard(user_id):
+    lang = get_user_language(user_id) or "fa"
+    if lang == "en":
+        rows = [
+            ["🏠 Home", "🛒 Buy Service"],
+            ["📦 My Services", "💰 Wallet"],
+            ["🎁 Free Trial", "🎫 Support"],
+            ["🌐 Change Language"],
+        ]
+    elif lang == "ku":
+        rows = [
+            ["🏠 سەرەکی", "🛒 کڕینی خزمەتگوزاری"],
+            ["📦 خزمەتگوزارییەکانم", "💰 جزدان"],
+            ["🎁 تاقیکردنەوەی بەخۆڕایی", "🎫 پشتگیری"],
+            ["🌐 گۆڕینی زمان"],
+        ]
+    else:
+        rows = [
+            ["🏠 خانه", "🛒 خرید سرویس"],
+            ["📦 سرویس‌های من", "💰 کیف پول"],
+            ["🎁 تست رایگان", "🎫 پشتیبانی"],
+            ["🌐 تغییر زبان"],
+        ]
+    return ReplyKeyboardMarkup([[KeyboardButton(x) for x in row] for row in rows], resize_keyboard=True)
+
+
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
@@ -604,6 +632,7 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    await message.reply_text("منوی پایین:", reply_markup=bottom_keyboard(user_id))
 
 
 # =========================================================
@@ -1920,6 +1949,39 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not lang:
         await show_language_selector_message(update.message)
+        return
+
+    # دکمه‌های کیبورد پایین ربات
+    bottom_actions = {
+        "🏠 خانه": "home", "🏠 Home": "home", "🏠 سەرەکی": "home",
+        "🛒 خرید سرویس": "buy", "🛒 Buy Service": "buy", "🛒 کڕینی خزمەتگوزاری": "buy",
+        "📦 سرویس‌های من": "my_services", "📦 My Services": "my_services", "📦 خزمەتگوزارییەکانم": "my_services",
+        "💰 کیف پول": "wallet", "💰 Wallet": "wallet", "💰 جزدان": "wallet",
+        "🎁 تست رایگان": "trial", "🎁 Free Trial": "trial", "🎁 تاقیکردنەوەی بەخۆڕایی": "trial",
+        "🎫 پشتیبانی": "support", "🎫 Support": "support", "🎫 پشتگیری": "support",
+        "🌐 تغییر زبان": "language", "🌐 Change Language": "language", "🌐 گۆڕینی زمان": "language",
+    }
+    action = bottom_actions.get(text)
+    if action:
+        if action == "home":
+            clear_user_states(context)
+            await send_home(update.message, user.id)
+        elif action == "buy":
+            await buy_command(update, context)
+        elif action == "my_services":
+            await services_command(update, context)
+        elif action == "wallet":
+            await update.message.reply_text(t(lang, "wallet_title"), reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge")],
+                [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
+                [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
+            ]))
+        elif action == "trial":
+            await trial_command(update, context)
+        elif action == "support":
+            await support_command(update, context)
+        elif action == "language":
+            await language_command(update, context)
         return
 
     # شارژ کیف پول - دریافت مبلغ

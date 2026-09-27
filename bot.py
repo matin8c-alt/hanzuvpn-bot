@@ -1352,12 +1352,90 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_payment(query, volume, price, original_price, coupon_code)
         return
 
-    # پرداخت عادی
-   # =====================================================
-    # پرداخت (خرید سرویس + شارژ کیف پول)
-    # =====================================================
+    # پرداخت عادی / ثبت سفارش
     if data.startswith("paid_"):
-        parts = data.split("_")
+        parts = data.split("_", 1)
+        if len(parts) != 2 or not parts[1]:
+            await query.answer("داده پرداخت نامعتبر است.", show_alert=True)
+            return
+
+        volume = parts[1]
+
+        # شارژ کیف پول: سفارش از قبل هنگام وارد کردن مبلغ ساخته شده است.
+        if volume == "CHARGE":
+            order_id = context.user_data.get("last_order_id")
+            amount = context.user_data.get("charge_amount")
+
+            if not order_id or not amount:
+                order = get_latest_pending_order(user_id)
+                if order and order["is_charge"]:
+                    order_id = order["id"]
+                    amount = order["price"]
+                    context.user_data["last_order_id"] = order_id
+                    context.user_data["charge_amount"] = amount
+
+            if not order_id or not amount:
+                await query.answer(
+                    "سفارش شارژ پیدا نشد. دوباره از کیف پول شروع کنید.",
+                    show_alert=True
+                )
+                return
+
+            await query.edit_message_text(
+                t(lang, "charge_created", order=order_id, amount=amount)
+            )
+            return
+
+        # خرید سرویس عادی
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+
+            if not custom_volume or str(custom_volume) != str(volume) or not custom_price:
+                await query.answer(
+                    "سفارش نامعتبر است. دوباره سرویس را انتخاب کنید.",
+                    show_alert=True
+                )
+                return
+
+            base_price = int(custom_price)
+
+        coupon_code = context.user_data.get("coupon_code")
+        price = int(base_price)
+
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, price)
+            if result["status"] == "success":
+                price = int(result["price"])
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+
+        order_id = create_order(
+            user,
+            volume,
+            price,
+            coupon_code=coupon_code,
+            is_charge=0
+        )
+
+        context.user_data.pop("coupon_code", None)
+        context.user_data.pop("custom_volume", None)
+        context.user_data.pop("custom_price", None)
+        context.user_data["last_order_id"] = order_id
+
+        await query.edit_message_text(
+            t(
+                lang,
+                "order_created",
+                order=order_id,
+                volume=volume,
+                price=price
+            )
+        )
+        return
 
     # پرداخت از کیف پول
     if data.startswith("walletpay_"):

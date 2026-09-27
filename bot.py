@@ -620,6 +620,10 @@ def home_keyboard(user_id):
         ],
     ]
 
+    # فقط روی اکانت مالک/ادمین، دکمه مدیریت نمایش داده شود.
+    if user_id == ADMIN_ID:
+        keyboard.append([KeyboardButton("⚙️ پنل مدیریت")])
+
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
@@ -1305,6 +1309,33 @@ def get_stats():
 # =========================================================
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
+
+async def send_admin_menu(message, context=None):
+    user_id = message.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    keyboard = [
+        [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
+        [InlineKeyboardButton("🎁 مدیریت تست", callback_data="admin_trial")],
+        [
+            InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"),
+            InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete")
+        ],
+        [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon")],
+        [InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
+        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+        [
+            InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
+            InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
+        ],
+        [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+    ]
+    await message.reply_text(
+        "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 async def show_admin(query):
     keyboard = [
@@ -2164,6 +2195,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📚 آموزش و نحوه اتصال":
         clear_user_states(context)
         await help_command(update, context)
+        return
+
+    if text == "⚙️ پنل مدیریت" and user.id == ADMIN_ID:
+        clear_user_states(context)
+        await send_admin_menu(update.message, context)
         return
 
     # شارژ کیف پول - دریافت مبلغ

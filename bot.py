@@ -4006,8 +4006,31 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 coupon=coupon_code
             )
 
+        # نمایش اطلاعات پرداخت کامل (همراه شماره کارت)
+        payment_text = t(
+            lang,
+            "payment",
+            volume=volume,
+            price=final_price
+        )
+
+        if original_price != final_price and coupon_code:
+            payment_text += t(
+                lang,
+                "original_price",
+                original=original_price,
+                coupon=coupon_code
+            )
+
+        payment_text += t(
+            lang,
+            "card",
+            card=CARD_NUMBER
+        )
+
         await update.message.reply_text(
-            caption,
+            payment_text,
+            parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(

@@ -2325,29 +2325,86 @@ def _json_bytes(obj):
 
 
 def _api_purchase_wallet(user, volume, price):
-    conn = get_db()
+    # خرید کیف پول کاملاً اتمیک است: یا همه مراحل انجام می‌شوند یا هیچ‌کدام.
+    # volume به شکل عددی نرمال می‌شود تا موجودی‌هایی مثل «10»، «10GB» یا «10 گیگ»
+    # هم قابل تطبیق باشند.
     try:
-        conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,)).fetchone()
-        balance = int(row["balance"] or 0) if row else 0
-        if balance < price:
-            conn.rollback(); return {"status":"insufficient_balance", "balance":balance}
-        sub = conn.execute("SELECT id, link FROM subscriptions WHERE CAST(volume AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1", (int(volume),)).fetchone()
-        if not sub:
-            conn.rollback(); return {"status":"no_stock", "balance":balance}
-        now = datetime.now(); expires = now + timedelta(days=SERVICE_DAYS)
-        conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, user.id))
-        cur = conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-                           (user.id, -price, "purchase", f"خرید سرویس {volume} گیگ", now_text()))
-        order_id = conn.execute("INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, subscription_id, approved_at, expires_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, 0, ?, ?, ?)",
-                                (user.id, user.username or "", user.first_name or "", str(volume), price, now_text(), sub["id"], now.strftime("%Y-%m-%d %H:%M:%S"), expires.strftime("%Y-%m-%d %H:%M:%S"))).lastrowid
-        conn.execute("UPDATE wallet_transactions SET order_id = ? WHERE id = ?", (order_id, cur.lastrowid))
-        conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ?", (sub["id"],))
-        conn.commit()
-        return {"status":"approved", "order_id":order_id, "volume":str(volume), "price":price, "balance":balance-price, "link":sub["link"], "expires_at":expires.strftime("%Y-%m-%d %H:%M:%S")}
-    except Exception as e:
-        conn.rollback(); return {"status":"error", "error":str(e)}
-    finally: conn.close()
+        normalized_volume = str(int(float(str(volume).strip().lower().replace("gb", "").replace("گیگ", "").strip())))
+    except Exception:
+        return {"status":"invalid_volume"}
+
+    for attempt in range(3):
+        conn = get_db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,)).fetchone()
+            if not row:
+                conn.rollback()
+                return {"status":"error", "error":"user_not_found"}
+            balance = int(row["balance"] or 0)
+            if balance < price:
+                conn.rollback()
+                return {"status":"insufficient_balance", "balance":balance}
+
+            # تطبیق عددی حجم، مستقل از فرمت ذخیره‌شده در subscriptions.volume
+            sub = conn.execute(
+                "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
+                (int(normalized_volume),)
+            ).fetchone()
+            if not sub:
+                conn.rollback()
+                return {"status":"no_stock", "balance":balance, "volume":normalized_volume}
+
+            now = datetime.now()
+            expires = now + timedelta(days=SERVICE_DAYS)
+
+            # کم‌کردن موجودی فقط داخل همان تراکنش
+            cur_balance = conn.execute(
+                "UPDATE users SET balance = balance - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
+                (price, user.id, price)
+            )
+            if cur_balance.rowcount != 1:
+                conn.rollback()
+                return {"status":"insufficient_balance", "balance":balance}
+
+            tx = conn.execute(
+                "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+                (user.id, -price, "purchase", f"خرید سرویس {normalized_volume} گیگ", now_text())
+            )
+            order_id = conn.execute(
+                "INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, subscription_id, approved_at, expires_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, 0, ?, ?, ?)",
+                (user.id, user.username or "", user.first_name or "", normalized_volume, price, now_text(), sub["id"], now.strftime("%Y-%m-%d %H:%M:%S"), expires.strftime("%Y-%m-%d %H:%M:%S"))
+            ).lastrowid
+            conn.execute("UPDATE wallet_transactions SET order_id = ? WHERE id = ?", (order_id, tx.lastrowid))
+            used = conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (sub["id"],))
+            if used.rowcount != 1:
+                raise RuntimeError("subscription_race")
+
+            conn.commit()
+            return {
+                "status":"approved",
+                "order_id":order_id,
+                "volume":normalized_volume,
+                "price":price,
+                "balance":balance-price,
+                "link":sub["link"],
+                "expires_at":expires.strftime("%Y-%m-%d %H:%M:%S")
+            }
+        except sqlite3.OperationalError as e:
+            try: conn.rollback()
+            except Exception: pass
+            if "locked" in str(e).lower() and attempt < 2:
+                import time
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            return {"status":"error", "error":str(e)}
+        except Exception as e:
+            try: conn.rollback()
+            except Exception: pass
+            return {"status":"error", "error":str(e)}
+        finally:
+            conn.close()
+    return {"status":"error", "error":"purchase_retry_exhausted"}
 
 
 def _telegram_send_photo_base64(user_id, volume, price, image_b64, order_id):

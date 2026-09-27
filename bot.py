@@ -2,10 +2,10 @@ import os
 import sqlite3
 import asyncio
 import json
-import hmac
+import base64
 import hashlib
+import hmac
 import threading
-import time
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,10 +15,7 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
     BotCommand,
-    WebAppInfo,
 )
 from telegram.ext import (
     Application,
@@ -34,7 +31,7 @@ from telegram.ext import (
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 5229224517
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 
@@ -48,27 +45,13 @@ PLANS = {
     "50": 175000,
 }
 
-# تعرفه نمایشی — این لیست فقط برای نمایش قیمت است و امکان خرید از آن وجود ندارد.
-TARIFF_PLANS = {
-    "1": 3500,
-    "10": 35000,
-    "15": 52500,
-    "20": 70000,
-    "30": 105000,
-    "40": 140000,
-    "50": 175000,
-    "100": 350000,
-}
-
-SUPPORT_USERNAME = "ByHxnzu"
-SUPPORT_URL = "https://t.me/ByHxnzu"
-MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
-API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
-
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
+TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
+MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
 
 # =========================================================
@@ -133,35 +116,7 @@ TEXTS = {
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
         "coupon_used": "⚠️ شما قبلاً از این کد استفاده کرده‌اید.",
         "coupon_valid": "✅ کد تخفیف معتبر است.\n\n🎟 کد: {code}\n💰 تخفیف: {percent}%\n\nحالا سرویس موردنظر را انتخاب کنید:",
-        "help": """📚 <b>راهنمای اتصال HanzuVPN</b>
-
-<b>1️⃣ اندروید</b>
-• <a href="https://play.google.com/store/apps/details?id=app.hiddify.com">Hiddify از Google Play</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk">دانلود مستقیم Hiddify APK</a>
-• <a href="https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box">V2Box از Google Play</a>
-• <a href="https://github.com/2dust/v2rayNG/releases/latest">v2rayNG</a>
-
-<b>2️⃣ آیفون / iOS</b>
-• <a href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone">Hiddify از App Store</a>
-• <a href="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690">V2Box از App Store</a>
-• <a href="https://apps.apple.com/us/app/streisand/id6450534064">Streisand از App Store</a>
-
-<b>3️⃣ ویندوز</b>
-• <a href="https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini">Hiddify از Microsoft Store</a>
-• <a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe">دانلود مستقیم Hiddify EXE</a>
-• <a href="https://github.com/2dust/v2rayN/releases/latest">v2rayN</a>
-
-<b>🔗 روش اتصال</b>
-1. از «📊 سرورهای من» لینک Subscription را کپی کن.
-2. یکی از برنامه‌های بالا را نصب و باز کن.
-3. گزینه <b>Import / Add Profile / Subscription</b> را بزن.
-4. لینک Subscription را Paste کن یا <b>Import from Clipboard</b> را بزن.
-5. <b>Update</b> را بزن.
-6. یک سرور انتخاب کن و <b>Connect</b> را بزن. ✅
-
-⚠️ <b>مهم:</b> لینک Subscription شخصی است؛ آن را برای دیگران ارسال نکن.
-
-❓ اگر وصل نشد، اول Update کن و یک سرور دیگر را امتحان کن.""",
+        "help": "📚 راهنمای HanzuVPN\n\n/start - منوی اصلی\n/buy - خرید سرویس\n/services - سرویس‌های من\n/trial - تست رایگان\n/support - پشتیبانی\n/help - راهنما",
         "payment_confirmed": "✅ پرداخت شما تأیید شد.\n\n🌐 HanzuVPN\n\n📦 حجم: {volume} گیگ\n⏳ مدت: 30 روز\n📅 انقضا: {expires}\n🧾 سفارش: #{order}\n\n🔗 لینک Subscription:\n\n{link}\n\n📌 لینک را در برنامه VPN خود وارد کنید.",
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
@@ -231,7 +186,7 @@ TEXTS = {
         "coupon_invalid": "❌ کۆد نادروستە.",
         "coupon_used": "⚠️ پێشتر بەکارت هێناوە.",
         "coupon_valid": "✅ کۆد دروستە.\n\n🎟 {code}\n💰 {percent}%",
-        "help": "📚 ڕێنمایی تەواوی HanzuVPN\n\n🤖 <b>Android</b>\n• Google Play ـی Hiddify: https://play.google.com/store/apps/details?id=app.hiddify.com\n• APK ـی ڕاستەوخۆ: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\n• v2rayNG: https://github.com/2dust/v2rayNG/releases/latest\n\n🍎 <b>iPhone / iOS</b>\n• App Store ـی Hiddify: https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\n• IPA: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa\n• Streisand: https://apps.apple.com/us/app/streisand/id6450534064\n\n🪟 <b>Windows</b>\n• Microsoft Store: https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\n• EXE: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\n• v2rayN: https://github.com/2dust/v2rayN/releases/latest\n\n🔗 <b>ڕێگای زیادکردنی کانفیگ</b>\n1️⃣ بەستەری Subscription لە «📊 سێرڤەرەکانم» کۆپی بکە.\n2️⃣ ئەپەکەی گونجاو دابەزێنە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ لینکەکە لە Import from URL یان Clipboard زیاد بکە.\n5️⃣ Update بکە، پاشان سێرڤەرێک هەڵبژێرە و Connect بکە.\n\n💡 بەستەری Subscription لەگەڵ کەسی تر هاوبەش مەکە.\n\n/start - سەرەکی\n/buy - کڕین\n/services - خزمەتگوزارییەکان\n/trial - تاقیکردنەوە\n/support - پشتگیری",
+        "help": "📚 ڕێنمایی\n\n/start - سەرەکی\n/buy - کڕین\n/services - خزمەتگوزارییەکان\n/trial - تاقیکردنەوە\n/support - پشتگیری",
         "payment_confirmed": "✅ پارەدان پشتڕاست کرایەوە.\n\n📦 {volume} گیگ\n📅 {expires}\n🧾 #{order}\n\n🔗 {link}",
         "payment_rejected": "❌ پارەدان ڕەتکرایەوە.\n\n🧾 #{order}",
         "reminder_3": "⚠️ خزمەتگوزاری #{order} نزیکەی 3 ڕۆژی تر بەسەر دەچێت.",
@@ -301,7 +256,7 @@ TEXTS = {
         "coupon_invalid": "❌ Invalid coupon.",
         "coupon_used": "⚠️ You have already used this coupon.",
         "coupon_valid": "✅ Coupon valid.\n\n🎟 {code}\n💰 {percent}%",
-        "help": "📚 HanzuVPN Complete Connection Guide\n\n🤖 <b>Android</b>\n• Hiddify Google Play: https://play.google.com/store/apps/details?id=app.hiddify.com\n• Direct APK: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\n• v2rayNG: https://github.com/2dust/v2rayNG/releases/latest\n\n🍎 <b>iPhone / iOS</b>\n• Hiddify App Store: https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\n• Direct IPA: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-iOS.ipa\n• Streisand App Store: https://apps.apple.com/us/app/streisand/id6450534064\n\n🪟 <b>Windows</b>\n• Hiddify Microsoft Store: https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\n• Direct EXE: https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\n• v2rayN: https://github.com/2dust/v2rayN/releases/latest\n\n🔗 <b>Step-by-step: Add your configuration</b>\n1️⃣ Copy your Subscription link from «📊 My Servers».\n2️⃣ Install the app for your operating system.\n3️⃣ Open Import / Add Profile / Subscription.\n4️⃣ Choose Import from URL and paste the link, or use Import from Clipboard.\n5️⃣ Tap Update, select a server, then enable Connect.\n\n💡 Do not share your Subscription link with others.\n\n/start - Main menu\n/buy - Buy\n/services - My services\n/trial - Trial\n/support - Support",
+        "help": "📚 Help\n\n/start - Main menu\n/buy - Buy\n/services - My services\n/trial - Trial\n/support - Support",
         "payment_confirmed": "✅ Payment approved.\n\n📦 {volume} GB\n📅 {expires}\n🧾 #{order}\n\n🔗 {link}",
         "payment_rejected": "❌ Payment rejected.\n\n🧾 #{order}",
         "reminder_3": "⚠️ Service #{order} expires in about 3 days.",
@@ -613,87 +568,35 @@ def get_wallet_history(user_id, limit=15):
 # =========================================================
 
 def home_keyboard(user_id):
-    # منوی اصلی پایین صفحه (Reply Keyboard)؛ مشابه دکمه‌های پایین تلگرام
+    lang = get_user_language(user_id) or "fa"
     keyboard = [
+        [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
+        [InlineKeyboardButton(t(lang, "trial"), callback_data="trial")],
         [
-            KeyboardButton("🚀 ورود به HanzuVPN", web_app=WebAppInfo(url=MINI_APP_URL)),
+            InlineKeyboardButton(t(lang, "services"), callback_data="my_services"),
+            InlineKeyboardButton(t(lang, "renew"), callback_data="renew"),
         ],
         [
-            KeyboardButton("🛍 خرید اشتراک"),
-            KeyboardButton("♻️ تمدید سرویس"),
+            InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon"),
+            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
         ],
-        [
-            KeyboardButton("📊 سرورهای من"),
-            KeyboardButton("💰 کیف پول + شارژ"),
-        ],
-        [
-            KeyboardButton("💵 تعرفه اشتراک"),
-        ],
-        [
-            KeyboardButton("👨🏻‍💻 ارتباط با پشتیبانی"),
-            KeyboardButton("📚 آموزش و نحوه اتصال"),
-        ],
+        [InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet")],
+        [InlineKeyboardButton(t(lang, "support"), callback_data="support")],
+        [InlineKeyboardButton(t(lang, "language"), callback_data="language")],
     ]
-
-    # فقط روی اکانت مالک/ادمین، دکمه مدیریت نمایش داده شود.
     if user_id == ADMIN_ID:
-        keyboard.append([KeyboardButton("⚙️ پنل مدیریت")])
-
-    return ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-        one_time_keyboard=False,
-        is_persistent=True,
-    )
+        keyboard.append([InlineKeyboardButton(t("fa", "admin"), callback_data="admin")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 async def show_home(query, user_id):
     lang = get_user_language(user_id) or "fa"
-    try:
-        await query.edit_message_text(t(lang, "welcome"))
-    except Exception:
-        pass
-
-    # Reply Keyboard را نمی‌توان روی همان callback message قرار داد؛
-    # بنابراین منوی اصلی را به‌صورت یک پیام جدید پایین صفحه نمایش می‌دهیم.
-    await query.message.reply_text(
-        t(lang, "welcome"),
-        reply_markup=home_keyboard(user_id)
-    )
+    await query.edit_message_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
 
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(
-        t(lang, "welcome"),
-        reply_markup=home_keyboard(user_id)
-    )
-
-
-async def send_renew_menu(message, user_id):
-    lang = get_user_language(user_id) or "fa"
-    rows = get_user_services(user_id)
-
-    if not rows:
-        await message.reply_text(
-            t(lang, "renew_no_services"),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")]
-            ])
-        )
-        return
-
-    keyboard = []
-    for row in rows[:10]:
-        label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
-        keyboard.append([
-            InlineKeyboardButton(label, callback_data=f"renew_{row['id']}")
-        ])
-
-    await message.reply_text(
-        t(lang, "renew_choose"),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
 
 
 # =========================================================
@@ -791,12 +694,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    await update.message.reply_text(
-        CONNECTION_MENU_TEXT.get(lang, CONNECTION_MENU_TEXT["fa"]),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=connection_menu_keyboard(lang),
-    )
+    await update.message.reply_text(t(lang, "help"))
 
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -816,65 +714,6 @@ async def set_bot_commands(application):
         BotCommand("help", "Help / راهنما"),
     ]
     await application.bot.set_my_commands(commands)
-
-
-# =========================================================
-# راهنمای اتصال — منوی جداگانه برای هر سیستم‌عامل
-# =========================================================
-
-CONNECTION_MENU_TEXT = {
-    "fa": "📚 <b>راهنمای اتصال HanzuVPN</b>\n\nسیستم‌عامل خودت را انتخاب کن:",
-    "ku": "📚 <b>ڕێنمایی بەستنی HanzuVPN</b>\n\nسیستەمی خۆت هەڵبژێرە:",
-    "en": "📚 <b>HanzuVPN Connection Guide</b>\n\nChoose your operating system:",
-}
-
-CONNECTION_BUTTONS = {
-    "fa": [
-        ("🤖 اندروید", "help_android"),
-        ("🍎 آیفون / iOS", "help_ios"),
-        ("🪟 ویندوز", "help_windows"),
-    ],
-    "ku": [
-        ("🤖 ئەندرۆید", "help_android"),
-        ("🍎 iPhone / iOS", "help_ios"),
-        ("🪟 Windows", "help_windows"),
-    ],
-    "en": [
-        ("🤖 Android", "help_android"),
-        ("🍎 iPhone / iOS", "help_ios"),
-        ("🪟 Windows", "help_windows"),
-    ],
-}
-
-CONNECTION_GUIDES = {
-    "fa": {
-        "help_android": """🤖 <b>آموزش اتصال — اندروید</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ نصب از Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 دانلود مستقیم APK</a>\n\n<b>گزینه جایگزین: V2Box</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ نصب V2Box از Google Play</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ برو به «📊 سرورهای من» و لینک Subscription را کپی کن.\n2️⃣ Hiddify یا V2Box را باز کن.\n3️⃣ گزینه Import / Add Profile / Subscription را بزن.\n4️⃣ لینک را Paste کن یا از Clipboard وارد کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription را برای کسی ارسال نکن.""",
-        "help_ios": """🍎 <b>آموزش اتصال — آیفون / iOS</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> نصب از App Store</a>\n\n<b>گزینه جایگزین: V2Box</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> نصب V2Box از App Store</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ از «📊 سرورهای من» لینک Subscription را کپی کن.\n2️⃣ Hiddify یا V2Box را باز کن.\n3️⃣ Add Profile / Subscription را انتخاب کن.\n4️⃣ لینک را Paste کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription شخصی است؛ آن را برای دیگران نفرست.""",
-        "help_windows": """🪟 <b>آموزش اتصال — ویندوز</b>\n\n<b>برنامه پیشنهادی: Hiddify</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 نصب از Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 دانلود مستقیم EXE</a>\n\n<b>گزینه جایگزین: v2rayN</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ دانلود رسمی v2rayN</a>\n\n<b>مراحل اتصال:</b>\n1️⃣ از «📊 سرورهای من» لینک Subscription را کپی کن.\n2️⃣ Hiddify یا v2rayN را نصب و باز کن.\n3️⃣ Import / Add Profile / Subscription را انتخاب کن.\n4️⃣ لینک را Paste کن.\n5️⃣ Update را بزن.\n6️⃣ یک سرور انتخاب کن و Connect را بزن. ✅\n\n⚠️ لینک Subscription را برای دیگران ارسال نکن.""",
-    },
-    "ku": {
-        "help_android": """🤖 <b>ڕێنمایی بەستن — ئەندرۆید</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 APK</a>\n\n<b>V2Box:</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ Google Play</a>\n\n1️⃣ بەستەری Subscription لە «📊 سێرڤەرەکانم» کۆپی بکە.\n2️⃣ ئەپەکە بکەرەوە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
-        "help_ios": """🍎 <b>ڕێنمایی بەستن — iPhone / iOS</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> App Store</a>\n\n<b>V2Box:</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> App Store</a>\n\n1️⃣ بەستەری Subscription کۆپی بکە.\n2️⃣ ئەپەکە بکەرەوە.\n3️⃣ Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
-        "help_windows": """🪟 <b>ڕێنمایی بەستن — Windows</b>\n\n<b>Hiddify:</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 EXE</a>\n\n<b>v2rayN:</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ دانلود رسمی</a>\n\n1️⃣ بەستەری Subscription کۆپی بکە.\n2️⃣ Hiddify یان v2rayN دابەزێنە.\n3️⃣ Import / Add Profile / Subscription هەڵبژێرە.\n4️⃣ بەستەرەکە Paste بکە.\n5️⃣ Update بکە.\n6️⃣ سێرڤەرێک هەڵبژێرە و Connect بکە. ✅""",
-    },
-    "en": {
-        "help_android": "🤖 <b>Android Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://play.google.com/store/apps/details?id=app.hiddify.com\">▶️ Google Play</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk\">📦 Direct APK</a>\n\n<b>Alternative: V2Box</b>\n• <a href=\"https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box\">▶️ Google Play</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Open Hiddify or V2Box.\n3️⃣ Choose Import / Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
-        "help_ios": "🍎 <b>iPhone / iOS Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532?platform=iphone\"> App Store</a>\n\n<b>Alternative: V2Box</b>\n• <a href=\"https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690\"> App Store</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Open Hiddify or V2Box.\n3️⃣ Choose Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
-        "help_windows": "🪟 <b>Windows Connection Guide</b>\n\n<b>Recommended: Hiddify</b>\n• <a href=\"https://apps.microsoft.com/detail/Hiddify/9pdfnl3qv2s5?mode=mini\">🛍 Microsoft Store</a>\n• <a href=\"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe\">📦 Direct EXE</a>\n\n<b>Alternative: v2rayN</b>\n• <a href=\"https://github.com/2dust/v2rayN/releases/latest\">⬇️ Official download</a>\n\n<b>Steps:</b>\n1️⃣ Copy your Subscription link from “📊 My Servers”.\n2️⃣ Install and open Hiddify or v2rayN.\n3️⃣ Choose Import / Add Profile / Subscription.\n4️⃣ Paste the link.\n5️⃣ Tap Update.\n6️⃣ Select a server and tap Connect. ✅",
-    },
-}
-
-def connection_menu_keyboard(lang):
-    rows = [[InlineKeyboardButton(label, callback_data=callback)] for label, callback in CONNECTION_BUTTONS.get(lang, CONNECTION_BUTTONS["fa"])]
-    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
-    return InlineKeyboardMarkup(rows)
-
-def connection_guide_keyboard(lang):
-    rows = [[InlineKeyboardButton("🤖 Android" if lang == "en" else "🤖 اندروید" if lang == "fa" else "🤖 ئەندرۆید", callback_data="help_android")],
-            [InlineKeyboardButton("🍎 iPhone / iOS" if lang != "fa" else "🍎 آیفون / iOS", callback_data="help_ios")],
-            [InlineKeyboardButton("🪟 Windows" if lang == "en" else "🪟 ویندوز" if lang == "fa" else "🪟 Windows", callback_data="help_windows")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="help")]]
-    return InlineKeyboardMarkup(rows)
 
 
 # =========================================================
@@ -909,37 +748,6 @@ async def send_buy_message(message):
     user_id = message.from_user.id
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "buy_title"), reply_markup=buy_keyboard(user_id))
-
-
-async def send_tariff_message(message):
-    """نمایش تعرفه‌ها به‌صورت دکمه‌های شیشه‌ای؛ این دکمه‌ها فقط نمایشی هستند."""
-    keyboard = []
-    for volume, price in TARIFF_PLANS.items():
-        keyboard.append([
-            InlineKeyboardButton(
-                f"📦 {volume} گیگ  |  💰 {price:,} تومان",
-                callback_data=f"tariff_info_{volume}"
-            )
-        ])
-
-    keyboard.append([
-        InlineKeyboardButton("♾ نامحدود | تماس با پشتیبانی", url=SUPPORT_URL)
-    ])
-    keyboard.append([
-        InlineKeyboardButton("👨🏻‍💻 پیام مستقیم به پشتیبانی", url=SUPPORT_URL)
-    ])
-    keyboard.append([
-        InlineKeyboardButton("🔙 بازگشت", callback_data="home")
-    ])
-
-    await message.reply_text(
-        "💵 <b>تعرفه اشتراک HanzuVPN</b>\n\n"
-        "📌 مدت تمام سرویس‌ها: <b>۳۰ روز</b>\n"
-        "📌 قیمت هر گیگ: <b>۳,۵۰۰ تومان</b>\n\n"
-        "👇 حجم موردنظر را فقط برای مشاهده قیمت انتخاب کنید:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 
 async def show_buy_menu(query):
@@ -1120,55 +928,13 @@ def approve_order(order_id):
 
         # اگر شارژ کیف پول باشد
         if order["is_charge"]:
-            # افزایش موجودی با همان اتصال دیتابیسِ همین تراکنش.
-            # این کار جلوی خطای SQLite "database is locked" را می‌گیرد.
-            # قبلاً change_balance یک اتصال دوم باز می‌کرد و ممکن بود
-            # موجودی افزایش پیدا نکند ولی سفارش تأیید شود.
-
-            cursor = conn.execute(
-                """
-                UPDATE users
-                SET balance = COALESCE(balance, 0) + ?
-                WHERE user_id = ?
-                """,
-                (order["price"], order["user_id"])
-            )
-
-            if cursor.rowcount <= 0:
-                conn.rollback()
-                return {"status": "user_not_found", "order": order}
-
-            conn.execute(
-                """
-                INSERT INTO wallet_transactions
-                (user_id, amount, type, description, order_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    order["user_id"],
-                    order["price"],
-                    "charge",
-                    f"شارژ کیف پول - سفارش #{order_id}",
-                    order_id,
-                    now_text()
-                )
-            )
-
-            conn.execute(
-                """
-                UPDATE orders
-                SET status = 'approved', approved_at = ?
-                WHERE id = ? AND status = 'pending'
-                """,
-                (now_text(), order_id)
-            )
-
+            conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (order["price"], order["user_id"]))
+            conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                         (order["user_id"], order["price"], "charge", f"شارژ کیف پول - سفارش #{order_id}", order_id, now_text()))
+            conn.execute("UPDATE orders SET status = 'approved', approved_at = ? WHERE id = ? AND status = 'pending'",
+                         (now_text(), order_id))
             conn.commit()
-
-            return {
-                "status": "charge_approved",
-                "order": order
-            }
+            return {"status": "charge_approved", "order": order}
 
         subscription = conn.execute("SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1", (order["volume"],)).fetchone()
         if not subscription:
@@ -1325,33 +1091,6 @@ def get_stats():
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
-async def send_admin_menu(message, context=None):
-    user_id = message.from_user.id
-    if user_id != ADMIN_ID:
-        return
-    keyboard = [
-        [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
-        [InlineKeyboardButton("🎁 مدیریت تست", callback_data="admin_trial")],
-        [
-            InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"),
-            InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete")
-        ],
-        [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon")],
-        [InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
-        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
-        [
-            InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
-            InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
-        ],
-        [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
-    ]
-    await message.reply_text(
-        "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
 async def show_admin(query):
     keyboard = [
         [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
@@ -1488,34 +1227,78 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_user(user)
     data = query.data
 
-    # زبان کاربر را قبل از پردازش callback مشخص می‌کنیم
-    lang = get_user_language(user_id) or "fa"
-    if user_id == ADMIN_ID:
-        lang = "fa"
-
-    # تغییر زبان
-    if data.startswith("lang_"):
-        language = data.split("_", 1)[1]
-        if language not in LANGUAGES:
-            await query.answer("زبان نامعتبر است.", show_alert=True)
-            return
-        set_user_language(user_id, language)
-        clear_user_states(context)
-        await query.edit_message_text(
-            t(language, "language_changed") + "\\n\\n" + t(language, "welcome"),
-            reply_markup=home_keyboard(user_id)
-        )
-        return
-
     # زبان
     if data == "language":
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
 
+    if data.startswith("paid_"):
+        parts = data.split("_")
+        if len(parts) < 2:
+            return
+        volume = parts[1]
 
-    if not get_user_language(user_id) and user_id != ADMIN_ID:
+        # ---------- شارژ کیف پول ----------
+        if volume == "CHARGE":
+            order_id = context.user_data.get("last_order_id")
+            if not order_id:
+                await query.answer("سفارش پیدا نشد. دوباره شارژ کنید.", show_alert=True)
+                return
+
+            amount = context.user_data.get("charge_amount", 0)
+            await query.edit_message_text(
+                t(lang, "charge_created", order=order_id, amount=amount)
+            )
+            return
+        # ------------------------------------
+
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
+                return
+            base_price = custom_price
+
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+
+        order_id = create_order(user, volume, price, coupon_code)
+        context.user_data.pop("coupon_code", None)
+        context.user_data.pop("custom_volume", None)
+        context.user_data.pop("custom_price", None)
+        context.user_data["last_order_id"] = order_id
+
+        await query.edit_message_text(
+            t(lang, "order_created", order=order_id, volume=volume, price=price)
+        )
+        return
+        language = data.split("_", 1)[1]
+        if language not in LANGUAGES:
+            return
+        set_user_language(user_id, language)
+        clear_user_states(context)
+        await query.edit_message_text(
+            t(language, "language_changed") + "\n\n" + t(language, "welcome"),
+            reply_markup=home_keyboard(user_id)
+        )
+        return
+
+    lang = get_user_language(user_id)
+    if not lang and user_id != ADMIN_ID:
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
+    if user_id == ADMIN_ID:
+        lang = "fa"
 
     # خانه
     if data == "home":
@@ -1583,33 +1366,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_payment(query, volume, price, original_price, coupon_code)
         return
 
-    # پرداخت عادی / ثبت سفارش
+    # پرداخت عادی
+   # =====================================================
+    # پرداخت (خرید سرویس + شارژ کیف پول)
+    # =====================================================
     if data.startswith("paid_"):
-        parts = data.split("_", 1)
-        if len(parts) != 2 or not parts[1]:
-            await query.answer("داده پرداخت نامعتبر است.", show_alert=True)
+        parts = data.split("_")
+        if len(parts) < 2:
+            await query.answer("داده نامعتبر", show_alert=True)
             return
 
         volume = parts[1]
 
-        # شارژ کیف پول: سفارش از قبل هنگام وارد کردن مبلغ ساخته شده است.
+        # ---------- حالت شارژ کیف پول ----------
         if volume == "CHARGE":
             order_id = context.user_data.get("last_order_id")
             amount = context.user_data.get("charge_amount")
 
             if not order_id or not amount:
-                order = get_latest_pending_order(user_id)
-                if order and order["is_charge"]:
-                    order_id = order["id"]
-                    amount = order["price"]
-                    context.user_data["last_order_id"] = order_id
-                    context.user_data["charge_amount"] = amount
-
-            if not order_id or not amount:
-                await query.answer(
-                    "سفارش شارژ پیدا نشد. دوباره از کیف پول شروع کنید.",
-                    show_alert=True
-                )
+                await query.answer("سفارش شارژ پیدا نشد. دوباره تلاش کنید.", show_alert=True)
                 return
 
             await query.edit_message_text(
@@ -1617,55 +1392,75 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # خرید سرویس عادی
+        # ---------- حالت خرید سرویس ----------
         if volume in PLANS:
             base_price = PLANS[volume]
         else:
+            # حجم دلخواه
             custom_volume = context.user_data.get("custom_volume")
             custom_price = context.user_data.get("custom_price")
 
-            if not custom_volume or str(custom_volume) != str(volume) or not custom_price:
-                await query.answer(
-                    "سفارش نامعتبر است. دوباره سرویس را انتخاب کنید.",
-                    show_alert=True
-                )
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
                 return
 
-            base_price = int(custom_price)
+            base_price = custom_price
 
+        # اعمال کوپن (اگر وجود داشته باشد)
         coupon_code = context.user_data.get("coupon_code")
-        price = int(base_price)
+        price = base_price
 
         if coupon_code:
-            result = apply_coupon(coupon_code, user_id, price)
+            result = apply_coupon(coupon_code, user_id, base_price)
             if result["status"] == "success":
-                price = int(result["price"])
+                price = result["price"]
             else:
                 coupon_code = None
                 context.user_data.pop("coupon_code", None)
 
-        order_id = create_order(
-            user,
-            volume,
-            price,
-            coupon_code=coupon_code,
-            is_charge=0
-        )
+        # ساخت سفارش
+        order_id = create_order(user, volume, price, coupon_code)
 
+        # پاک کردن stateها
         context.user_data.pop("coupon_code", None)
         context.user_data.pop("custom_volume", None)
         context.user_data.pop("custom_price", None)
         context.user_data["last_order_id"] = order_id
 
         await query.edit_message_text(
-            t(
-                lang,
-                "order_created",
-                order=order_id,
-                volume=volume,
-                price=price
-            )
+            t(lang, "order_created", order=order_id, volume=volume, price=price)
         )
+        return
+        if len(parts) < 2:
+            return
+        volume = parts[1]
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است.", show_alert=True)
+                return
+            base_price = custom_price
+
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+
+        order_id = create_order(user, volume, price, coupon_code)
+        context.user_data.pop("coupon_code", None)
+        context.user_data.pop("custom_volume", None)
+        context.user_data.pop("custom_price", None)
+        context.user_data["last_order_id"] = order_id
+
+        await query.edit_message_text(t(lang, "order_created", order=order_id, volume=volume, price=price))
         return
 
     # پرداخت از کیف پول
@@ -1831,32 +1626,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=stored_price))
         return
 
-    # آموزش و نحوه اتصال
-    if data == "help":
-        await query.edit_message_text(
-            CONNECTION_MENU_TEXT.get(lang, CONNECTION_MENU_TEXT["fa"]),
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=connection_menu_keyboard(lang),
-        )
-        return
-
-    if data in ("help_android", "help_ios", "help_windows"):
-        guide = CONNECTION_GUIDES.get(lang, CONNECTION_GUIDES["fa"]).get(data)
-        if guide:
-            await query.edit_message_text(
-                guide,
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-                reply_markup=connection_guide_keyboard(lang),
-            )
-        return
-
     # پشتیبانی
-    if data.startswith("tariff_info_"):
-        await query.answer("ℹ️ این دکمه فقط برای نمایش تعرفه است؛ برای خرید از «🛍 خرید اشتراک» استفاده کنید.", show_alert=True)
-        return
-
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "create_ticket"), callback_data="new_ticket")],
@@ -2168,55 +1938,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_language_selector_message(update.message)
         return
 
-    # دکمه‌های منوی اصلی پایین صفحه (Reply Keyboard)
-    # این دکمه‌ها پیام متنی می‌فرستند و از اینجا به بخش مربوطه هدایت می‌شوند.
-    if text == "🛍 خرید اشتراک":
-        clear_user_states(context)
-        await send_buy_message(update.message)
-        return
-
-    if text == "♻️ تمدید سرویس":
-        clear_user_states(context)
-        await send_renew_menu(update.message, user.id)
-        return
-
-    if text == "📊 سرورهای من":
-        clear_user_states(context)
-        await services_command(update, context)
-        return
-
-    if text == "💰 کیف پول + شارژ":
-        clear_user_states(context)
-        balance = get_balance(user.id)
-        await update.message.reply_text(
-            t(lang, "wallet_title", balance=balance),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
-                [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
-            ])
-        )
-        return
-
-    if text == "💵 تعرفه اشتراک":
-        clear_user_states(context)
-        await send_tariff_message(update.message)
-        return
-
-    if text == "👨🏻‍💻 ارتباط با پشتیبانی":
-        clear_user_states(context)
-        await support_command(update, context)
-        return
-
-    if text == "📚 آموزش و نحوه اتصال":
-        clear_user_states(context)
-        await help_command(update, context)
-        return
-
-    if text == "⚙️ پنل مدیریت" and user.id == ADMIN_ID:
-        clear_user_states(context)
-        await send_admin_menu(update.message, context)
-        return
-
     # شارژ کیف پول - دریافت مبلغ
     if context.user_data.get("waiting_charge_amount"):
         context.user_data["waiting_charge_amount"] = False
@@ -2482,20 +2203,15 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     charge_text = " (شارژ کیف پول)" if order["is_charge"] else ""
-    full_name = " ".join(part for part in [user.first_name, user.last_name] if part) or "-"
-    username = f"@{user.username}" if user.username else "-"
-    language = get_user_language(user.id) or "fa"
     caption = (
         f"💳 رسید پرداخت جدید{charge_text}\n\n"
         f"🧾 سفارش: #{order['id']}\n"
-        f"👤 نام کامل: {full_name}\n"
-        f"👤 Username: {username}\n"
-        f"🆔 User ID: {user.id}\n"
-        f"💬 Chat ID: {update.effective_chat.id}\n"
-        f"🌐 زبان: {language}\n\n"
-        f"📦 حجم: {order['volume']}\n"
+        f"👤 نام: {user.first_name or '-'}\n"
+        f"👤 Username: @{user.username if user.username else '-'}\n"
+        f"🆔 User ID: {user.id}\n\n"
+        f"📦 {order['volume']}\n"
         f"💰 مبلغ: {order['price']:,} تومان\n"
-        f"🕐 زمان ثبت سفارش: {order['created_at']}"
+        f"🕐 زمان: {order['created_at']}"
     )
 
     keyboard = [[
@@ -2559,374 +2275,158 @@ async def expiration_checker(application):
         await asyncio.sleep(6 * 60 * 60)
 
 
-
 # =========================================================
-# Mini App API — اتصال واقعی Mini App به دیتابیس ربات
+# Mini App API
 # =========================================================
 
-def _api_json(handler, payload, status=200):
-    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(raw)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.end_headers()
-    handler.wfile.write(raw)
-
-
-def _api_init_data(handler):
-    """Validate Telegram WebApp initData and return the Telegram user dict."""
-    raw = handler.headers.get("X-Telegram-Init-Data", "")
-    if not raw or not BOT_TOKEN:
+def _telegram_user_from_init_data(init_data):
+    if not BOT_TOKEN or not init_data:
         return None
     try:
-        pairs = dict(parse_qsl(raw, keep_blank_values=True))
-        received_hash = pairs.pop("hash", None)
+        pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+        received_hash = pairs.pop("hash", "")
         if not received_hash:
             return None
-        data_check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
-        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-        calculated = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(calculated, received_hash):
+        data_check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+        secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        calc = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, received_hash):
             return None
         auth_date = int(pairs.get("auth_date", "0"))
-        if auth_date and time.time() - auth_date > 86400:
+        if abs(int(__import__("time").time()) - auth_date) > 86400:
             return None
-        user_raw = pairs.get("user")
-        if not user_raw:
+        raw_user = pairs.get("user")
+        if not raw_user:
             return None
-        return json.loads(unquote(user_raw))
+        return json.loads(unquote(raw_user))
     except Exception:
         return None
 
 
-def _api_user(handler):
-    user = _api_init_data(handler)
-    if not user or not user.get("id"):
+def _api_user(init_data):
+    data = _telegram_user_from_init_data(init_data)
+    if not data or not data.get("id"):
         return None
-    # Keep the same user record used by the Telegram bot.
-    class ApiUser:
-        pass
-    u = ApiUser()
-    u.id = int(user["id"])
-    u.username = user.get("username", "") or ""
-    u.first_name = user.get("first_name", "") or ""
-    u.last_name = user.get("last_name", "") or ""
+    class U: pass
+    u = U()
+    u.id = int(data["id"])
+    u.username = data.get("username", "")
+    u.first_name = data.get("first_name", "")
     ensure_user(u)
     return u
 
 
-def _api_services(user_id):
-    rows = get_user_services(user_id)
-    result = []
-    for row in rows:
-        result.append({
-            "id": row["id"],
-            "volume": row["volume"],
-            "price": row["price"],
-            "approved_at": row["approved_at"],
-            "expires_at": row["expires_at"],
-            "link": row["link"],
-        })
-    return result
+def _json_bytes(obj):
+    return json.dumps(obj, ensure_ascii=False).encode("utf-8")
 
 
-def _api_wallet_history(user_id):
-    rows = get_wallet_history(user_id, 30)
-    return [{
-        "id": r["id"], "amount": r["amount"], "type": r["type"],
-        "description": r["description"] or r["type"], "order_id": r["order_id"],
-        "created_at": r["created_at"]
-    } for r in rows]
-
-
-def _api_purchase_from_wallet(user, volume, coupon_code=None):
-    volume = str(volume)
-    if volume not in PLANS:
-        return {"ok": False, "error": "این پلن در بخش خرید فعال نیست."}
-    base_price = int(PLANS[volume])
-    price = base_price
+def _api_purchase_wallet(user, volume, price):
     conn = get_db()
     try:
         conn.execute("BEGIN IMMEDIATE")
-        user_row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user.id,)).fetchone()
-        if not user_row:
-            conn.rollback()
-            return {"ok": False, "error": "کاربر پیدا نشد."}
-        balance = int(user_row["balance"] or 0)
-
-        coupon = None
-        if coupon_code:
-            coupon = conn.execute("SELECT * FROM coupons WHERE code = ? AND active = 1", (str(coupon_code).upper(),)).fetchone()
-            if coupon:
-                used = conn.execute("SELECT id FROM coupon_uses WHERE coupon_id = ? AND user_id = ?", (coupon["id"], user.id)).fetchone()
-                if used:
-                    coupon = None
-                elif coupon["max_uses"] > 0 and coupon["used_count"] >= coupon["max_uses"]:
-                    coupon = None
-                else:
-                    price = max(int(base_price * (100 - coupon["percent"]) / 100), 0)
-
+        row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,)).fetchone()
+        balance = int(row["balance"] or 0) if row else 0
         if balance < price:
-            conn.rollback()
-            return {"ok": False, "error": "موجودی کیف پول کافی نیست.", "balance": balance, "price": price}
-
-        subscription = conn.execute(
-            "SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1",
-            (volume,)
-        ).fetchone()
-        if not subscription:
-            conn.rollback()
-            return {"ok": False, "error": "برای این حجم فعلاً موجودی سرویس نداریم.", "balance": balance}
-
-        now = datetime.now()
-        expires = now + timedelta(days=SERVICE_DAYS)
-        cursor = conn.execute("""
-            INSERT INTO orders
-            (user_id, username, first_name, volume, price, status, subscription_id, created_at, approved_at, expires_at, is_charge)
-            VALUES (?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, 0)
-        """, (
-            user.id, user.username, user.first_name, volume, price, subscription["id"],
-            now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S"),
-            expires.strftime("%Y-%m-%d %H:%M:%S")
-        ))
-        order_id = cursor.lastrowid
-        conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
+            conn.rollback(); return {"status":"insufficient_balance", "balance":balance}
+        sub = conn.execute("SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1", (str(volume),)).fetchone()
+        if not sub:
+            conn.rollback(); return {"status":"no_stock", "balance":balance}
+        now = datetime.now(); expires = now + timedelta(days=SERVICE_DAYS)
         conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, user.id))
-        conn.execute("""
-            INSERT INTO wallet_transactions
-            (user_id, amount, type, description, order_id, created_at)
-            VALUES (?, ?, 'purchase', ?, ?, ?)
-        """, (user.id, -price, f"خرید سرویس {volume} گیگ", order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
-        if coupon:
-            conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
-                         (coupon["id"], user.id, order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
-            conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
+        cur = conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+                           (user.id, -price, "purchase", f"خرید سرویس {volume} گیگ", now_text()))
+        order_id = conn.execute("INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, subscription_id, approved_at, expires_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, 0, ?, ?, ?)",
+                                (user.id, user.username or "", user.first_name or "", str(volume), price, now_text(), sub["id"], now.strftime("%Y-%m-%d %H:%M:%S"), expires.strftime("%Y-%m-%d %H:%M:%S"))).lastrowid
+        conn.execute("UPDATE wallet_transactions SET order_id = ? WHERE id = ?", (order_id, cur.lastrowid))
+        conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ?", (sub["id"],))
         conn.commit()
-        return {
-            "ok": True, "order_id": order_id, "volume": volume, "price": price,
-            "balance": balance - price, "link": subscription["link"],
-            "expires_at": expires.strftime("%Y-%m-%d %H:%M:%S")
-        }
+        return {"status":"approved", "order_id":order_id, "volume":str(volume), "price":price, "balance":balance-price, "link":sub["link"], "expires_at":expires.strftime("%Y-%m-%d %H:%M:%S")}
     except Exception as e:
-        conn.rollback()
-        return {"ok": False, "error": "خطای داخلی هنگام خرید.", "detail": str(e)}
-    finally:
-        conn.close()
+        conn.rollback(); return {"status":"error", "error":str(e)}
+    finally: conn.close()
 
 
-def _api_renew_from_wallet(user, order_id):
+def _telegram_send_photo_base64(user_id, volume, price, image_b64, order_id):
     try:
-        order_id = int(order_id)
-    except Exception:
-        return {"ok": False, "error": "شناسه سرویس نامعتبر است."}
-    conn = get_db()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        order = conn.execute(
-            "SELECT * FROM orders WHERE id = ? AND user_id = ? AND status = 'approved' AND is_charge = 0",
-            (order_id, user.id)
-        ).fetchone()
-        if not order:
-            conn.rollback()
-            return {"ok": False, "error": "سرویس پیدا نشد."}
-        try:
-            volume = str(order["volume"])
-            price = int(float(volume)) * PRICE_PER_GB
-        except Exception:
-            conn.rollback()
-            return {"ok": False, "error": "حجم سرویس نامعتبر است."}
-        user_row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,)).fetchone()
-        balance = int(user_row["balance"] or 0) if user_row else 0
-        if balance < price:
-            conn.rollback()
-            return {"ok": False, "error": "موجودی کیف پول کافی نیست.", "balance": balance, "price": price}
-        now = datetime.now()
-        try:
-            old_exp = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else now
-        except Exception:
-            old_exp = now
-        start = max(now, old_exp)
-        expires = start + timedelta(days=SERVICE_DAYS)
-        conn.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (price, user.id))
-        conn.execute("UPDATE orders SET expires_at = ? WHERE id = ?", (expires.strftime("%Y-%m-%d %H:%M:%S"), order_id))
-        conn.execute("""
-            INSERT INTO wallet_transactions
-            (user_id, amount, type, description, order_id, created_at)
-            VALUES (?, ?, 'renewal', ?, ?, ?)
-        """, (user.id, -price, f"تمدید سرویس #{order_id}", order_id, now.strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return {"ok": True, "order_id": order_id, "volume": volume, "price": price,
-                "balance": balance - price, "expires_at": expires.strftime("%Y-%m-%d %H:%M:%S")}
-    except Exception as e:
-        conn.rollback()
-        return {"ok": False, "error": "خطای داخلی هنگام تمدید.", "detail": str(e)}
-    finally:
-        conn.close()
-
-
-def _api_create_charge(user, amount):
-    try:
-        amount = int(amount)
-        if amount < MIN_CHARGE:
-            return {"ok": False, "error": f"حداقل شارژ {MIN_CHARGE:,} تومان است."}
-    except Exception:
-        return {"ok": False, "error": "مبلغ شارژ نامعتبر است."}
-    cancel_pending_orders(user.id)
-    order_id = create_order(user, "CHARGE", amount, is_charge=1)
-    return {"ok": True, "order_id": order_id, "amount": amount, "card": CARD_NUMBER,
-            "message": "مبلغ را واریز کن و همین‌جا تصویر رسید را ارسال کن."}
-
-
-def _telegram_send_photo_from_base64(user, order_id, image_b64, filename="receipt.jpg"):
-    import base64, uuid
-    try:
-        conn = get_db()
-        try:
-            order = conn.execute("SELECT * FROM orders WHERE id = ? AND user_id = ? AND status = 'pending' AND is_charge = 1", (int(order_id), user.id)).fetchone()
-        finally:
-            conn.close()
-        if not order:
-            return {"ok": False, "error": "سفارش شارژ پیدا نشد یا قبلاً بررسی شده است."}
-        if not image_b64:
-            return {"ok": False, "error": "تصویر رسید دریافت نشد."}
-        if image_b64.startswith("data:"):
-            image_b64 = image_b64.split(",", 1)[1]
-        data = base64.b64decode(image_b64, validate=True)
-        if len(data) > 10 * 1024 * 1024:
-            return {"ok": False, "error": "حجم تصویر باید کمتر از ۱۰ مگابایت باشد."}
-        full_name = " ".join(part for part in [getattr(user, "first_name", ""), getattr(user, "last_name", "")] if part) or "-"
-        username = f"@{user.username}" if getattr(user, "username", "") else "-"
-        language = get_user_language(user.id) or "fa"
-        caption = (
-            f"💳 رسید پرداخت جدید (شارژ کیف پول)\n\n"
-            f"🧾 سفارش: #{order['id']}\n"
-            f"👤 نام کامل: {full_name}\n"
-            f"👤 Username: {username}\n"
-            f"🆔 User ID: {user.id}\n"
-            f"💬 Chat ID: {user.id}\n"
-            f"🌐 زبان: {language}\n\n"
-            f"📦 حجم: {order['volume']}\n"
-            f"💰 مبلغ: {order['price']:,} تومان\n"
-            f"🕐 زمان ثبت سفارش: {order['created_at']}"
-        )
-        boundary = ("----Hanzu" + uuid.uuid4().hex).encode()
-        parts = []
+        raw = base64.b64decode(image_b64.split(",",1)[-1])
+        boundary = "----HanzuVPNBoundary"
+        body = bytearray()
         def field(name, value):
-            parts.append(b"--" + boundary + b"\r\n")
-            parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
-            parts.append(str(value).encode())
-            parts.append(b"\r\n")
-        field("chat_id", ADMIN_ID)
-        field("caption", caption)
-        field("parse_mode", "HTML")
-        parts.append(b"--" + boundary + b"\r\n")
-        parts.append(f'Content-Disposition: form-data; name="photo"; filename="{filename or "receipt.jpg"}"\r\n'.encode())
-        parts.append(b"Content-Type: image/jpeg\r\n\r\n")
-        parts.append(data)
-        parts.append(b"\r\n--" + boundary + b"--\r\n")
-        body = b"".join(parts)
-        req = urlrequest.Request(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-            data=body, method="POST",
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary.decode()}", "Content-Length": str(len(body))}
-        )
-        with urlrequest.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-        if not result.get("ok"):
-            return {"ok": False, "error": "ارسال رسید به ادمین ناموفق بود."}
-        return {"ok": True, "order_id": int(order_id)}
+            body.extend((f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").encode())
+        field("chat_id", str(ADMIN_ID))
+        field("caption", f"💳 رسید Mini App\n\n🧾 سفارش: #{order_id}\n🆔 User ID: {user_id}\n📦 {volume}\n💰 مبلغ: {price:,} تومان")
+        body.extend((f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"receipt.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").encode())
+        body.extend(raw); body.extend(f"\r\n--{boundary}--\r\n".encode())
+        req=urlrequest.Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data=bytes(body), headers={"Content-Type":f"multipart/form-data; boundary={boundary}"}, method="POST")
+        with urlrequest.urlopen(req, timeout=20) as r: return json.loads(r.read().decode())
     except Exception as e:
-        print("MiniApp receipt upload error:", e)
-        return {"ok": False, "error": "خطا در ارسال رسید. دوباره تلاش کن."}
+        return {"ok":False,"error":str(e)}
 
 
-class HanzuAPIHandler(BaseHTTPRequestHandler):
-    def log_message(self, fmt, *args):
-        print("MiniApp API:", fmt % args)
-
-    def do_OPTIONS(self):
-        _api_json(self, {"ok": True})
-
-    def _auth(self):
-        user = _api_user(self)
-        if not user:
-            _api_json(self, {"ok": False, "error": "احراز هویت Telegram معتبر نیست."}, 401)
-            return None
-        return user
-
-    def _body(self):
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            return json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-        except Exception:
-            return {}
-
+class MiniAppHandler(BaseHTTPRequestHandler):
+    def _send(self, status, obj):
+        data=_json_bytes(obj); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Access-Control-Allow-Origin","*"); self.send_header("Access-Control-Allow-Headers","Content-Type, X-Telegram-Init-Data"); self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_OPTIONS(self): self._send(200,{"ok":True})
+    def _user(self): return _api_user(self.headers.get("X-Telegram-Init-Data", ""))
     def do_GET(self):
-        if not self.path.startswith("/api/"):
-            _api_json(self, {"ok": False, "error": "Not found"}, 404)
-            return
-        user = self._auth()
-        if not user:
-            return
-        path = self.path.split("?", 1)[0]
-        if path == "/api/bootstrap":
-            services = _api_services(user.id)
-            _api_json(self, {
-                "ok": True,
-                "user": {"id": user.id, "username": user.username, "first_name": user.first_name},
-                "balance": get_balance(user.id),
-                "services": services,
-                "history": _api_wallet_history(user.id),
-                "plans": [{"gb": int(k), "price": v} for k, v in PLANS.items()],
-                "tariffs": [{"gb": int(k) if k.isdigit() else k, "price": v} for k, v in TARIFF_PLANS.items()],
-                "support": SUPPORT_URL,
-            })
-            return
-        if path == "/api/services":
-            _api_json(self, {"ok": True, "services": _api_services(user.id)})
-            return
-        if path == "/api/wallet":
-            _api_json(self, {"ok": True, "balance": get_balance(user.id), "history": _api_wallet_history(user.id)})
-            return
-        _api_json(self, {"ok": False, "error": "Endpoint not found"}, 404)
-
+        if self.path=="/health": return self._send(200,{"ok":True})
+        u=self._user()
+        if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
+        if self.path.startswith("/api/services"):
+            rows=get_user_services(u.id); return self._send(200,{"ok":True,"services":[dict(r) for r in rows]})
+        if self.path.startswith("/api/wallet"):
+            return self._send(200,{"ok":True,"balance":get_balance(u.id)})
+        if self.path.startswith("/api/bootstrap"):
+            rows=get_user_services(u.id)
+            plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()]
+            return self._send(200,{"ok":True,"user":{"id":u.id,"username":u.username,"first_name":u.first_name},"balance":get_balance(u.id),"plans":plans,"services":[dict(r) for r in rows],"card":CARD_NUMBER,"min_charge":MIN_CHARGE,"service_days":SERVICE_DAYS})
+        return self._send(404,{"ok":False,"error":"not_found"})
     def do_POST(self):
-        if not self.path.startswith("/api/"):
-            _api_json(self, {"ok": False, "error": "Not found"}, 404)
-            return
-        user = self._auth()
-        if not user:
-            return
-        path = self.path.split("?", 1)[0]
-        body = self._body()
-        if path == "/api/buy":
-            result = _api_purchase_from_wallet(user, body.get("gb"), body.get("coupon", ""))
-            _api_json(self, result, 200 if result.get("ok") else 400)
-            return
-        if path == "/api/renew":
-            result = _api_renew_from_wallet(user, body.get("order_id"))
-            _api_json(self, result, 200 if result.get("ok") else 400)
-            return
-        if path == "/api/charge":
-            result = _api_create_charge(user, body.get("amount"))
-            _api_json(self, result, 200 if result.get("ok") else 400)
-            return
-        if path == "/api/charge-receipt":
-            result = _telegram_send_photo_from_base64(user, body.get("order_id"), body.get("image"), body.get("filename", "receipt.jpg"))
-            _api_json(self, result, 200 if result.get("ok") else 400)
-            return
-        _api_json(self, {"ok": False, "error": "Endpoint not found"}, 404)
+        u=self._user()
+        if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
+        try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))) or b"{}")
+        except Exception: return self._send(400,{"ok":False,"error":"bad_json"})
+        path=self.path.split("?",1)[0]
+        if path in ("/api/buy","/api/renew"):
+            if path=="/api/renew":
+                oid=int(payload.get("order_id",0) or 0); conn=get_db()
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                    order=conn.execute("SELECT id, volume, price, expires_at FROM orders WHERE id=? AND user_id=? AND status='approved' AND is_charge=0",(oid,u.id)).fetchone()
+                    if not order: conn.rollback(); return self._send(404,{"ok":False,"error":"service_not_found"})
+                    price=int(float(order["volume"]))*PRICE_PER_GB; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
+                    if bal<price: conn.rollback(); return self._send(200,{"ok":False,"error":"insufficient_balance","balance":bal,"price":price})
+                    old=datetime.strptime(order["expires_at"],"%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now(); base=max(old,datetime.now()); newexp=base+timedelta(days=SERVICE_DAYS)
+                    conn.execute("UPDATE users SET balance=balance-? WHERE user_id=?",(price,u.id)); conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",(u.id,-price,"renew",f"تمدید سرویس #{oid}",oid,now_text())); conn.execute("UPDATE orders SET expires_at=? WHERE id=?",(newexp.strftime("%Y-%m-%d %H:%M:%S"),oid)); conn.commit(); return self._send(200,{"ok":True,"order_id":oid,"price":price,"balance":bal-price,"expires_at":newexp.strftime("%Y-%m-%d %H:%M:%S")})
+                except Exception as e:
+                    conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
+                finally: conn.close()
+            volume=str(payload.get("volume","")); price=TARIFF_PLANS.get(volume)
+            if not price: return self._send(400,{"ok":False,"error":"invalid_volume"})
+            r=_api_purchase_wallet(u,volume,price)
+            return self._send(200 if r["status"] in ("approved","insufficient_balance","no_stock") else 500,{"ok":r["status"]=="approved",**r})
+        if path=="/api/charge":
+            amount=int(payload.get("amount",0))
+            if amount<MIN_CHARGE: return self._send(400,{"ok":False,"error":"min_charge","min":MIN_CHARGE})
+            oid=create_order(u,"CHARGE",amount,is_charge=1)
+            return self._send(200,{"ok":True,"order_id":oid,"amount":amount,"card":CARD_NUMBER})
+        if path=="/api/charge-receipt":
+            amount=int(payload.get("amount",0)); img=payload.get("image","")
+            if amount<MIN_CHARGE or not img: return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})
+            oid=create_order(u,"CHARGE",amount,is_charge=1); tg=_telegram_send_photo_base64(u.id,"CHARGE",amount,img,oid)
+            return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
+        if path=="/api/buy-receipt":
+            volume=str(payload.get("volume","")); price=TARIFF_PLANS.get(volume); img=payload.get("image","")
+            if not price or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})
+            oid=create_order(u,volume,price); tg=_telegram_send_photo_base64(u.id,volume,price,img,oid)
+            return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
+        return self._send(404,{"ok":False,"error":"not_found"})
 
 
 def start_miniapp_api():
-    server = ThreadingHTTPServer((API_HOST, API_PORT), HanzuAPIHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    print(f"HanzuVPN Mini App API listening on {API_HOST}:{API_PORT}")
-    return server
+    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
+    threading.Thread(target=server.serve_forever,daemon=True).start()
+    print(f"Mini App API listening on {API_HOST}:{API_PORT}")
 
 
 # =========================================================

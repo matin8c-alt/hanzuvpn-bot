@@ -40,11 +40,14 @@ DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 PRICE_PER_GB = 3500
 
 PLANS = {
+    "1": 3500,
     "10": 35000,
+    "15": 52500,
     "20": 70000,
     "30": 105000,
     "40": 140000,
     "50": 175000,
+    "100": 350000,
 }
 
 SERVICE_DAYS = 30
@@ -918,6 +921,21 @@ def get_latest_pending_order(user_id):
     return row
 
 
+def _normalize_volume(value):
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    text = text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    for unit in ("گیگابایت", "گیگ", "gb", "g"):
+        text = text.replace(unit, "")
+    text = text.strip()
+    try:
+        n = int(float(text))
+        return str(n) if n > 0 else None
+    except Exception:
+        return None
+
+
 def approve_order(order_id):
     conn = get_db()
     try:
@@ -940,7 +958,14 @@ def approve_order(order_id):
             conn.commit()
             return {"status": "charge_approved", "order": order}
 
-        subscription = conn.execute("SELECT id, link FROM subscriptions WHERE volume = ? AND used = 0 ORDER BY id LIMIT 1", (order["volume"],)).fetchone()
+        normalized_order_volume = _normalize_volume(order["volume"])
+        if not normalized_order_volume:
+            conn.rollback()
+            return {"status": "invalid_volume", "order": order}
+        subscription = conn.execute(
+            "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
+            (int(normalized_order_volume),)
+        ).fetchone()
         if not subscription:
             conn.rollback()
             return {"status": "no_stock", "order": order}
@@ -1229,65 +1254,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     user_id = user.id
     ensure_user(user)
-    data = query.data
+    data = query.data or ""
 
     # زبان
     if data == "language":
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
 
-    if data.startswith("paid_"):
-        parts = data.split("_")
-        if len(parts) < 2:
-            return
-        volume = parts[1]
-
-        # ---------- شارژ کیف پول ----------
-        if volume == "CHARGE":
-            order_id = context.user_data.get("last_order_id")
-            if not order_id:
-                await query.answer("سفارش پیدا نشد. دوباره شارژ کنید.", show_alert=True)
-                return
-
-            amount = context.user_data.get("charge_amount", 0)
-            await query.edit_message_text(
-                t(lang, "charge_created", order=order_id, amount=amount)
-            )
-            return
-        # ------------------------------------
-
-        if volume in PLANS:
-            base_price = PLANS[volume]
-        else:
-            custom_volume = context.user_data.get("custom_volume")
-            custom_price = context.user_data.get("custom_price")
-            if not custom_volume or str(custom_volume) != str(volume):
-                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
-                return
-            base_price = custom_price
-
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                coupon_code = None
-                context.user_data.pop("coupon_code", None)
-
-        order_id = create_order(user, volume, price, coupon_code)
-        context.user_data.pop("coupon_code", None)
-        context.user_data.pop("custom_volume", None)
-        context.user_data.pop("custom_price", None)
-        context.user_data["last_order_id"] = order_id
-
-        await query.edit_message_text(
-            t(lang, "order_created", order=order_id, volume=volume, price=price)
-        )
-        return
+    if data.startswith("language_"):
         language = data.split("_", 1)[1]
         if language not in LANGUAGES:
+            await query.answer("زبان نامعتبر است.", show_alert=True)
             return
         set_user_language(user_id, language)
         clear_user_states(context)
@@ -2328,9 +2305,8 @@ def _api_purchase_wallet(user, volume, price):
     # خرید کیف پول کاملاً اتمیک است: یا همه مراحل انجام می‌شوند یا هیچ‌کدام.
     # volume به شکل عددی نرمال می‌شود تا موجودی‌هایی مثل «10»، «10GB» یا «10 گیگ»
     # هم قابل تطبیق باشند.
-    try:
-        normalized_volume = str(int(float(str(volume).strip().lower().replace("gb", "").replace("گیگ", "").strip())))
-    except Exception:
+    normalized_volume = _normalize_volume(volume)
+    if not normalized_volume:
         return {"status":"invalid_volume"}
 
     for attempt in range(3):
@@ -2477,14 +2453,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
                 finally: conn.close()
-            raw_volume=str(payload.get("volume","")).strip().lower().replace("gb","").replace("گیگ","").strip()
-            try:
-                volume=str(int(float(raw_volume)))
-            except Exception:
+            volume = _normalize_volume(payload.get("volume"))
+            if not volume:
                 return self._send(400,{"ok":False,"error":"invalid_volume"})
-            price=TARIFF_PLANS.get(volume)
-            if not price:
-                return self._send(400,{"ok":False,"error":"invalid_volume","volume":volume})
+            price = TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)
             # خرید واقعی فقط در تراکنش اتمیک انجام می‌شود؛ موجودی/موجودی سرویس
             # بین pre-check و خرید دیگر نمی‌تواند باعث race condition شود.
             r=_api_purchase_wallet(u,volume,price)
@@ -2523,8 +2495,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             tg=_telegram_send_photo_base64(u.id,"شارژ کیف پول",real_amount,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         if path=="/api/buy-receipt":
-            volume=str(payload.get("volume","")); price=TARIFF_PLANS.get(volume); img=payload.get("image","")
-            if not price or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})
+            volume=_normalize_volume(payload.get("volume")); price=(TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)) if volume else 0; img=payload.get("image","")
+            if not volume or price <= 0 or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})
             oid=create_order(u,volume,price); tg=_telegram_send_photo_base64(u.id,volume,price,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         return self._send(404,{"ok":False,"error":"not_found"})
@@ -2546,7 +2518,7 @@ async def post_init(application):
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text="🛒 HanzuVPN",
-                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260928-1"),
+                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260927-v4"),
             )
         )
     except Exception as e:

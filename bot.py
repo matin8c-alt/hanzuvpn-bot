@@ -4425,9 +4425,11 @@ def main():
     )
 
     app.add_handler(
-        MessageHandler(
-            filters.TEXT & \~filters.COMMAND,
-            text_handler
+    MessageHandler(
+        filters.TEXT,
+        text_handler
+    )
+)
         )
     )
 

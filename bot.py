@@ -4425,11 +4425,16 @@ def main():
     )
 
     app.add_handler(
-    MessageHandler(
-        filters.TEXT,
-        text_handler
+        MessageHandler(
+            filters.PHOTO,
+            receipt_handler
+        )
     )
-)
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT,
+            text_handler
         )
     )
 

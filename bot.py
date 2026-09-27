@@ -345,9 +345,9 @@ def set_user_language(user_id, language):
 
 def language_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🇮🇷 فارسی", callback_data="lang_fa")],
-        [InlineKeyboardButton("🟢 کوردی", callback_data="lang_ku")],
-        [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+        [InlineKeyboardButton("🇮🇷 فارسی", callback_data="language_fa")],
+        [InlineKeyboardButton("🟢 کوردی", callback_data="language_ku")],
+        [InlineKeyboardButton("🇬🇧 English", callback_data="language_en")],
     ])
 
 
@@ -1248,7 +1248,7 @@ async def show_delete_menu(query):
 # Callback Handler (کامل)
 # =========================================================
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = query.from_user
@@ -2540,6 +2540,19 @@ def main():
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("help", help_command))
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stable callback wrapper: every inline-keyboard tap gets an answer even if an internal error occurs."""
+    try:
+        await _button_handler_impl(update, context)
+    except Exception as e:
+        print(f"Callback handler error: {type(e).__name__}: {e}")
+        q = getattr(update, "callback_query", None)
+        if q:
+            try:
+                await q.answer("❌ خطایی رخ داد. دوباره تلاش کنید.", show_alert=True)
+            except Exception:
+                pass
+
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
     app.add_handler(MessageHandler(filters.TEXT, text_handler))

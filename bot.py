@@ -25,7 +25,7 @@ from telegram.ext import (
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+ADMIN_ID = 5229224517
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 
@@ -2467,15 +2467,20 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     charge_text = " (شارژ کیف پول)" if order["is_charge"] else ""
+    full_name = " ".join(part for part in [user.first_name, user.last_name] if part) or "-"
+    username = f"@{user.username}" if user.username else "-"
+    language = get_user_language(user.id) or "fa"
     caption = (
         f"💳 رسید پرداخت جدید{charge_text}\n\n"
         f"🧾 سفارش: #{order['id']}\n"
-        f"👤 نام: {user.first_name or '-'}\n"
-        f"👤 Username: @{user.username if user.username else '-'}\n"
-        f"🆔 User ID: {user.id}\n\n"
-        f"📦 {order['volume']}\n"
+        f"👤 نام کامل: {full_name}\n"
+        f"👤 Username: {username}\n"
+        f"🆔 User ID: {user.id}\n"
+        f"💬 Chat ID: {update.effective_chat.id}\n"
+        f"🌐 زبان: {language}\n\n"
+        f"📦 حجم: {order['volume']}\n"
         f"💰 مبلغ: {order['price']:,} تومان\n"
-        f"🕐 زمان: {order['created_at']}"
+        f"🕐 زمان ثبت سفارش: {order['created_at']}"
     )
 
     keyboard = [[

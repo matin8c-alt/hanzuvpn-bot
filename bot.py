@@ -1250,7 +1250,10 @@ async def show_delete_menu(query):
 
 async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
     user = query.from_user
     user_id = user.id
     ensure_user(user)
@@ -2518,7 +2521,7 @@ async def post_init(application):
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text="🛒 HanzuVPN",
-                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260927-v4"),
+                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260928-v6"),
             )
         )
     except Exception as e:
@@ -2540,8 +2543,16 @@ def main():
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
+    app.add_handler(MessageHandler(filters.TEXT, text_handler))
+
+    print("HanzuVPN Bot is running...")
+    app.run_polling()
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stable callback wrapper: every inline-keyboard tap gets an answer even if an internal error occurs."""
+    """Stable callback entry point for every inline keyboard button."""
     try:
         await _button_handler_impl(update, context)
     except Exception as e:
@@ -2552,13 +2563,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await q.answer("❌ خطایی رخ داد. دوباره تلاش کنید.", show_alert=True)
             except Exception:
                 pass
-
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
-    app.add_handler(MessageHandler(filters.TEXT, text_handler))
-
-    print("HanzuVPN Bot is running...")
-    app.run_polling()
 
 
 if __name__ == "__main__":

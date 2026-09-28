@@ -328,6 +328,8 @@ def now_text():
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA cache_size=-8192")
     return conn
 
 
@@ -524,6 +526,22 @@ def init_db():
         )
     """)
 
+    # ایندکس‌های سبک برای مسیرهای پرتکرار (ساختنشان فقط یک‌بار انجام می‌شود).
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS idx_orders_user_status_id ON orders(user_id, status, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_status_id ON orders(status, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_wallet_user_id ON wallet_transactions(user_id, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_user_status ON tickets(user_id, status, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket_id ON ticket_messages(ticket_id, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_subscriptions_volume_used ON subscriptions(volume, used, id)",
+        "CREATE INDEX IF NOT EXISTS idx_free_trials_used_id ON free_trials(used, id)",
+        "CREATE INDEX IF NOT EXISTS idx_reminders_order_type ON reminders(order_id, reminder_type)",
+    ):
+        conn.execute(sql)
+
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.commit()
 
     # سازگاری

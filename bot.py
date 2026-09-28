@@ -1979,7 +1979,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "wallet":
             balance = get_balance(user.id)
             await update.message.reply_text(t(lang, "wallet_title", balance=balance), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge")],
+                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
                 [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
                 [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
             ]))

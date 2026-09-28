@@ -1213,37 +1213,59 @@ async def show_admin_stats(query):
     ]))
 
 
-async def show_admin_orders(query):
+async def show_admin_orders(query, status_filter=None):
     conn = get_db()
-    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
-    conn.close()
-    if not rows:
-        text = "🧾 سفارشی ثبت نشده است."
+    if status_filter in ("approved", "rejected"):
+        rows = conn.execute(
+            "SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 15",
+            (status_filter,)
+        ).fetchall()
     else:
-        text = "🧾 آخرین سفارش‌ها\n\n"
+        rows = conn.execute(
+            "SELECT * FROM orders ORDER BY id DESC LIMIT 8"
+        ).fetchall()
+    conn.close()
+
+    if status_filter == "approved":
+        title = "✅ رسیدهای پرداخت‌شده"
+    elif status_filter == "rejected":
+        title = "❌ رسیدهای ردشده"
+    else:
+        title = "🧾 آخرین سفارش‌ها"
+
+    if not rows:
+        text = f"{title}\n\n📭 موردی پیدا نشد."
+    else:
+        text = f"{title}\n\n"
         for row in rows:
             status = {
                 "pending": "⏳ در انتظار",
-                "approved": "✅ تأیید",
-                "rejected": "❌ رد",
-                "cancelled": "🚫 لغو شده"
+                "approved": "✅ پرداخت‌شده",
+                "rejected": "❌ ردشده",
+                "cancelled": "🚫 لغوشده"
             }.get(row["status"], row["status"])
-            charge = " (شارژ کیف پول)" if row["is_charge"] else ""
             username = f"@{row['username']}" if row['username'] else "ندارد"
+            kind = "💰 شارژ کیف پول" if row["is_charge"] else "🛒 خرید سرویس"
             text += (
-                f"🧾 سفارش #{row['id']}" + (" • شارژ کیف پول" if row['is_charge'] else "") + "\n"
+                f"🧾 سفارش #{row['id']}  •  {kind}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 نام: {row['first_name'] or '-'}\n"
-                f"🔹 Username: {username}\n"
+                f"👤 {row['first_name'] or '-'}  |  {username}\n"
                 f"🆔 آیدی: {row['user_id']}\n"
                 f"📦 حجم: {row['volume']}\n"
                 f"💰 مبلغ: {row['price']:,} تومان\n"
                 f"📌 وضعیت: {status}\n"
-                f"🕐 زمان: {row['created_at']}\n\n"
+                f"🕐 {row['created_at']}\n\n"
             )
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🧾 همه سفارش‌ها", callback_data="admin_orders"),
+            InlineKeyboardButton("✅ پرداخت‌شده", callback_data="admin_orders_approved")
+        ],
+        [InlineKeyboardButton("❌ ردشده", callback_data="admin_orders_rejected")],
         [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
-    ]))
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def show_admin_trial(query):
@@ -1706,10 +1728,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data == "admin_orders":
+    if data in ("admin_orders", "admin_orders_approved", "admin_orders_rejected"):
         if user_id != ADMIN_ID:
             return
-        await show_admin_orders(query)
+        status_filter = None
+        if data == "admin_orders_approved":
+            status_filter = "approved"
+        elif data == "admin_orders_rejected":
+            status_filter = "rejected"
+        await show_admin_orders(query, status_filter=status_filter)
         return
 
     if data == "admin_add":

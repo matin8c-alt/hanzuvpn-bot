@@ -21,6 +21,10 @@ from telegram import (
     MenuButtonWebApp,
     WebAppInfo,
 )
+try:
+    from telegram import CopyTextButton
+except ImportError:
+    CopyTextButton = None
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -86,6 +90,7 @@ TEXTS = {
         "language": "🌐 تغییر زبان",
         "admin": "⚙️ پنل مدیریت",
         "back": "🔙 بازگشت",
+        "back_to_period": "🔙 یکماهه",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
         "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
@@ -109,7 +114,12 @@ TEXTS = {
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
         "renew_paid": "💳 پرداخت تمدید\n\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n⏳ مدت: 30 روز\n\n💳 شماره کارت:\n`{card}`\n\nبعد از پرداخت روی دکمه زیر بزنید.",
         "renew_created": "✅ درخواست تمدید ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
-        "custom_prompt": "✏️ حجم دلخواه\n\nحجم موردنظر را به گیگ وارد کن.\n\nمثال:\n25",
+        "custom_prompt": "✏️ حجم دلخواه\n\nحجم را با دکمه‌های زیر انتخاب کنید.\nهر بار ۵ گیگ کم یا زیاد می‌شود.",
+        "custom_minus": "➖ ۵ گیگ",
+        "custom_plus": "➕ ۵ گیگ",
+        "custom_confirm": "✅ انتخاب این حجم",
+        "copy_card": "📋 کپی شماره کارت",
+        "back_to_volume": "🔙 انتخاب حجم",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
         "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
@@ -156,6 +166,7 @@ TEXTS = {
         "language": "🌐 گۆڕینی زمان",
         "admin": "⚙️ بەڕێوەبردن",
         "back": "🔙 گەڕانەوە",
+        "back_to_period": "🔙 یەک مانگ",
         "main_menu": "🔙 پەڕەی سەرەکی",
         "wallet": "💰 جزدان",
         "buy_title": "🛒 هەڵبژاردنی خزمەتگوزاری\n\n⏳ ماوەی هەموو خزمەتگوزارییەکان: 30 ڕۆژ\n\nقەبارەی خۆت هەڵبژێرە:",
@@ -179,7 +190,12 @@ TEXTS = {
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "renew_paid": "💳 پارەدانی نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n💳 `{card}`",
         "renew_created": "✅ داواکاری نوێکردنەوە تۆمار کرا.\n\n🧾 #{order}",
-        "custom_prompt": "✏️ قەبارە بە گیگ بنووسە:\n\nنموونە: 25",
+        "custom_prompt": "✏️ قەبارەی دڵخواز\n\nبە دوگمەکان قەبارەکە هەڵبژێرە.\nهەر جار ٥ گیگ کەم یان زیاد دەبێت.",
+        "custom_minus": "➖ ٥ گیگ",
+        "custom_plus": "➕ ٥ گیگ",
+        "custom_confirm": "✅ ئەم قەبارەیە هەڵبژێرە",
+        "copy_card": "📋 کۆپی ژمارەی کارت",
+        "back_to_volume": "🔙 هەڵبژاردنی قەبارە",
         "invalid_volume": "❌ قەبارە نادروستە.",
         "custom_summary": "🛒 خزمەتگوزاری دڵخواز\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "support_title": "🎫 پشتگیری\n\nتیکەت دروست بکە.",
@@ -226,6 +242,7 @@ TEXTS = {
         "language": "🌐 Change Language",
         "admin": "⚙️ Admin Panel",
         "back": "🔙 Back",
+        "back_to_period": "🔙 1 Month",
         "main_menu": "🔙 Main Menu",
         "wallet": "💰 Wallet",
         "buy_title": "🛒 Choose a Service\n\n⏳ All services are valid for 30 days.\n\nChoose your desired volume:",
@@ -249,7 +266,12 @@ TEXTS = {
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "renew_paid": "💳 Renewal Payment\n\n📦 {volume} GB\n💰 {price:,} Toman\n\n💳 `{card}`",
         "renew_created": "✅ Renewal request registered.\n\n🧾 #{order}",
-        "custom_prompt": "✏️ Enter volume in GB:\n\nExample: 25",
+        "custom_prompt": "✏️ Custom Volume\n\nChoose the volume with the buttons below.\nEach step changes by 5 GB.",
+        "custom_minus": "➖ 5 GB",
+        "custom_plus": "➕ 5 GB",
+        "custom_confirm": "✅ Confirm this volume",
+        "copy_card": "📋 Copy card number",
+        "back_to_volume": "🔙 Choose Volume",
         "invalid_volume": "❌ Invalid volume.",
         "custom_summary": "🛒 Custom Service\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "support_title": "🎫 Support\n\nCreate a ticket.",
@@ -757,6 +779,24 @@ async def set_bot_commands(application):
 # =========================================================
 
 def buy_keyboard(user_id):
+    """مرحله اول خرید: انتخاب مدت سرویس."""
+    lang = get_user_language(user_id) or "fa"
+    if lang == "en":
+        text = "📅 1 Month"
+    elif lang == "ku":
+        text = "📅 یەک مانگ"
+    else:
+        text = "📅 یکماهه"
+
+    keyboard = [
+        [InlineKeyboardButton(text, callback_data="period_1m")],
+        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def buy_plans_keyboard(user_id):
+    """مرحله دوم خرید: انتخاب حجم سرویس پس از انتخاب مدت."""
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
         buttons = [
@@ -768,6 +808,17 @@ def buy_keyboard(user_id):
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
             ("100 GB | 350,000 Toman", "plan_100"),
+        ]
+    elif lang == "ku":
+        buttons = [
+            ("1 GB | 3,500", "plan_1"),
+            ("10 GB | 35,000", "plan_10"),
+            ("15 GB | 52,500", "plan_15"),
+            ("20 GB | 70,000", "plan_20"),
+            ("30 GB | 105,000", "plan_30"),
+            ("40 GB | 140,000", "plan_40"),
+            ("50 GB | 175,000", "plan_50"),
+            ("100 GB | 350,000", "plan_100"),
         ]
     else:
         buttons = [
@@ -782,7 +833,7 @@ def buy_keyboard(user_id):
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+    keyboard.append([InlineKeyboardButton(t(lang, "back_to_period"), callback_data="buy")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -791,6 +842,24 @@ async def send_buy_message(message):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "buy_title"), reply_markup=buy_keyboard(user_id))
 
+
+async def show_custom_volume_selector(query, context, lang):
+    volume = int(context.user_data.get("custom_selector_volume", 5))
+    price = volume * PRICE_PER_GB
+    text = t(lang, "custom_prompt") + f"\n\n📦 {volume} گیگ\n💰 {price:,} تومان" if lang == "fa" else (
+        t(lang, "custom_prompt") + f"\n\n📦 {volume} GB\n💰 {price:,} Toman" if lang == "en" else
+        t(lang, "custom_prompt") + f"\n\n📦 {volume} گیگ\n💰 {price:,} تومان"
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton(t(lang, "custom_minus"), callback_data="custom_minus"),
+            InlineKeyboardButton(f"{volume} GB", callback_data="custom_confirm"),
+            InlineKeyboardButton(t(lang, "custom_plus"), callback_data="custom_plus"),
+        ],
+        [InlineKeyboardButton(t(lang, "custom_confirm"), callback_data="custom_confirm")],
+        [InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def show_buy_menu(query):
     lang = get_user_language(query.from_user.id) or "fa"
@@ -812,16 +881,14 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     caption += t(lang, "card", card=CARD_NUMBER)
 
-    keyboard = [
-        [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]
-    ]
-
-    # دکمه پرداخت از کیف پول
+    keyboard = []
     balance = get_balance(user_id)
     if balance >= price:
-        keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
-
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
+        keyboard.append([InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
+    keyboard.append([InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")])
+    if CARD_NUMBER and CopyTextButton:
+        keyboard.append([InlineKeyboardButton(t(lang, "copy_card"), copy_text=CopyTextButton(text=CARD_NUMBER))])
+    keyboard.append([InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")])
 
     await query.edit_message_text(
         caption,
@@ -1215,7 +1282,7 @@ async def show_admin_stats(query):
 
 async def show_admin_orders(query, status_filter=None):
     conn = get_db()
-    if status_filter in ("approved", "rejected"):
+    if status_filter in ("pending", "approved", "rejected"):
         rows = conn.execute(
             "SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 15",
             (status_filter,)
@@ -1226,7 +1293,9 @@ async def show_admin_orders(query, status_filter=None):
         ).fetchall()
     conn.close()
 
-    if status_filter == "approved":
+    if status_filter == "pending":
+        title = "⏳ رسیدهای در انتظار تأیید"
+    elif status_filter == "approved":
         title = "✅ رسیدهای پرداخت‌شده"
     elif status_filter == "rejected":
         title = "❌ رسیدهای ردشده"
@@ -1369,7 +1438,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data == "charge_wallet":
         context.user_data["waiting_charge_amount"] = True
-        await query.edit_message_text(t(lang, "charge_prompt", min=MIN_CHARGE))
+        await query.edit_message_text(
+            t(lang, "charge_prompt", min=MIN_CHARGE),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="wallet")]])
+        )
         return
 
     if data == "wallet_history":
@@ -1394,6 +1466,19 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "buy":
         clear_user_states(context)
         await show_buy_menu(query)
+        return
+
+    # مرحله دوم خرید: بعد از انتخاب «یکماهه»، نمایش حجم‌ها
+    if data == "period_1m":
+        clear_user_states(context)
+        lang = get_user_language(user_id) or "fa"
+        if lang == "en":
+            title = "🛒 Choose your 1-month service volume:"
+        elif lang == "ku":
+            title = "🛒 قەبارەی خزمەتگوزاریی یەک مانگ هەڵبژێرە:"
+        else:
+            title = "🛒 حجم سرویس یکماهه را انتخاب کنید:"
+        await query.edit_message_text(title, reply_markup=buy_plans_keyboard(user_id))
         return
 
     if data.startswith("plan_"):
@@ -1556,10 +1641,35 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
         return
 
-    # حجم دلخواه
+    # حجم دلخواه: انتخاب با گام‌های ۵ گیگ
     if data == "custom":
-        context.user_data["waiting_custom_volume"] = True
-        await query.edit_message_text(t(lang, "custom_prompt"))
+        context.user_data["custom_selector_volume"] = 5
+        await show_custom_volume_selector(query, context, lang)
+        return
+
+    if data in {"custom_minus", "custom_plus"}:
+        current = int(context.user_data.get("custom_selector_volume", 5))
+        current += -5 if data == "custom_minus" else 5
+        current = max(5, min(1000, current))
+        context.user_data["custom_selector_volume"] = current
+        await show_custom_volume_selector(query, context, lang)
+        return
+
+    if data == "custom_confirm":
+        volume = int(context.user_data.get("custom_selector_volume", 5))
+        base_price = volume * PRICE_PER_GB
+        context.user_data["custom_volume"] = volume
+        context.user_data["custom_price"] = base_price
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+        await show_payment(query, str(volume), price, base_price, coupon_code)
         return
 
     # تست
@@ -1706,7 +1816,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     # کوپن
     if data == "coupon":
         context.user_data["waiting_coupon"] = True
-        await query.edit_message_text(t(lang, "coupon_prompt"))
+        await query.edit_message_text(
+            t(lang, "coupon_prompt"),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+        )
         return
 
     # ==================== ادمین ====================
@@ -1728,11 +1841,13 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data in ("admin_orders", "admin_orders_approved", "admin_orders_rejected"):
+    if data in ("admin_orders", "admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):
         if user_id != ADMIN_ID:
             return
         status_filter = None
-        if data == "admin_orders_approved":
+        if data == "admin_orders_pending":
+            status_filter = "pending"
+        elif data == "admin_orders_approved":
             status_filter = "approved"
         elif data == "admin_orders_rejected":
             status_filter = "rejected"
@@ -2184,46 +2299,26 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ خطا در تغییر موجودی.")
         return
 
-    # حجم دلخواه
+    # حجم دلخواه: ورودی متنی قدیمی هم با ضریب ۵ پذیرفته می‌شود
     if context.user_data.get("waiting_custom_volume"):
         context.user_data["waiting_custom_volume"] = False
         try:
             volume = int(text)
-            if volume <= 0 or volume > 1000:
+            if volume <= 0 or volume > 1000 or volume % 5 != 0:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text(t(lang, "invalid_volume"))
+            await update.message.reply_text(t(lang, "invalid_volume") + "\nحجم باید مضربی از ۵ باشد.")
             return
-
         price = volume * PRICE_PER_GB
         context.user_data["custom_volume"] = volume
         context.user_data["custom_price"] = price
-
-        coupon_code = context.user_data.get("coupon_code")
-        final_price = price
-        original_price = price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user.id, price)
-            if result["status"] == "success":
-                final_price = result["price"]
-            else:
-                context.user_data.pop("coupon_code", None)
-                coupon_code = None
-
-        payment_text = t(lang, "payment", volume=volume, price=final_price)
-        if original_price != final_price and coupon_code:
-            payment_text += t(lang, "original_price", original=original_price, coupon=coupon_code)
-        payment_text += t(lang, "card", card=CARD_NUMBER)
-
-        keyboard = [[InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]]
-        if get_balance(user.id) >= final_price:
-            keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{final_price}")])
-        keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
-
         await update.message.reply_text(
-            payment_text,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            t(lang, "custom_summary", volume=volume, price=price),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")],
+                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
+                [InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")]
+            ])
         )
         return
 

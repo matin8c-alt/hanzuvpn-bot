@@ -602,6 +602,40 @@ def change_balance(user_id, amount, type_, description="", order_id=None):
         conn.close()
 
 
+def debit_balance_atomic(user_id, amount, type_, description="", order_id=None):
+    """Atomically debit wallet balance only when sufficient funds exist."""
+    amount = int(amount)
+    if amount <= 0:
+        return {"ok": False, "balance": get_balance(user_id)}
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "UPDATE users SET balance = COALESCE(balance, 0) - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
+            (amount, user_id, amount),
+        )
+        if cur.rowcount != 1:
+            row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            conn.rollback()
+            return {"ok": False, "balance": int(row["balance"] or 0) if row else 0}
+        conn.execute(
+            "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, -amount, type_, description, order_id, now_text()),
+        )
+        row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        new_balance = int(row["balance"] or 0) if row else 0
+        conn.commit()
+        return {"ok": True, "balance": new_balance}
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "balance": get_balance(user_id)}
+    finally:
+        conn.close()
+
+
 def get_wallet_history(user_id, limit=15):
     conn = get_db()
     rows = conn.execute("""
@@ -1639,37 +1673,37 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         except ValueError:
             return
 
-        balance = get_balance(user_id)
-        if balance < price:
+        # کسر موجودی به‌صورت اتمیک؛ کلیک همزمان نمی‌تواند موجودی را منفی کند.
+        debit = debit_balance_atomic(
+            user_id, price, "purchase", f"خرید سرویس {volume} گیگ", None
+        )
+        if not debit["ok"]:
             await query.answer(t(lang, "not_enough_balance"), show_alert=True)
             return
 
-        # کسر از کیف پول
-        success = change_balance(user_id, -price, "purchase", f"خرید سرویس {volume} گیگ", None)
-        if not success:
-            await query.answer("خطا در کسر موجودی.", show_alert=True)
-            return
-
-        # ساخت سفارش و تأیید خودکار
-        order_id = create_order(user, volume, price, is_charge=0)
-        result = approve_order(order_id)
-
-        if result["status"] == "approved":
-            await query.edit_message_text(
-                t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
-                "\n\n" +
-                t(lang, "payment_confirmed",
-                  volume=volume,
-                  expires=result["expires_at"],
-                  order=order_id,
-                  link=result["link"])
-            )
-        elif result["status"] == "no_stock":
-            # برگشت پول
-            change_balance(user_id, price, "refund", f"برگشت وجه به دلیل نبود موجودی - سفارش #{order_id}")
-            await query.edit_message_text("❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
-        else:
-            change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id}")
+        order_id = None
+        try:
+            # ساخت سفارش و تحویل سرویس مثل قبل انجام می‌شود.
+            order_id = create_order(user, volume, price, is_charge=0)
+            result = approve_order(order_id)
+            if result["status"] == "approved":
+                await query.edit_message_text(
+                    t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                    "\n\n" +
+                    t(lang, "payment_confirmed",
+                      volume=volume,
+                      expires=result["expires_at"],
+                      order=order_id,
+                      link=result["link"])
+                )
+            else:
+                change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id}")
+                if result["status"] == "no_stock":
+                    await query.edit_message_text("❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
+                else:
+                    await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
+        except Exception:
+            change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id or '-'}")
             await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
         return
 
@@ -1798,15 +1832,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         except (ValueError, IndexError):
             await query.answer("اطلاعات پرداخت نامعتبر است.", show_alert=True)
             return
-        balance = get_balance(user_id)
-        if balance < price:
-            await query.answer(t(lang, "not_enough_balance"), show_alert=True)
-            return
-        success = change_balance(user_id, -price, "renewal", f"تمدید سرویس #{order_id} - {volume} گیگ", None)
-        if not success:
-            await query.answer("خطا در کسر موجودی.", show_alert=True)
-            return
-        # تمدید از کیف پول: مشابه مسیر امن Mini App، داخل تراکنش انجام می‌شود.
+        # تمدید از کیف پول باید کسر موجودی و تغییر انقضا را در یک تراکنش انجام دهد.
         conn = get_db()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -1818,73 +1844,44 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 conn.rollback()
                 await query.answer("سرویس پیدا نشد.", show_alert=True)
                 return
-
-            old_exp = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now()
-            base = max(old_exp, datetime.now())
-            new_exp = base + timedelta(days=SERVICE_DAYS)
+            real_volume = _normalize_volume(order["volume"])
+            if not real_volume:
+                conn.rollback()
+                await query.answer("حجم سرویس نامعتبر است.", show_alert=True)
+                return
+            real_price = TARIFF_PLANS.get(real_volume) or (int(real_volume) * PRICE_PER_GB)
+            if real_price != price:
+                price = real_price
             cur = conn.execute(
                 "UPDATE users SET balance = balance - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
                 (price, user_id, price)
             )
             if cur.rowcount != 1:
+                bal = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
                 conn.rollback()
                 await query.answer(t(lang, "not_enough_balance"), show_alert=True)
                 return
-
+            old = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now()
+            base = max(old, datetime.now())
+            newexp = base + timedelta(days=SERVICE_DAYS)
             conn.execute(
-                "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, -price, "renew", f"تمدید سرویس #{order_id}", order_id, now_text())
+                "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?,?,?,?,?,?)",
+                (user_id, -price, "renewal", f"تمدید سرویس #{order_id} - {real_volume} گیگ", order_id, now_text())
             )
-            conn.execute(
-                "UPDATE orders SET expires_at = ? WHERE id = ?",
-                (new_exp.strftime("%Y-%m-%d %H:%M:%S"), order_id)
-            )
+            conn.execute("UPDATE orders SET expires_at=? WHERE id=? AND user_id=? AND status='approved'", (newexp.strftime("%Y-%m-%d %H:%M:%S"), order_id, user_id))
             conn.commit()
             await query.edit_message_text(
-                t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
-                "\n\n" +
-                f"🔄 تمدید سرویس با موفقیت انجام شد.\n📦 حجم: {volume} گیگ\n📅 انقضای جدید: {new_exp.strftime('%Y-%m-%d %H:%M:%S')}"
+                t(lang, "renew_done") + f"\n\n📅 {newexp.strftime('%Y-%m-%d %H:%M:%S')}\n💰 {price:,} تومان"
             )
         except Exception:
             try:
                 conn.rollback()
             except Exception:
                 pass
-            await query.answer("خطا در تمدید. مبلغی از کیف پول کسر نشد.", show_alert=True)
+            await query.answer("خطا در تمدید سرویس.", show_alert=True)
         finally:
             conn.close()
         return
-
-    if data.startswith("renewpay_"):
-        volume = data.split("_")[1]
-        stored_volume = context.user_data.get("renew_volume")
-        stored_price = context.user_data.get("renew_price")
-        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
-            await query.answer("سفارش نامعتبر است.", show_alert=True)
-            return
-        await query.edit_message_text(
-            t(lang, "renew_paid", volume=volume, price=stored_price, card=CARD_NUMBER),
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
-            ])
-        )
-        return
-
-    if data.startswith("renewpaid_"):
-        volume = data.split("_")[1]
-        stored_volume = context.user_data.get("renew_volume")
-        stored_price = context.user_data.get("renew_price")
-        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
-            await query.answer("سفارش نامعتبر است.", show_alert=True)
-            return
-        order_id = create_order(user, volume, stored_price)
-        context.user_data.pop("renew_volume", None)
-        context.user_data.pop("renew_price", None)
-        await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=stored_price))
-        return
-
     # پشتیبانی
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
@@ -2767,7 +2764,13 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=self._user()
         if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
-        try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))) or b"{}")
+        try:
+            content_length = int(self.headers.get("Content-Length", "0") or 0)
+        except Exception:
+            content_length = 0
+        if content_length > 8 * 1024 * 1024:
+            return self._send(413,{"ok":False,"error":"request_too_large"})
+        try: payload=json.loads(self.rfile.read(content_length) or b"{}")
         except Exception: return self._send(400,{"ok":False,"error":"bad_json"})
         path=self.path.split("?",1)[0]
         if path in ("/api/buy","/api/renew"):

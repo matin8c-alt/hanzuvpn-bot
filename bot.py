@@ -532,6 +532,7 @@ def init_db():
         ("is_charge", "INTEGER DEFAULT 0"),
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
+        ("receipt_message_id", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -1036,6 +1037,20 @@ def _normalize_volume(value):
         return str(n) if n > 0 else None
     except Exception:
         return None
+
+
+async def delete_customer_receipt_message(context, order):
+    """Delete the customer's receipt preview after the order is decided."""
+    try:
+        message_id = order["receipt_message_id"] if "receipt_message_id" in order.keys() else None
+    except Exception:
+        message_id = None
+    if not message_id:
+        return
+    try:
+        await context.bot.delete_message(chat_id=order["user_id"], message_id=int(message_id))
+    except Exception as e:
+        print(f"Could not delete customer receipt message for order #{order['id']}: {e}")
 
 
 def approve_order(order_id):
@@ -2111,6 +2126,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 chat_id=order["user_id"],
                 text=t(recipient_lang, "charge_success", amount=order["price"], balance=balance)
             )
+            await delete_customer_receipt_message(context, order)
             try:
                 await query.edit_message_caption(caption=f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             except Exception:
@@ -2125,6 +2141,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                    order=order_id,
                    link=result["link"])
         )
+        await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(
                 caption=f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}"
@@ -2154,6 +2171,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             chat_id=order["user_id"],
             text=t(recipient_lang, "payment_rejected", order=order_id)
         )
+        await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(caption=f"❌ سفارش #{order_id} رد شد.\n📦 {order['volume']}\n💰 {order['price']:,} تومان")
         except Exception:
@@ -2470,12 +2488,38 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ رد پرداخت", callback_data=f"reject_{order['id']}")
     ]]
 
+    photo_file_id = update.message.photo[-1].file_id
+
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=update.message.photo[-1].file_id,
+        photo=photo_file_id,
         caption=caption,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+    # رسید را برای خود مشتری هم به‌صورت تصویر واقعی نمایش می‌دهیم، نه فقط نام فایل.
+    customer_caption = (
+        f"🧾 رسید سفارش #{order['id']}\n"
+        f"📌 وضعیت: در انتظار تأیید مدیریت\n"
+        f"📦 {order['volume']}\n"
+        f"💰 مبلغ: {order['price']:,} تومان"
+    )
+    customer_msg = await context.bot.send_photo(
+        chat_id=user.id,
+        photo=photo_file_id,
+        caption=customer_caption
+    )
+
+    # شناسه پیام را ذخیره می‌کنیم تا بعد از تأیید/رد، تصویر رسید از چت مشتری حذف شود.
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE orders SET receipt_message_id = ? WHERE id = ? AND user_id = ?",
+            (customer_msg.message_id, order["id"], user.id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     await update.message.reply_text(t(lang, "receipt_received", order=order["id"]))
 

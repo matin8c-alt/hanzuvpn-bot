@@ -2793,6 +2793,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if amount<MIN_CHARGE: return self._send(400,{"ok":False,"error":"min_charge","min":MIN_CHARGE})
             oid=create_order(u,"CHARGE",amount,is_charge=1)
             return self._send(200,{"ok":True,"order_id":oid,"amount":amount,"card":CARD_NUMBER})
+        if path=="/api/order-status":
+            oid=int(payload.get("order_id",0) or 0)
+            if not oid: return self._send(400,{"ok":False,"error":"invalid_order"})
+            conn=get_db()
+            try:
+                row=conn.execute("SELECT id, status, is_charge, volume, price FROM orders WHERE id=? AND user_id=?",(oid,u.id)).fetchone()
+            finally:
+                conn.close()
+            if not row: return self._send(404,{"ok":False,"error":"order_not_found"})
+            return self._send(200,{"ok":True,"order_id":row["id"],"status":row["status"],"is_charge":int(row["is_charge"] or 0),"volume":row["volume"],"price":row["price"]})
         if path=="/api/charge-receipt":
             oid=int(payload.get("order_id",0) or 0); amount=int(payload.get("amount",0) or 0); img=payload.get("image","")
             if not oid or not img: return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})

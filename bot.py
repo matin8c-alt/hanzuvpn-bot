@@ -90,7 +90,7 @@ TEXTS = {
         "language": "🌐 تغییر زبان",
         "admin": "⚙️ پنل مدیریت",
         "back": "🔙 بازگشت",
-        "back_to_period": "🔙 بازگشت",
+        "back_to_period": "🔙 یکماهه",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
         "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
@@ -119,7 +119,7 @@ TEXTS = {
         "custom_plus": "➕ ۵ گیگ",
         "custom_confirm": "✅ انتخاب این حجم",
         "copy_card": "📋 کپی شماره کارت",
-        "back_to_volume": "🔙 بازگشت",
+        "back_to_volume": "🔙 انتخاب حجم",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
         "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
@@ -166,7 +166,7 @@ TEXTS = {
         "language": "🌐 گۆڕینی زمان",
         "admin": "⚙️ بەڕێوەبردن",
         "back": "🔙 گەڕانەوە",
-        "back_to_period": "🔙 گەڕانەوە",
+        "back_to_period": "🔙 یەک مانگ",
         "main_menu": "🔙 پەڕەی سەرەکی",
         "wallet": "💰 جزدان",
         "buy_title": "🛒 هەڵبژاردنی خزمەتگوزاری\n\n⏳ ماوەی هەموو خزمەتگوزارییەکان: 30 ڕۆژ\n\nقەبارەی خۆت هەڵبژێرە:",
@@ -195,7 +195,7 @@ TEXTS = {
         "custom_plus": "➕ ٥ گیگ",
         "custom_confirm": "✅ ئەم قەبارەیە هەڵبژێرە",
         "copy_card": "📋 کۆپی ژمارەی کارت",
-        "back_to_volume": "🔙 گەڕانەوە",
+        "back_to_volume": "🔙 هەڵبژاردنی قەبارە",
         "invalid_volume": "❌ قەبارە نادروستە.",
         "custom_summary": "🛒 خزمەتگوزاری دڵخواز\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "support_title": "🎫 پشتگیری\n\nتیکەت دروست بکە.",
@@ -242,7 +242,7 @@ TEXTS = {
         "language": "🌐 Change Language",
         "admin": "⚙️ Admin Panel",
         "back": "🔙 Back",
-        "back_to_period": "🔙 Back",
+        "back_to_period": "🔙 1 Month",
         "main_menu": "🔙 Main Menu",
         "wallet": "💰 Wallet",
         "buy_title": "🛒 Choose a Service\n\n⏳ All services are valid for 30 days.\n\nChoose your desired volume:",
@@ -271,7 +271,7 @@ TEXTS = {
         "custom_plus": "➕ 5 GB",
         "custom_confirm": "✅ Confirm this volume",
         "copy_card": "📋 Copy card number",
-        "back_to_volume": "🔙 Back",
+        "back_to_volume": "🔙 Choose Volume",
         "invalid_volume": "❌ Invalid volume.",
         "custom_summary": "🛒 Custom Service\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "support_title": "🎫 Support\n\nCreate a ticket.",
@@ -2739,6 +2739,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 return self._send(200,{"ok":False,"error":"no_stock","volume":volume,"balance":r.get("balance",0)})
             print("MiniApp purchase error:", r.get("error","unknown"))
             return self._send(500,{"ok":False,"error":"purchase_failed"})
+        if path=="/api/order-status":
+            oid=int(payload.get("order_id",0) or 0)
+            if not oid:
+                return self._send(400,{"ok":False,"error":"invalid_order"})
+            conn=get_db()
+            try:
+                row=conn.execute("SELECT id, user_id, status, is_charge, volume, price FROM orders WHERE id=? AND user_id=?",(oid,u.id)).fetchone()
+            finally:
+                conn.close()
+            if not row:
+                return self._send(404,{"ok":False,"error":"order_not_found"})
+            return self._send(200,{"ok":True,"order_id":int(row["id"]),"status":row["status"],"is_charge":int(row["is_charge"] or 0),"volume":row["volume"],"price":int(row["price"] or 0)})
         if path=="/api/language":
             language=str(payload.get("language", "fa"))
             if language not in LANGUAGES: return self._send(400,{"ok":False,"error":"invalid_language"})

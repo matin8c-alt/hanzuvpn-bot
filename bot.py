@@ -1229,12 +1229,17 @@ async def show_admin_orders(query):
                 "cancelled": "🚫 لغو شده"
             }.get(row["status"], row["status"])
             charge = " (شارژ کیف پول)" if row["is_charge"] else ""
+            username = f"@{row['username']}" if row['username'] else "ندارد"
             text += (
-                f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
-                f"👤 Username: @{row['username']}\n" if row['username'] else f"👤 Username: ندارد\n"
-                f"🆔 آیدی کاربر: {row['user_id']}\n"
-                f"📦 {row['volume']} | {row['price']:,} تومان\n"
-                f"{status}\n🕐 {row['created_at']}\n\n"
+                f"🧾 سفارش #{row['id']}" + (" • شارژ کیف پول" if row['is_charge'] else "") + "\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 نام: {row['first_name'] or '-'}\n"
+                f"🔹 Username: {username}\n"
+                f"🆔 آیدی: {row['user_id']}\n"
+                f"📦 حجم: {row['volume']}\n"
+                f"💰 مبلغ: {row['price']:,} تومان\n"
+                f"📌 وضعیت: {status}\n"
+                f"🕐 زمان: {row['created_at']}\n\n"
             )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]

@@ -1231,6 +1231,8 @@ async def show_admin_orders(query):
             charge = " (شارژ کیف پول)" if row["is_charge"] else ""
             text += (
                 f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
+                f"👤 Username: @{row['username']}\n" if row['username'] else f"👤 Username: ندارد\n"
+                f"🆔 آیدی کاربر: {row['user_id']}\n"
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )

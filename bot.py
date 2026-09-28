@@ -882,9 +882,9 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     caption += t(lang, "card", card=CARD_NUMBER)
 
     keyboard = []
-    balance = get_balance(user_id)
-    if balance >= price:
-        keyboard.append([InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
+    # پرداخت با کیف پول همیشه نمایش داده می‌شود؛ اگر موجودی کافی نباشد
+    # هنگام کلیک پیام کمبود موجودی نمایش داده می‌شود.
+    keyboard.append([InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
     keyboard.append([InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")])
     if CARD_NUMBER and CopyTextButton:
         keyboard.append([InlineKeyboardButton(t(lang, "copy_card"), copy_text=CopyTextButton(text=CARD_NUMBER))])
@@ -1748,10 +1748,79 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"renewwallet_{order_id}_{volume}_{price}")],
                 [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpay_{volume}")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
             ])
         )
+        return
+
+    if data.startswith("renewwallet_"):
+        parts = data.split("_")
+        if len(parts) < 4:
+            return
+        try:
+            order_id = int(parts[1])
+            volume = parts[2]
+            price = int(parts[3])
+        except (ValueError, IndexError):
+            await query.answer("اطلاعات پرداخت نامعتبر است.", show_alert=True)
+            return
+        balance = get_balance(user_id)
+        if balance < price:
+            await query.answer(t(lang, "not_enough_balance"), show_alert=True)
+            return
+        success = change_balance(user_id, -price, "renewal", f"تمدید سرویس #{order_id} - {volume} گیگ", None)
+        if not success:
+            await query.answer("خطا در کسر موجودی.", show_alert=True)
+            return
+        # تمدید از کیف پول: مشابه مسیر امن Mini App، داخل تراکنش انجام می‌شود.
+        conn = get_db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            order = conn.execute(
+                "SELECT id, volume, expires_at FROM orders WHERE id = ? AND user_id = ? AND status = 'approved' AND is_charge = 0",
+                (order_id, user_id)
+            ).fetchone()
+            if not order:
+                conn.rollback()
+                await query.answer("سرویس پیدا نشد.", show_alert=True)
+                return
+
+            old_exp = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now()
+            base = max(old_exp, datetime.now())
+            new_exp = base + timedelta(days=SERVICE_DAYS)
+            cur = conn.execute(
+                "UPDATE users SET balance = balance - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
+                (price, user_id, price)
+            )
+            if cur.rowcount != 1:
+                conn.rollback()
+                await query.answer(t(lang, "not_enough_balance"), show_alert=True)
+                return
+
+            conn.execute(
+                "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, -price, "renew", f"تمدید سرویس #{order_id}", order_id, now_text())
+            )
+            conn.execute(
+                "UPDATE orders SET expires_at = ? WHERE id = ?",
+                (new_exp.strftime("%Y-%m-%d %H:%M:%S"), order_id)
+            )
+            conn.commit()
+            await query.edit_message_text(
+                t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                "\n\n" +
+                f"🔄 تمدید سرویس با موفقیت انجام شد.\n📦 حجم: {volume} گیگ\n📅 انقضای جدید: {new_exp.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            await query.answer("خطا در تمدید. مبلغی از کیف پول کسر نشد.", show_alert=True)
+        finally:
+            conn.close()
         return
 
     if data.startswith("renewpay_"):

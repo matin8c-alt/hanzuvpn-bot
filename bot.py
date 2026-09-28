@@ -655,7 +655,6 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    await message.reply_text("منوی پایین:", reply_markup=bottom_keyboard(user_id))
 
 
 # =========================================================

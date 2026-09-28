@@ -760,19 +760,25 @@ def buy_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
         buttons = [
+            ("1 GB | 3,500 Toman", "plan_1"),
             ("10 GB | 35,000 Toman", "plan_10"),
+            ("15 GB | 52,500 Toman", "plan_15"),
             ("20 GB | 70,000 Toman", "plan_20"),
             ("30 GB | 105,000 Toman", "plan_30"),
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
+            ("100 GB | 350,000 Toman", "plan_100"),
         ]
     else:
         buttons = [
+            ("1 گیگ | 3,500 تومان", "plan_1"),
             ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("15 گیگ | 52,500 تومان", "plan_15"),
             ("20 گیگ | 70,000 تومان", "plan_20"),
             ("30 گیگ | 105,000 تومان", "plan_30"),
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
+            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])

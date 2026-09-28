@@ -90,7 +90,7 @@ TEXTS = {
         "language": "🌐 تغییر زبان",
         "admin": "⚙️ پنل مدیریت",
         "back": "🔙 بازگشت",
-        "back_to_period": "🔙 یکماهه",
+        "back_to_period": "🔙 بازگشت",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
         "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
@@ -119,7 +119,7 @@ TEXTS = {
         "custom_plus": "➕ ۵ گیگ",
         "custom_confirm": "✅ انتخاب این حجم",
         "copy_card": "📋 کپی شماره کارت",
-        "back_to_volume": "🔙 انتخاب حجم",
+        "back_to_volume": "🔙 بازگشت",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
         "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
@@ -166,7 +166,7 @@ TEXTS = {
         "language": "🌐 گۆڕینی زمان",
         "admin": "⚙️ بەڕێوەبردن",
         "back": "🔙 گەڕانەوە",
-        "back_to_period": "🔙 یەک مانگ",
+        "back_to_period": "🔙 گەڕانەوە",
         "main_menu": "🔙 پەڕەی سەرەکی",
         "wallet": "💰 جزدان",
         "buy_title": "🛒 هەڵبژاردنی خزمەتگوزاری\n\n⏳ ماوەی هەموو خزمەتگوزارییەکان: 30 ڕۆژ\n\nقەبارەی خۆت هەڵبژێرە:",
@@ -195,7 +195,7 @@ TEXTS = {
         "custom_plus": "➕ ٥ گیگ",
         "custom_confirm": "✅ ئەم قەبارەیە هەڵبژێرە",
         "copy_card": "📋 کۆپی ژمارەی کارت",
-        "back_to_volume": "🔙 هەڵبژاردنی قەبارە",
+        "back_to_volume": "🔙 گەڕانەوە",
         "invalid_volume": "❌ قەبارە نادروستە.",
         "custom_summary": "🛒 خزمەتگوزاری دڵخواز\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "support_title": "🎫 پشتگیری\n\nتیکەت دروست بکە.",
@@ -242,7 +242,7 @@ TEXTS = {
         "language": "🌐 Change Language",
         "admin": "⚙️ Admin Panel",
         "back": "🔙 Back",
-        "back_to_period": "🔙 1 Month",
+        "back_to_period": "🔙 Back",
         "main_menu": "🔙 Main Menu",
         "wallet": "💰 Wallet",
         "buy_title": "🛒 Choose a Service\n\n⏳ All services are valid for 30 days.\n\nChoose your desired volume:",
@@ -271,7 +271,7 @@ TEXTS = {
         "custom_plus": "➕ 5 GB",
         "custom_confirm": "✅ Confirm this volume",
         "copy_card": "📋 Copy card number",
-        "back_to_volume": "🔙 Choose Volume",
+        "back_to_volume": "🔙 Back",
         "invalid_volume": "❌ Invalid volume.",
         "custom_summary": "🛒 Custom Service\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "support_title": "🎫 Support\n\nCreate a ticket.",
@@ -790,7 +790,7 @@ def buy_keyboard(user_id):
 
     keyboard = [
         [InlineKeyboardButton(text, callback_data="period_1m")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -833,7 +833,7 @@ def buy_plans_keyboard(user_id):
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back_to_period"), callback_data="buy")])
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="buy")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -857,7 +857,7 @@ async def show_custom_volume_selector(query, context, lang):
             InlineKeyboardButton(t(lang, "custom_plus"), callback_data="custom_plus"),
         ],
         [InlineKeyboardButton(t(lang, "custom_confirm"), callback_data="custom_confirm")],
-        [InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")],
+        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="period_1m")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -888,7 +888,7 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     keyboard.append([InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")])
     if CARD_NUMBER and CopyTextButton:
         keyboard.append([InlineKeyboardButton(t(lang, "copy_card"), copy_text=CopyTextButton(text=CARD_NUMBER))])
-    keyboard.append([InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")])
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="period_1m")])
 
     await query.edit_message_text(
         caption,
@@ -1431,7 +1431,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
                 [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
             ])
         )
         return
@@ -1678,12 +1678,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if result["status"] == "already":
             await query.edit_message_text(t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
             ]))
             return
         if result["status"] == "empty":
             await query.edit_message_text(t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")]
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")]
             ]))
             return
         await query.edit_message_text(t(lang, "trial_success", link=result["link"]), reply_markup=InlineKeyboardMarkup([
@@ -1704,7 +1704,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                           expires=row["expires_at"] or "-", link=row["link"] or "-")
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "renew"), callback_data="renew")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
         ]))
         return
 
@@ -1714,14 +1714,14 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if not rows:
             await query.edit_message_text(t(lang, "renew_no_services"), reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
             ]))
             return
         keyboard = []
         for row in rows[:10]:
             label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"renew_{row['id']}")])
-        keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")])
         await query.edit_message_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -1857,7 +1857,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "create_ticket"), callback_data="new_ticket")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")],
         ]))
         return
 
@@ -1876,7 +1876,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             count = referral_count(user_id)
             await query.edit_message_text(
                 t(lang, "referral_title", count=count, link=link),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")]])
             )
         except Exception:
             await query.edit_message_text(t(lang, "referral_error"))
@@ -1887,7 +1887,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["waiting_coupon"] = True
         await query.edit_message_text(
             t(lang, "coupon_prompt"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")]])
         )
         return
 
@@ -2386,7 +2386,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")],
                 [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
-                [InlineKeyboardButton(t(lang, "back_to_volume"), callback_data="period_1m")]
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="period_1m")]
             ])
         )
         return
@@ -2739,18 +2739,6 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 return self._send(200,{"ok":False,"error":"no_stock","volume":volume,"balance":r.get("balance",0)})
             print("MiniApp purchase error:", r.get("error","unknown"))
             return self._send(500,{"ok":False,"error":"purchase_failed"})
-        if path=="/api/order-status":
-            oid=int(payload.get("order_id",0) or 0)
-            if not oid:
-                return self._send(400,{"ok":False,"error":"invalid_order"})
-            conn=get_db()
-            try:
-                row=conn.execute("SELECT id, user_id, status, is_charge, volume, price FROM orders WHERE id=? AND user_id=?",(oid,u.id)).fetchone()
-            finally:
-                conn.close()
-            if not row:
-                return self._send(404,{"ok":False,"error":"order_not_found"})
-            return self._send(200,{"ok":True,"order_id":int(row["id"]),"status":row["status"],"is_charge":int(row["is_charge"] or 0),"volume":row["volume"],"price":int(row["price"] or 0)})
         if path=="/api/language":
             language=str(payload.get("language", "fa"))
             if language not in LANGUAGES: return self._send(400,{"ok":False,"error":"invalid_language"})

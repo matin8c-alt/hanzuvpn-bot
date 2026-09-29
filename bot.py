@@ -80,6 +80,7 @@ TEXTS = {
         "language_title": "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
         "language_changed": "✅ زبان با موفقیت تغییر کرد.",
         "welcome": "🌐 HanzuVPN\n\nبه ربات HanzuVPN خوش آمدید ❤️\n\nاز منوی زیر انتخاب کنید:",
+        "select_option": "لطفا یکی از گزینه ها را انتخاب کنید:",
         "buy": "🛒 خرید سرویس",
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
@@ -156,6 +157,7 @@ TEXTS = {
         "language_title": "🌐 هەڵبژاردنی زمان\n\nتکایە زمانی خۆت هەڵبژێرە:",
         "language_changed": "✅ زمان بە سەرکەوتوویی گۆڕدرا.",
         "welcome": "🌐 HanzuVPN\n\nبەخێربێیت بۆ HanzuVPN ❤️\n\nلە خوارەوە هەڵبژاردەیەک هەڵبژێرە:",
+        "select_option": "تکایە یەکێک لە هەڵبژاردەکان هەڵبژێرە:",
         "buy": "🛒 کڕینی خزمەتگوزاری",
         "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
         "services": "📦 خزمەتگوزارییەکانم",
@@ -232,6 +234,7 @@ TEXTS = {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
         "language_changed": "✅ Language changed successfully.",
         "welcome": "🌐 HanzuVPN\n\nWelcome to HanzuVPN ❤️\n\nChoose an option below:",
+        "select_option": "Please choose one of the options:",
         "buy": "🛒 Buy Service",
         "trial": "🎁 Free Trial",
         "services": "📦 My Services",
@@ -707,14 +710,8 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    # Telegram requires a message to deliver a ReplyKeyboard. Send it invisibly,
-    # then delete only the carrier message so the keyboard remains visible.
-    keyboard_message = await message.reply_text("\u2060", reply_markup=bottom_keyboard(user_id))
-    try:
-        await asyncio.sleep(0.15)
-        await keyboard_message.delete()
-    except Exception:
-        pass
+    # Keep the ReplyKeyboard buttons while removing the visible "منوی پایین:" label.
+    await message.reply_text(t(lang, "select_option"), reply_markup=bottom_keyboard(user_id))
 
 
 # =========================================================

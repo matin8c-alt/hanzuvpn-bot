@@ -44,8 +44,6 @@ CARD_NUMBER = os.getenv("CARD_NUMBER", "")
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 
 PRICE_PER_GB = 3500
-REFERRAL_BONUS = 20_000
-REFERRAL_COMMISSION_PERCENT = 10
 
 PLANS = {
     "1": 3500,
@@ -130,7 +128,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکت #{id}\n\nپیام خود را ارسال کنید.",
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
-        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n🎁 پاداش هر دعوت موفق: ۲۰,۰۰۰ تومان برای شما و دوستت\n💸 پورسانت خرید دوستت: ۱۰٪\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
+        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -207,7 +205,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکەتی #{id}\n\nنامەکەت بنێرە.",
         "ticket_created": "✅ نامە تۆمار کرا لە تیکەتی #{id}",
         "ticket_closed": "🔒 تیکەتی #{id} داخرا.",
-        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n🎁 پاداشی بانگهێشتێکی سەرکەوتوو: ٢٠,٠٠٠ تومان بۆ هەردوو لایەن\n💸 کۆمسیۆنی کڕینی هاوڕێ: ١٠٪\n\nبەستەر:\n{link}",
+        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\nبەستەر:\n{link}",
         "referral_error": "❌ هەڵە لە دروستکردنی بەستەر.",
         "coupon_prompt": "🎟 کۆدی داشکان بنێرە.",
         "coupon_invalid": "❌ کۆد نادروستە.",
@@ -284,7 +282,7 @@ TEXTS = {
         "ticket_prompt": "🎫 Ticket #{id}\n\nSend your message.",
         "ticket_created": "✅ Message added to ticket #{id}",
         "ticket_closed": "🔒 Ticket #{id} closed.",
-        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n🎁 Successful referral bonus: 20,000 Toman each\n💸 Friend purchase commission: 10%\n\nYour link:\n{link}",
+        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\nYour link:\n{link}",
         "referral_error": "❌ Error creating link.",
         "coupon_prompt": "🎟 Send your coupon code.",
         "coupon_invalid": "❌ Invalid coupon.",
@@ -556,7 +554,6 @@ def init_db():
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
         ("receipt_message_id", "INTEGER"),
-        ("coupon_code", "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -732,8 +729,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if referrer_id != user.id:
                 conn = get_db()
                 existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
-                referrer_exists = conn.execute("SELECT 1 FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-                if existing and existing["referred_by"] is None and referrer_exists:
+                if existing and existing["referred_by"] is None:
                     conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
                     conn.commit()
                 conn.close()
@@ -1046,30 +1042,14 @@ def claim_trial(user):
         conn.close()
 
 
-def _release_coupon_for_order_conn(conn, order_id):
-    row = conn.execute("SELECT coupon_id FROM coupon_uses WHERE order_id = ? LIMIT 1", (order_id,)).fetchone()
-    if not row:
-        return
-    conn.execute("DELETE FROM coupon_uses WHERE order_id = ?", (order_id,))
-    conn.execute("UPDATE coupons SET used_count = CASE WHEN used_count > 0 THEN used_count - 1 ELSE 0 END WHERE id = ?", (row["coupon_id"],))
-
-
 def cancel_pending_orders(user_id, is_charge=None):
     conn = get_db()
     try:
-        conn.execute("BEGIN IMMEDIATE")
         if is_charge is None:
-            rows = conn.execute("SELECT id FROM orders WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchall()
             conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
         else:
-            rows = conn.execute("SELECT id FROM orders WHERE user_id = ? AND status = 'pending' AND is_charge = ?", (user_id, int(is_charge))).fetchall()
             conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending' AND is_charge = ?", (user_id, int(is_charge)))
-        for row in rows:
-            _release_coupon_for_order_conn(conn, row["id"])
         conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
     finally:
         conn.close()
 
@@ -1078,35 +1058,26 @@ def create_order(user, volume, price, coupon_code=None, is_charge=0):
     # A new charge must not cancel a pending purchase receipt, and vice versa.
     cancel_pending_orders(user.id, is_charge=is_charge)
     conn = get_db()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        cursor = conn.execute("""
-            INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, coupon_code)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-        """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge, (coupon_code or None)))
-        order_id = cursor.lastrowid
+    cursor = conn.execute("""
+        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge))
+    order_id = cursor.lastrowid
 
-        if coupon_code and not is_charge:
-            coupon = conn.execute("SELECT * FROM coupons WHERE code = ? AND active = 1", (coupon_code.upper(),)).fetchone()
-            if coupon:
-                if coupon["max_uses"] > 0 and coupon["used_count"] >= coupon["max_uses"]:
-                    conn.rollback()
-                    raise ValueError("coupon_full")
-                already = conn.execute("SELECT 1 FROM coupon_uses WHERE coupon_id = ? AND user_id = ?", (coupon["id"], user.id)).fetchone()
-                if already:
-                    conn.rollback()
-                    raise ValueError("coupon_used")
-                conn.execute("INSERT INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
+    if coupon_code and not is_charge:
+        coupon = get_coupon(coupon_code)
+        if coupon:
+            try:
+                conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
                              (coupon["id"], user.id, order_id, now_text()))
                 conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
+            except Exception:
+                pass
 
-        conn.commit()
-        return order_id
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
+    return order_id
+
 
 def get_latest_pending_order(user_id):
     conn = get_db()
@@ -1142,39 +1113,6 @@ async def delete_customer_receipt_message(context, order):
         await context.bot.delete_message(chat_id=order["user_id"], message_id=int(message_id))
     except Exception as e:
         print(f"Could not delete customer receipt message for order #{order['id']}: {e}")
-
-
-def _apply_referral_rewards_conn(conn, order):
-    """Reward a successful referral once and pay 10% commission on each service purchase."""
-    if not order or int(order["is_charge"] or 0) != 0:
-        return {"rewarded": False, "commission": 0, "referrer_id": None, "referred_bonus": 0}
-    user_row = conn.execute("SELECT referred_by, referral_rewarded FROM users WHERE user_id = ?", (order["user_id"],)).fetchone()
-    if not user_row or not user_row["referred_by"]:
-        return {"rewarded": False, "commission": 0, "referrer_id": None, "referred_bonus": 0}
-    referrer_id = int(user_row["referred_by"])
-    if referrer_id == int(order["user_id"]):
-        return {"rewarded": False, "commission": 0, "referrer_id": None, "referred_bonus": 0}
-    referrer = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-    if not referrer:
-        return {"rewarded": False, "commission": 0, "referrer_id": None, "referred_bonus": 0}
-
-    rewarded = False
-    if int(user_row["referral_rewarded"] or 0) == 0:
-        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)",
-                     (REFERRAL_BONUS, order["user_id"], referrer_id))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     (order["user_id"], REFERRAL_BONUS, "referral_bonus", f"پاداش دعوت موفق سفارش #{order['id']}", order["id"], now_text()))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     (referrer_id, REFERRAL_BONUS, "referral_bonus", f"پاداش دعوت موفق کاربر #{order['user_id']}", order["id"], now_text()))
-        conn.execute("UPDATE users SET referral_rewarded = 1 WHERE user_id = ? AND referral_rewarded = 0", (order["user_id"],))
-        rewarded = True
-
-    commission = int(int(order["price"] or 0) * REFERRAL_COMMISSION_PERCENT / 100)
-    if commission > 0:
-        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     (referrer_id, commission, "referral_commission", f"پورسانت ۱۰٪ خرید کاربر #{order['user_id']}", order["id"], now_text()))
-    return {"rewarded": rewarded, "commission": commission, "referrer_id": referrer_id, "referred_bonus": REFERRAL_BONUS if rewarded else 0}
 
 
 def approve_order(order_id):
@@ -1218,14 +1156,12 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
-        referral_info = _apply_referral_rewards_conn(conn, {**dict(order), "status": "approved"})
         conn.commit()
         return {
             "status": "approved",
             "order": order,
             "link": subscription["link"],
-            "expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "referral": referral_info
+            "expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception:
         conn.rollback()
@@ -1236,22 +1172,11 @@ def approve_order(order_id):
 
 def reject_order(order_id):
     conn = get_db()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        if not order or order["status"] != "pending":
-            conn.rollback()
-            return False, order
-        conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
-        _release_coupon_for_order_conn(conn, order_id)
-        conn.commit()
-        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        return True, order
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    updated = conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
+    conn.commit()
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    conn.close()
+    return updated.rowcount == 1, order
 
 
 def get_user_services(user_id):
@@ -1324,7 +1249,7 @@ def apply_coupon(code, user_id, price):
 
 def referral_count(user_id):
     conn = get_db()
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ? AND referral_rewarded = 1", (user_id,)).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (user_id,)).fetchone()[0]
     conn.close()
     return count
 
@@ -1704,18 +1629,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data.pop("coupon_code", None)
 
         # ساخت سفارش
-        try:
-            order_id = create_order(user, volume, price, coupon_code)
-        except ValueError as exc:
-            if str(exc) == "coupon_full":
-                await query.answer("کد تخفیف دیگر ظرفیت ندارد. دوباره کد را وارد کنید.", show_alert=True)
-                context.user_data.pop("coupon_code", None)
-                return
-            if str(exc) == "coupon_used":
-                await query.answer("این کد تخفیف قبلاً برای شما استفاده شده است.", show_alert=True)
-                context.user_data.pop("coupon_code", None)
-                return
-            raise
+        order_id = create_order(user, volume, price, coupon_code)
 
         # پاک کردن stateها
         context.user_data.pop("coupon_code", None)
@@ -2252,21 +2166,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                    order=order_id,
                    link=result["link"])
         )
-        referral_info = result.get("referral") or {}
-        if referral_info.get("rewarded"):
-            try:
-                await context.bot.send_message(chat_id=order["user_id"], text="🎁 پاداش دعوت موفق: ۲۰,۰۰۰ تومان به کیف پول شما اضافه شد.")
-            except Exception:
-                pass
-            try:
-                await context.bot.send_message(chat_id=referral_info.get("referrer_id"), text=f"🎁 پاداش دعوت موفق: ۲۰,۰۰۰ تومان\n💸 پورسانت خرید: {int(referral_info.get('commission') or 0):,} تومان")
-            except Exception:
-                pass
-        elif referral_info.get("commission") and referral_info.get("referrer_id"):
-            try:
-                await context.bot.send_message(chat_id=referral_info["referrer_id"], text=f"💸 پورسانت خرید دوستت: {int(referral_info['commission']):,} تومان به کیف پولت اضافه شد.")
-            except Exception:
-                pass
         await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(
@@ -2796,8 +2695,6 @@ def _api_purchase_wallet(user, volume, price):
             if used.rowcount != 1:
                 raise RuntimeError("subscription_race")
 
-            order_row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-            _apply_referral_rewards_conn(conn, order_row)
             conn.commit()
             return {
                 "status":"approved",

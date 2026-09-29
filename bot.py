@@ -399,8 +399,6 @@ def ensure_user(user):
 
 
 def get_user_language(user_id):
-    if user_id == ADMIN_ID:
-        return "fa"
     conn = get_db()
     row = conn.execute("SELECT language FROM users WHERE user_id = ?", (user_id,)).fetchone()
     conn.close()
@@ -724,9 +722,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang and user.id != ADMIN_ID:
         await show_language_selector_message(update.message)
         return
-
-    if user.id == ADMIN_ID:
-        set_user_language(user.id, "fa")
 
     await send_home(update.message, user.id)
 
@@ -1402,9 +1397,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if not lang and user_id != ADMIN_ID:
         await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
-    if user_id == ADMIN_ID:
-        lang = "fa"
-
     # خانه
     if data == "home":
         clear_user_states(context)

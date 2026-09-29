@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import threading
+import tempfile
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +21,7 @@ from telegram import (
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
+    FSInputFile,
 )
 try:
     from telegram import CopyTextButton
@@ -565,6 +567,7 @@ def init_db():
         ("referral_rewarded", "INTEGER DEFAULT 0"),
         ("language", "TEXT"),
         ("balance", "INTEGER DEFAULT 0"),
+        ("last_home_message_id", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {default}")
@@ -702,15 +705,41 @@ def home_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 
+def set_last_home_message_id(user_id, message_id):
+    conn = get_db()
+    try:
+        conn.execute("UPDATE users SET last_home_message_id = ? WHERE user_id = ?", (int(message_id), user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_last_home_message_id(user_id):
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT last_home_message_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return int(row["last_home_message_id"]) if row and row["last_home_message_id"] else None
+    finally:
+        conn.close()
+
+
 async def show_home(query, user_id):
     lang = get_user_language(user_id) or "fa"
     await query.edit_message_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    try:
+        set_last_home_message_id(user_id, query.message.message_id)
+    except Exception:
+        pass
 
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    # Keep the ReplyKeyboard buttons while removing the visible "منوی پایین:" label.
+    home_msg = await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    try:
+        set_last_home_message_id(user_id, home_msg.message_id)
+    except Exception:
+        pass
+    # Keep the ReplyKeyboard buttons while showing a useful prompt instead of an empty carrier message.
     await message.reply_text(t(lang, "select_option"), reply_markup=bottom_keyboard(user_id))
 
 
@@ -868,14 +897,14 @@ def buy_plans_keyboard(user_id):
         ]
     elif lang == "ku":
         buttons = [
-            ("1 GB | 3,500", "plan_1"),
-            ("10 GB | 35,000", "plan_10"),
-            ("15 GB | 52,500", "plan_15"),
-            ("20 GB | 70,000", "plan_20"),
-            ("30 GB | 105,000", "plan_30"),
-            ("40 GB | 140,000", "plan_40"),
-            ("50 GB | 175,000", "plan_50"),
-            ("100 GB | 350,000", "plan_100"),
+            ("1 گیگ | 3,500 تومان", "plan_1"),
+            ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("15 گیگ | 52,500 تومان", "plan_15"),
+            ("20 گیگ | 70,000 تومان", "plan_20"),
+            ("30 گیگ | 105,000 تومان", "plan_30"),
+            ("40 گیگ | 140,000 تومان", "plan_40"),
+            ("50 گیگ | 175,000 تومان", "plan_50"),
+            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     else:
         buttons = [
@@ -910,7 +939,10 @@ async def show_custom_volume_selector(query, context, lang):
     keyboard = [
         [
             InlineKeyboardButton(t(lang, "custom_minus"), callback_data="custom_minus"),
-            InlineKeyboardButton(f"{volume} GB", callback_data="custom_confirm"),
+            InlineKeyboardButton(
+                f"{volume} GB" if lang == "en" else f"{volume} گیگ",
+                callback_data="custom_confirm"
+            ),
             InlineKeyboardButton(t(lang, "custom_plus"), callback_data="custom_plus"),
         ],
         [InlineKeyboardButton(t(lang, "custom_confirm"), callback_data="custom_confirm")],
@@ -1299,6 +1331,58 @@ def get_stats():
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
+
+def create_consistent_db_backup():
+    """Create a consistent SQLite snapshot even while the bot is running."""
+    source_path = os.path.abspath(DB_PATH)
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Database not found: {source_path}")
+    fd, backup_path = tempfile.mkstemp(prefix="hanzuvpn_backup_", suffix=".db")
+    os.close(fd)
+    src = dst = None
+    try:
+        src = sqlite3.connect(source_path, timeout=30)
+        dst = sqlite3.connect(backup_path, timeout=30)
+        src.backup(dst)
+        dst.commit()
+        return backup_path
+    except Exception:
+        try:
+            os.remove(backup_path)
+        except OSError:
+            pass
+        raise
+    finally:
+        if src is not None:
+            src.close()
+        if dst is not None:
+            dst.close()
+
+
+async def send_db_backup(query, context):
+    if query.from_user.id != ADMIN_ID:
+        return
+    backup_path = None
+    try:
+        backup_path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        await context.bot.send_document(
+            chat_id=ADMIN_ID,
+            document=FSInputFile(backup_path, filename=filename),
+            caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
+        )
+        await query.answer("✅ بکاپ با موفقیت ارسال شد.")
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        await query.answer("❌ دریافت بکاپ ناموفق بود. دوباره تلاش کنید.", show_alert=True)
+    finally:
+        if backup_path:
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+
+
 async def show_admin(query):
     keyboard = [
         [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
@@ -1310,6 +1394,7 @@ async def show_admin(query):
         [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon")],
         [InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
         [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
         [
             InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
             InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
@@ -1484,15 +1569,35 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         set_user_language(user_id, language)
         clear_user_states(context)
 
-        # کیبورد Inline پیام فعلی را به زبان جدید تغییر می‌دهیم.
-        await query.edit_message_text(
-            t(language, "language_changed") + "\n\n" + t(language, "welcome"),
-            reply_markup=home_keyboard(user_id)
-        )
+        # اگر زبان از منوی پایین انتخاب شده باشد، پیام اصلی /start هم باید
+        # با همان زبان به‌روزرسانی شود؛ وگرنه فقط پیام انتخاب زبان عوض می‌شد.
+        updated_home = False
+        last_home_id = get_last_home_message_id(user_id)
+        if last_home_id and last_home_id != query.message.message_id:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=user_id,
+                    message_id=last_home_id,
+                    text=t(language, "welcome"),
+                    reply_markup=home_keyboard(user_id)
+                )
+                updated_home = True
+            except Exception as e:
+                print(f"Could not update previous home message language: {e}")
 
-        # Reply Keyboard پایین تلگرام قابل ویرایش روی پیام قبلی نیست؛
-        # بنابراین یک پیام کوتاه با کیبورد جدید می‌فرستیم تا دکمه‌های پایین
-        # نیز فوراً با زبان انتخاب‌شده نمایش داده شوند.
+        if not updated_home:
+            await query.edit_message_text(
+                t(language, "language_changed") + "\n\n" + t(language, "welcome"),
+                reply_markup=home_keyboard(user_id)
+            )
+            try:
+                set_last_home_message_id(user_id, query.message.message_id)
+            except Exception:
+                pass
+        else:
+            await query.edit_message_text(t(language, "language_changed"))
+
+        # Reply Keyboard پایین تلگرام با پیام جدید و ترجمه‌شده بازسازی می‌شود.
         await context.bot.send_message(
             chat_id=user_id,
             text=t(language, "select_option"),
@@ -1966,6 +2071,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         await show_admin_stats(query)
+        return
+
+    if data == "admin_backup":
+        if user_id != ADMIN_ID:
+            return
+        await send_db_backup(query, context)
         return
 
     if data in ("admin_orders", "admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):

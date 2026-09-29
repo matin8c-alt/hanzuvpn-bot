@@ -358,8 +358,6 @@ def ensure_user(user):
 
 
 def get_user_language(user_id):
-    if user_id == ADMIN_ID:
-        return "fa"
     conn = get_db()
     row = conn.execute("SELECT language FROM users WHERE user_id = ?", (user_id,)).fetchone()
     conn.close()
@@ -1580,39 +1578,23 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("Invalid language." if language == "en" else ("زمانی نادروست." if language == "ku" else "زبان نامعتبر است."), show_alert=True)
             return
 
-        # زبان کاربر را ذخیره می‌کنیم و همه کیبوردهای کاربر را با زبان جدید بازسازی می‌کنیم.
+        # زبان کاربر را ذخیره می‌کنیم و همان پیام فعلی را با تمام دکمه‌های زبان جدید بازسازی می‌کنیم.
+        # این کار مهم است چون ممکن است last_home_message_id به یک پیام قدیمی اشاره کند؛
+        # در آن حالت ترجمه‌ی پیام قدیمی باعث می‌شد دکمه‌های پیام فعلی همچنان فارسی بمانند.
         set_user_language(user_id, language)
         clear_user_states(context)
 
-        # اگر زبان از منوی پایین انتخاب شده باشد، پیام اصلی /start هم باید
-        # با همان زبان به‌روزرسانی شود؛ وگرنه فقط پیام انتخاب زبان عوض می‌شد.
-        updated_home = False
-        last_home_id = get_last_home_message_id(user_id)
-        if last_home_id and last_home_id != query.message.message_id:
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=user_id,
-                    message_id=last_home_id,
-                    text=t(language, "welcome"),
-                    reply_markup=home_keyboard(user_id)
-                )
-                updated_home = True
-            except Exception as e:
-                print(f"Could not update previous home message language: {e}")
+        localized_home = t(language, "language_changed") + "\n\n" + t(language, "welcome")
+        await query.edit_message_text(
+            localized_home,
+            reply_markup=home_keyboard(user_id)
+        )
+        try:
+            set_last_home_message_id(user_id, query.message.message_id)
+        except Exception:
+            pass
 
-        if not updated_home:
-            await query.edit_message_text(
-                t(language, "language_changed") + "\n\n" + t(language, "welcome"),
-                reply_markup=home_keyboard(user_id)
-            )
-            try:
-                set_last_home_message_id(user_id, query.message.message_id)
-            except Exception:
-                pass
-        else:
-            await query.edit_message_text(t(language, "language_changed"))
-
-        # Reply Keyboard پایین تلگرام با پیام جدید و ترجمه‌شده بازسازی می‌شود.
+        # Reply Keyboard پایین تلگرام هم بلافاصله با زبان جدید بازسازی می‌شود.
         await context.bot.send_message(
             chat_id=user_id,
             text=t(language, "select_option"),
@@ -1621,11 +1603,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     lang = get_user_language(user_id)
-    if not lang and user_id != ADMIN_ID:
-        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
-        return
-    if user_id == ADMIN_ID:
-        lang = "fa"
+    if not lang:
+        if user_id == ADMIN_ID:
+            lang = "fa"
+        else:
+            await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+            return
 
     # خانه
     if data == "home":

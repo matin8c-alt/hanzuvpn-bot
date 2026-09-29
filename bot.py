@@ -383,7 +383,9 @@ def language_keyboard():
 
 
 async def show_language_selector_message(message):
-    await message.reply_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+    user_id = message.from_user.id if message and message.from_user else 0
+    current_lang = get_user_language(user_id) or "fa"
+    await message.reply_text(t(current_lang, "language_title"), reply_markup=language_keyboard())
 
 
 def clear_user_states(context):
@@ -1360,6 +1362,7 @@ def create_consistent_db_backup():
 
 
 async def send_db_backup(query, context):
+    """Create and send a consistent SQLite backup without re-answering the callback query."""
     if query.from_user.id != ADMIN_ID:
         return
     backup_path = None
@@ -1371,10 +1374,18 @@ async def send_db_backup(query, context):
             document=FSInputFile(backup_path, filename=filename),
             caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
         )
-        await query.answer("✅ بکاپ با موفقیت ارسال شد.")
+        # CallbackQuery was already acknowledged by _button_handler_impl.
+        # Send a normal confirmation instead of answering the same query twice.
+        await context.bot.send_message(chat_id=ADMIN_ID, text="✅ بکاپ با موفقیت ارسال شد.")
     except Exception as e:
         print(f"Backup error: {type(e).__name__}: {e}")
-        await query.answer("❌ دریافت بکاپ ناموفق بود. دوباره تلاش کنید.", show_alert=True)
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"❌ دریافت بکاپ ناموفق بود.\n\nخطا: {type(e).__name__}: {e}"
+            )
+        except Exception:
+            pass
     finally:
         if backup_path:
             try:
@@ -1556,7 +1567,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # زبان
     if data == "language":
-        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+        current_lang = get_user_language(user_id) or "fa"
+        await query.edit_message_text(t(current_lang, "language_title"), reply_markup=language_keyboard())
         return
 
     if data.startswith("language_"):
@@ -2987,9 +2999,28 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
 
 def start_miniapp_api():
-    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
-    threading.Thread(target=server.serve_forever,daemon=True).start()
-    print(f"Mini App API listening on {API_HOST}:{API_PORT}")
+    """Start the Mini App API without preventing the Telegram bot from starting."""
+    try:
+        server = ThreadingHTTPServer((API_HOST, API_PORT), MiniAppHandler)
+        threading.Thread(target=server.serve_forever, daemon=True, name="miniapp-api").start()
+        print(f"Mini App API listening on {API_HOST}:{API_PORT}")
+        return server
+    except OSError as e:
+        # A port conflict must not kill the Telegram bot.
+        print(f"Mini App API disabled: {type(e).__name__}: {e}")
+        return None
+    except Exception as e:
+        print(f"Mini App API startup error: {type(e).__name__}: {e}")
+        return None
+
+
+async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Never let an update exception silently kill/obscure the bot."""
+    try:
+        print(f"Telegram update error: {type(context.error).__name__}: {context.error}")
+    except Exception:
+        pass
+
 
 
 # =========================================================
@@ -2997,7 +3028,18 @@ def start_miniapp_api():
 # =========================================================
 
 async def post_init(application):
-    await set_bot_commands(application)
+    # This bot uses polling. Remove an old webhook so Telegram delivers updates here.
+    try:
+        await application.bot.delete_webhook(drop_pending_updates=False)
+        print("Telegram webhook cleared; polling mode enabled.")
+    except Exception as e:
+        print(f"Webhook cleanup warning: {type(e).__name__}: {e}")
+
+    try:
+        await set_bot_commands(application)
+    except Exception as e:
+        print(f"Bot commands setup warning: {type(e).__name__}: {e}")
+
     try:
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
@@ -3027,9 +3069,11 @@ def main():
     app.add_handler(CallbackQueryHandler(_button_handler_impl))
     app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
     app.add_handler(MessageHandler(filters.TEXT, text_handler))
+    app.add_error_handler(telegram_error_handler)
 
     print("HanzuVPN Bot is running...")
-    app.run_polling()
+    # Explicitly use polling and accept every Telegram update type used by this bot.
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

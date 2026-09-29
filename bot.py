@@ -133,7 +133,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکت #{id}\n\nپیام خود را ارسال کنید.",
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
-        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
+        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\n🎁 با دعوت هر دوست: ۲۰٬۰۰۰ تومان برای هر دو نفر\n💰 با خرید دوست دعوت‌شده: ۱۰٪ پورسانت برای شما\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -210,7 +210,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکەتی #{id}\n\nنامەکەت بنێرە.",
         "ticket_created": "✅ نامە تۆمار کرا لە تیکەتی #{id}",
         "ticket_closed": "🔒 تیکەتی #{id} داخرا.",
-        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\nبەستەر:\n{link}",
+        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\n🎁 بۆ هەر بانگهێشتێک: ٢٠٬٠٠٠ تومان بۆ هەردووکتان\n💰 کاتێک هاوڕێکەت بکڕێت: ١٠٪ پورسانت بۆ تۆ\n\nبەستەر:\n{link}",
         "referral_error": "❌ هەڵە لە دروستکردنی بەستەر.",
         "coupon_prompt": "🎟 کۆدی داشکان بنێرە.",
         "coupon_invalid": "❌ کۆد نادروستە.",
@@ -287,7 +287,7 @@ TEXTS = {
         "ticket_prompt": "🎫 Ticket #{id}\n\nSend your message.",
         "ticket_created": "✅ Message added to ticket #{id}",
         "ticket_closed": "🔒 Ticket #{id} closed.",
-        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\nYour link:\n{link}",
+        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\n🎁 Each referral: 20,000 Toman for both of you\n💰 When your referral buys: 10% commission for you\n\nYour link:\n{link}",
         "referral_error": "❌ Error creating link.",
         "coupon_prompt": "🎟 Send your coupon code.",
         "coupon_invalid": "❌ Invalid coupon.",
@@ -695,10 +695,7 @@ def home_keyboard(user_id):
             InlineKeyboardButton(t(lang, "services"), callback_data="my_services"),
             InlineKeyboardButton(t(lang, "renew"), callback_data="renew"),
         ],
-        [
-            InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon"),
-            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
-        ],
+        [InlineKeyboardButton(t(lang, "referral"), callback_data="referral")],
         [InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet")],
         [InlineKeyboardButton(t(lang, "support"), callback_data="support")],
         [InlineKeyboardButton(t(lang, "language"), callback_data="language")],
@@ -761,10 +758,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if referrer_id != user.id:
                 conn = get_db()
                 existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
-                if existing and existing["referred_by"] is None:
-                    conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
-                    conn.commit()
                 conn.close()
+                register_referral(referrer_id, user.id)
         except Exception:
             pass
 
@@ -879,6 +874,7 @@ def buy_keyboard(user_id):
 
     keyboard = [
         [InlineKeyboardButton(text, callback_data="period_1m")],
+        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -922,6 +918,7 @@ def buy_plans_keyboard(user_id):
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
+    keyboard.append([InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")])
     keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -949,6 +946,7 @@ async def show_custom_volume_selector(query, context, lang):
             InlineKeyboardButton(t(lang, "custom_plus"), callback_data="custom_plus"),
         ],
         [InlineKeyboardButton(t(lang, "custom_confirm"), callback_data="custom_confirm")],
+        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="period_1m")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1191,6 +1189,7 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
+        apply_referral_commission_tx(conn, order)
         conn.commit()
         return {
             "status": "approved",
@@ -1280,6 +1279,72 @@ def apply_coupon(code, user_id, price):
         return {"status": "full"}
     new_price = int(price * (100 - coupon["percent"]) / 100)
     return {"status": "success", "coupon": coupon, "price": max(new_price, 0)}
+
+
+REFERRAL_SIGNUP_BONUS = 20_000
+REFERRAL_COMMISSION_PERCENT = 10
+
+
+def register_referral(referrer_id, referred_user_id):
+    """ثبت اولین دعوت و پرداخت ۲۰٬۰۰۰ تومان به هر دو نفر، فقط یک‌بار."""
+    try:
+        referrer_id = int(referrer_id)
+        referred_user_id = int(referred_user_id)
+    except (TypeError, ValueError):
+        return False
+    if referrer_id == referred_user_id:
+        return False
+
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        referrer = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
+        referred = conn.execute("SELECT referred_by, referral_rewarded FROM users WHERE user_id = ?", (referred_user_id,)).fetchone()
+        if not referrer or not referred or referred["referred_by"] is not None or int(referred["referral_rewarded"] or 0) != 0:
+            conn.rollback()
+            return False
+        now = now_text()
+        cur = conn.execute(
+            "UPDATE users SET referred_by = ?, referral_rewarded = 1 WHERE user_id = ? AND referred_by IS NULL AND COALESCE(referral_rewarded, 0) = 0",
+            (referrer_id, referred_user_id)
+        )
+        if cur.rowcount != 1:
+            conn.rollback()
+            return False
+        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)", (REFERRAL_SIGNUP_BONUS, referrer_id, referred_user_id))
+        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+                     (referrer_id, REFERRAL_SIGNUP_BONUS, "referral_bonus", f"پاداش دعوت کاربر #{referred_user_id}", now))
+        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+                     (referred_user_id, REFERRAL_SIGNUP_BONUS, "referral_bonus", f"پاداش عضویت از دعوت کاربر #{referrer_id}", now))
+        conn.commit()
+        return True
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+        return False
+    finally:
+        conn.close()
+
+
+def apply_referral_commission_tx(conn, order):
+    """در همان تراکنش تأیید خرید، ۱۰٪ پورسانت را به دعوت‌کننده می‌دهد."""
+    try:
+        row = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (order["user_id"],)).fetchone()
+        if not row or not row["referred_by"] or int(row["referred_by"]) == int(order["user_id"]):
+            return 0
+        commission = int(int(order["price"] or 0) * REFERRAL_COMMISSION_PERCENT / 100)
+        if commission <= 0:
+            return 0
+        referrer_id = int(row["referred_by"])
+        exists = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
+        if not exists:
+            return 0
+        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
+        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                     (referrer_id, commission, "referral_commission", f"پورسانت {REFERRAL_COMMISSION_PERCENT}% از خرید کاربر #{order['user_id']}", order["id"], now_text()))
+        return commission
+    except Exception:
+        return 0
 
 
 def referral_count(user_id):
@@ -1795,12 +1860,30 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(parts) < 3:
             return
         volume = parts[1]
-        try:
-            price = int(parts[2])
-        except ValueError:
-            return
 
-        # کسر موجودی به‌صورت اتمیک؛ کلیک همزمان نمی‌تواند موجودی را منفی کند.
+        # مبلغ نهایی همیشه روی سرور دوباره محاسبه می‌شود تا درصد تخفیف دقیق
+        # باشد و مبلغ داخل callback قابل دستکاری نباشد.
+        if volume in PLANS:
+            base_price = PLANS[volume]
+        else:
+            custom_volume = context.user_data.get("custom_volume")
+            custom_price = context.user_data.get("custom_price")
+            if not custom_volume or str(custom_volume) != str(volume):
+                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
+                return
+            base_price = int(custom_price)
+
+        coupon_code = context.user_data.get("coupon_code")
+        price = base_price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, base_price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+
+        # کسر موجودی به‌صورت اتمیک با مبلغ نهاییِ بعد از تخفیف.
         debit = debit_balance_atomic(
             user_id, price, "purchase", f"خرید سرویس {volume} گیگ", None
         )
@@ -1810,10 +1893,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
         order_id = None
         try:
-            # ساخت سفارش و تحویل سرویس مثل قبل انجام می‌شود.
-            order_id = create_order(user, volume, price, is_charge=0)
+            order_id = create_order(user, volume, price, coupon_code=coupon_code, is_charge=0)
             result = approve_order(order_id)
             if result["status"] == "approved":
+                context.user_data.pop("coupon_code", None)
+                context.user_data.pop("custom_volume", None)
+                context.user_data.pop("custom_price", None)
                 await query.edit_message_text(
                     t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
                     "\n\n" +
@@ -2821,6 +2906,9 @@ def _api_purchase_wallet(user, volume, price):
             used = conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (sub["id"],))
             if used.rowcount != 1:
                 raise RuntimeError("subscription_race")
+
+            approved_order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+            apply_referral_commission_tx(conn, approved_order)
 
             conn.commit()
             return {

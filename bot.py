@@ -7,6 +7,9 @@ import hashlib
 import hmac
 import threading
 import tempfile
+import sys
+import platform
+import traceback
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -3028,6 +3031,14 @@ async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_T
 # =========================================================
 
 async def post_init(application):
+    # Verify the token before polling; this makes bad BOT_TOKEN deployments obvious.
+    try:
+        me = await application.bot.get_me()
+        print(f"[TELEGRAM] Connected as @{me.username or 'no_username'} (id={me.id})")
+    except Exception as e:
+        print(f"[TELEGRAM] Token/network check failed: {type(e).__name__}: {e}")
+        raise
+
     # This bot uses polling. Remove an old webhook so Telegram delivers updates here.
     try:
         await application.bot.delete_webhook(drop_pending_updates=False)
@@ -3053,27 +3064,37 @@ async def post_init(application):
 
 
 def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
-    init_db()
-    start_miniapp_api()
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    try:
+        if not BOT_TOKEN:
+            raise RuntimeError("BOT_TOKEN تنظیم نشده است. متغیر محیطی BOT_TOKEN را تنظیم کنید.")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("buy", buy_command))
-    app.add_handler(CommandHandler("services", services_command))
-    app.add_handler(CommandHandler("trial", trial_command))
-    app.add_handler(CommandHandler("support", support_command))
-    app.add_handler(CommandHandler("language", language_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CallbackQueryHandler(_button_handler_impl))
-    app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
-    app.add_handler(MessageHandler(filters.TEXT, text_handler))
-    app.add_error_handler(telegram_error_handler)
+        print(f"[START] Python={sys.version.split()[0]} | Platform={platform.system()} {platform.release()}")
+        print("[START] BOT_TOKEN detected=True")
 
-    print("HanzuVPN Bot is running...")
-    # Explicitly use polling and accept every Telegram update type used by this bot.
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
+        init_db()
+        print(f"[START] Database ready: {DB_PATH}")
+        start_miniapp_api()
+        app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("buy", buy_command))
+        app.add_handler(CommandHandler("services", services_command))
+        app.add_handler(CommandHandler("trial", trial_command))
+        app.add_handler(CommandHandler("support", support_command))
+        app.add_handler(CommandHandler("language", language_command))
+        app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(CallbackQueryHandler(_button_handler_impl))
+        app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
+        app.add_handler(MessageHandler(filters.TEXT, text_handler))
+        app.add_error_handler(telegram_error_handler)
+
+        print("HanzuVPN Bot is running...")
+        # Explicitly use polling and accept every Telegram update type used by this bot.
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
+    except Exception as e:
+        print(f"[FATAL] Bot startup/runtime failure: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

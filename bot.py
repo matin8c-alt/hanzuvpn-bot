@@ -15,6 +15,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
@@ -95,6 +97,7 @@ TEXTS = {
         "original_price": "\n🏷 مبلغ اصلی: {original:,} تومان\n🎟 کد تخفیف: {coupon}\n",
         "card": "\n💳 شماره کارت:\n`{card}`\n\nبعد از انتقال مبلغ، روی «پرداخت کردم» بزنید و سپس تصویر رسید را ارسال کنید.",
         "paid": "💳 پرداخت کردم",
+        "pay": "💳 پرداخت",
         "pay_wallet": "💰 پرداخت از کیف پول",
         "order_created": "✅ درخواست شما ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "receipt_received": "✅ رسید شما دریافت شد.\n\n🧾 سفارش #{order}\n\nپس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
@@ -165,6 +168,7 @@ TEXTS = {
         "original_price": "\n🏷 بڕی سەرەکی: {original:,} تومان\n🎟 کۆد: {coupon}\n",
         "card": "\n💳 ژمارەی کارت:\n`{card}`\n\nدوای پارەدان «پارەم داوە» هەڵبژێرە و وێنەی پسوڵە بنێرە.",
         "paid": "💳 پارەم داوە",
+        "pay": "💳 پارەدان",
         "pay_wallet": "💰 پارەدان لە جزدان",
         "order_created": "✅ داواکاری تۆمار کرا.\n\n🧾 #{order}\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n📸 وێنەی پسوڵە بنێرە.",
         "receipt_received": "✅ پسوڵە وەرگیرا.\n\n🧾 #{order}",
@@ -235,6 +239,7 @@ TEXTS = {
         "original_price": "\n🏷 Original: {original:,} Toman\n🎟 Coupon: {coupon}\n",
         "card": "\n💳 Card number:\n`{card}`\n\nAfter payment, tap «I Paid» and send the receipt.",
         "paid": "💳 I Paid",
+        "pay": "💳 Pay",
         "pay_wallet": "💰 Pay from Wallet",
         "order_created": "✅ Request registered.\n\n🧾 Order: #{order}\n📦 {volume} GB\n💰 {price:,} Toman\n\n📸 Send the receipt.",
         "receipt_received": "✅ Receipt received.\n\n🧾 Order #{order}",
@@ -574,6 +579,20 @@ def get_wallet_history(user_id, limit=15):
 # منوی اصلی
 # =========================================================
 
+def bottom_keyboard(user_id):
+    """کیبورد پایینی اصلی؛ دو دکمه در هر ردیف و کاملاً وابسته به زبان کاربر."""
+    lang = get_user_language(user_id) or "fa"
+    rows = [
+        [KeyboardButton(t(lang, "buy")), KeyboardButton(t(lang, "trial"))],
+        [KeyboardButton(t(lang, "services")), KeyboardButton(t(lang, "renew"))],
+        [KeyboardButton(t(lang, "referral")), KeyboardButton(t(lang, "wallet"))],
+        [KeyboardButton(t(lang, "support")), KeyboardButton(t(lang, "language"))],
+    ]
+    if user_id == ADMIN_ID:
+        rows.append([KeyboardButton(t("fa", "admin"))])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+
+
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
@@ -606,7 +625,7 @@ async def show_home(query, user_id):
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    await message.reply_text(t(lang, "welcome"), reply_markup=bottom_keyboard(user_id))
 
 
 # =========================================================
@@ -770,6 +789,7 @@ async def show_buy_menu(query):
 # =========================================================
 
 async def show_payment(query, volume, price, original_price=None, coupon_code=None):
+    """مرحله اول پرداخت: فقط خلاصه سفارش و دکمه «پرداخت». شماره کارت در مرحله بعد نمایش داده می‌شود."""
     user_id = query.from_user.id
     lang = get_user_language(user_id) or "fa"
     if original_price is None:
@@ -778,24 +798,44 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     caption = t(lang, "payment", volume=volume, price=price)
     if original_price != price and coupon_code:
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
+    keyboard = [
+        [InlineKeyboardButton(t(lang, "pay"), callback_data=f"pay_{volume}")],
+    ]
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
+    await query.edit_message_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def show_card_payment(query, volume, original_price, coupon_code=None):
+    """مرحله دوم پرداخت: نمایش شماره کارت + کد تخفیف + دکمه «پرداخت کردم»."""
+    user_id = query.from_user.id
+    lang = get_user_language(user_id) or "fa"
+    query_context = query
+    price = original_price
+    # نگه‌داشتن اطلاعات پرداخت برای زمانی که کاربر کد تخفیف وارد می‌کند.
+    query_context = query
+    # context.user_data از CallbackQuery در این نسخه مستقیماً در دسترس نیست؛
+    # state از callbackهای بعدی با volume/PLANS بازسازی می‌شود.
+    if coupon_code:
+        result = apply_coupon(coupon_code, user_id, original_price)
+        if result["status"] == "success":
+            price = result["price"]
+        else:
+            coupon_code = None
+
+    caption = t(lang, "payment", volume=volume, price=price)
+    if original_price != price and coupon_code:
+        caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     caption += t(lang, "card", card=CARD_NUMBER)
 
     keyboard = [
-        [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]
+        [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
+        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
     ]
-
-    # دکمه پرداخت از کیف پول
     balance = get_balance(user_id)
     if balance >= price:
         keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
-
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
-
-    await query.edit_message_text(
-        caption,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data=f"paymentback_{volume}")])
+    await query.edit_message_text(caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -1353,6 +1393,39 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_payment(query, volume, price, original_price, coupon_code)
         return
 
+    # مرحله دوم پرداخت: با زدن «پرداخت» شماره کارت نمایش داده می‌شود.
+    if data.startswith("pay_"):
+        volume = data.split("_", 1)[1]
+        if volume == "custom":
+            volume = context.user_data.get("custom_volume")
+        original_price = None
+        if volume in PLANS:
+            original_price = PLANS[volume]
+        else:
+            original_price = context.user_data.get("custom_price")
+        if not volume or not original_price:
+            await query.answer("سفارش نامعتبر است.", show_alert=True)
+            return
+        coupon_code = context.user_data.get("coupon_code") or context.user_data.get("pending_payment_coupon")
+        context.user_data["pending_payment_volume"] = str(volume)
+        context.user_data["pending_payment_original_price"] = int(original_price)
+        await show_card_payment(query, str(volume), int(original_price), coupon_code)
+        return
+
+    if data.startswith("paymentback_"):
+        volume = data.split("_", 1)[1]
+        original_price = PLANS.get(volume) or context.user_data.get("custom_price")
+        if not original_price:
+            await show_buy_menu(query)
+            return
+        coupon_code = context.user_data.get("coupon_code") or context.user_data.get("pending_payment_coupon")
+        price = int(original_price)
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, price)
+            if result["status"] == "success": price = result["price"]
+        await show_payment(query, volume, price, int(original_price), coupon_code)
+        return
+
     # پرداخت عادی
    # =====================================================
     # پرداخت (خرید سرویس + شارژ کیف پول)
@@ -1580,7 +1653,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                     InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
                     InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
                 ],
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpay_{volume}")],
+                [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
             ])
         )
@@ -1614,7 +1687,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                     InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
                     InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
                 ],
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpay_{volume}")],
+                [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
             ])
         )
@@ -1632,11 +1705,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
             await query.answer("سفارش نامعتبر است.", show_alert=True)
             return
+        context.user_data["pending_payment_volume"] = str(volume)
+        context.user_data["pending_payment_original_price"] = int(stored_price)
+        context.user_data["coupon_return_payment"] = False
         await query.edit_message_text(
             t(lang, "renew_paid", volume=volume, price=stored_price, card=CARD_NUMBER),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
+                [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
             ])
         )
@@ -1649,10 +1726,22 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
             await query.answer("سفارش نامعتبر است.", show_alert=True)
             return
-        order_id = create_order(user, volume, stored_price)
+        price = int(stored_price)
+        coupon_code = context.user_data.get("coupon_code")
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+        order_id = create_order(user, volume, price, coupon_code)
         context.user_data.pop("renew_volume", None)
         context.user_data.pop("renew_price", None)
-        await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=stored_price))
+        context.user_data.pop("pending_payment_volume", None)
+        context.user_data.pop("pending_payment_original_price", None)
+        context.user_data.pop("coupon_code", None)
+        await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=price))
         return
 
     # پشتیبانی
@@ -1684,9 +1773,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text(t(lang, "referral_error"))
         return
 
-    # کوپن
+    # کد تخفیف — فقط در مرحله‌ای که شماره کارت نمایش داده شده
     if data == "coupon":
         context.user_data["waiting_coupon"] = True
+        context.user_data["coupon_return_payment"] = True
         await query.edit_message_text(t(lang, "coupon_prompt"))
         return
 
@@ -1967,6 +2057,102 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_language_selector_message(update.message)
         return
 
+    # ==================== کیبورد پایینی اصلی ====================
+    # فقط وقتی کاربر در حال وارد کردن اطلاعات یک فرم نیست، دکمه‌های منو را پردازش می‌کنیم.
+    menu_map = {
+        t(lang, "buy"): "buy",
+        t(lang, "trial"): "trial",
+        t(lang, "services"): "services",
+        t(lang, "renew"): "renew",
+        t(lang, "referral"): "referral",
+        t(lang, "wallet"): "wallet",
+        t(lang, "support"): "support",
+        t(lang, "language"): "language",
+    }
+    if user.id == ADMIN_ID:
+        menu_map[t("fa", "admin")] = "admin"
+
+    # دکمه‌های منو باید قبل از فرم‌های معمولی بررسی شوند، ولی نه وقتی کاربر عمداً
+    # در حال وارد کردن متن/مبلغ/کد تخفیف/پاسخ تیکت است.
+    waiting_state = any([
+        context.user_data.get("waiting_coupon"),
+        context.user_data.get("waiting_charge_amount"),
+        context.user_data.get("waiting_ticket_message"),
+        context.user_data.get("admin_waiting_coupon"),
+        context.user_data.get("admin_broadcast"),
+        context.user_data.get("admin_waiting_ticket_reply"),
+        context.user_data.get("admin_waiting_volume"),
+        context.user_data.get("admin_waiting_link"),
+        context.user_data.get("admin_waiting_trial_link"),
+        context.user_data.get("admin_waiting_balance_user"),
+        context.user_data.get("admin_waiting_balance_amount"),
+    ])
+    if not waiting_state and text in menu_map:
+        action = menu_map[text]
+        if action == "buy":
+            await buy_command(update, context)
+            return
+        if action == "trial":
+            await trial_command(update, context)
+            return
+        if action == "services":
+            await services_command(update, context)
+            return
+        if action == "support":
+            await support_command(update, context)
+            return
+        if action == "language":
+            await language_command(update, context)
+            return
+        if action == "wallet":
+            await update.message.reply_text(
+                t(lang, "wallet_title", balance=get_balance(user.id)),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
+                    [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
+                    [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                ])
+            )
+            return
+        if action == "referral":
+            try:
+                bot = await context.bot.get_me()
+                link = referral_link(bot.username, user.id)
+                count = referral_count(user.id)
+                await update.message.reply_text(
+                    t(lang, "referral_title", count=count, link=link),
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                )
+            except Exception:
+                await update.message.reply_text(t(lang, "referral_error"))
+            return
+        if action == "renew":
+            rows = get_user_services(user.id)
+            if not rows:
+                await update.message.reply_text(
+                    t(lang, "renew_no_services"),
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "buy"), callback_data="buy")], [InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                )
+                return
+            keyboard = [[InlineKeyboardButton(f"🔄 تمدید #{row['id']} | {row['volume']} گیگ", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
+            keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+            await update.message.reply_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        if action == "admin" and user.id == ADMIN_ID:
+            # پنل مدیریت را با همان منوی اصلی ادمین نمایش می‌دهیم.
+            keyboard = [
+                [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
+                [InlineKeyboardButton("🎁 مدیریت تست", callback_data="admin_trial")],
+                [InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"), InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete")],
+                [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon"), InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
+                [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+                [InlineKeyboardButton("📊 آمار", callback_data="admin_stats"), InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")],
+                [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+            ]
+            await update.message.reply_text("⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
     # شارژ کیف پول - دریافت مبلغ
     if context.user_data.get("waiting_charge_amount"):
         context.user_data["waiting_charge_amount"] = False
@@ -2152,21 +2338,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data.pop("coupon_code", None)
                 coupon_code = None
 
+        # مرحله اول: هنوز شماره کارت نمایش داده نمی‌شود.
+        context.user_data["pending_payment_volume"] = volume
+        context.user_data["pending_payment_original_price"] = price
+        context.user_data["pending_payment_coupon"] = coupon_code
         payment_text = t(lang, "payment", volume=volume, price=final_price)
         if original_price != final_price and coupon_code:
             payment_text += t(lang, "original_price", original=original_price, coupon=coupon_code)
-        payment_text += t(lang, "card", card=CARD_NUMBER)
-
-        keyboard = [[InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]]
-        if get_balance(user.id) >= final_price:
-            keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{final_price}")])
-        keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
-
-        await update.message.reply_text(
-            payment_text,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        keyboard = [
+            [InlineKeyboardButton(t(lang, "pay"), callback_data=f"pay_{volume}")],
+            [InlineKeyboardButton(t(lang, "back"), callback_data="buy")],
+        ]
+        await update.message.reply_text(payment_text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     # کوپن کاربر
@@ -2183,10 +2366,38 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(lang, "coupon_invalid"))
             return
         context.user_data["coupon_code"] = coupon["code"]
-        await update.message.reply_text(
-            t(lang, "coupon_valid", code=coupon["code"], percent=coupon["percent"]),
-            reply_markup=buy_keyboard(user.id)
-        )
+        # اگر کاربر کد تخفیف را از مرحله شماره کارت وارد کرده، همان پرداخت را با قیمت جدید باز کن.
+        if context.user_data.pop("coupon_return_payment", False):
+            volume = context.user_data.get("pending_payment_volume") or context.user_data.get("renew_volume")
+            original_price = context.user_data.get("pending_payment_original_price") or context.user_data.get("renew_price")
+            if volume and original_price:
+                if context.user_data.get("renew_order_id"):
+                    price = int(original_price)
+                    result = apply_coupon(coupon["code"], user.id, price)
+                    if result["status"] == "success": price = result["price"]
+                    await update.message.reply_text(
+                        t(lang, "renew_paid", volume=volume, price=price, card=CARD_NUMBER),
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
+                            [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
+                            [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+                        ])
+                    )
+                else:
+                    await update.message.reply_text(
+                        t(lang, "payment", volume=volume, price=apply_coupon(coupon["code"], user.id, int(original_price))["price"])
+                        + t(lang, "original_price", original=int(original_price), coupon=coupon["code"])
+                        + t(lang, "card", card=CARD_NUMBER),
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
+                            [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
+                            [InlineKeyboardButton(t(lang, "back"), callback_data=f"paymentback_{volume}")],
+                        ])
+                    )
+                return
+        await update.message.reply_text(t(lang, "coupon_valid", code=coupon["code"], percent=coupon["percent"]))
         return
 
     # حجم لینک ادمین

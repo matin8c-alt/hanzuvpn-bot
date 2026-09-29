@@ -5,6 +5,7 @@ import json
 import base64
 import hashlib
 import hmac
+import shutil
 import threading
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
@@ -59,6 +60,8 @@ PLANS = {
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
+REFERRAL_JOIN_REWARD = 20000
+REFERRAL_COMMISSION_PERCENT = 10
 TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
@@ -85,7 +88,7 @@ TEXTS = {
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
         "renew": "🔄 تمدید",
-        "coupon": "🎟 کد تخفیف",
+        "coupon": "🎟 کد تخفیف دارم",
         "referral": "👥 دعوت دوستان",
         "support": "🎫 پشتیبانی",
         "language": "🌐 تغییر زبان",
@@ -129,6 +132,8 @@ TEXTS = {
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
         "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
+        "referral_reward": "🎉 دعوت با موفقیت ثبت شد!\n\n💰 ۲۰٬۰۰۰ تومان به کیف پول شما و ۲۰٬۰۰۰ تومان به کیف پول دعوت‌شده اضافه شد.",
+        "referral_commission": "💸 پورسانت رفرال\n\n🧾 سفارش #{order}\n💰 ۱۰٪ پورسانت: {amount:,} تومان\n💵 موجودی جدید: {balance:,} تومان",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -162,7 +167,7 @@ TEXTS = {
         "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
         "services": "📦 خزمەتگوزارییەکانم",
         "renew": "🔄 نوێکردنەوە",
-        "coupon": "🎟 کۆدی داشکان",
+        "coupon": "🎟 کۆدی داشکانم هەیە",
         "referral": "👥 بانگهێشتکردنی هاوڕێکان",
         "support": "🎫 پشتگیری",
         "language": "🌐 گۆڕینی زمان",
@@ -206,6 +211,8 @@ TEXTS = {
         "ticket_created": "✅ نامە تۆمار کرا لە تیکەتی #{id}",
         "ticket_closed": "🔒 تیکەتی #{id} داخرا.",
         "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\nبەستەر:\n{link}",
+        "referral_reward": "🎉 بانگهێشت بە سەرکەوتوویی تۆمار کرا!\n\n💰 ٢٠٬٠٠٠ تومان بۆ جزدانی تۆ و ٢٠٬٠٠٠ تومان بۆ بەشداربووی نوێ زیاد کرا.",
+        "referral_commission": "💸 پورسانتی بانگهێشت\n\n🧾 #{order}\n💰 ١٠٪ پورسانت: {amount:,} تومان\n💵 موجودی نوێ: {balance:,} تومان",
         "referral_error": "❌ هەڵە لە دروستکردنی بەستەر.",
         "coupon_prompt": "🎟 کۆدی داشکان بنێرە.",
         "coupon_invalid": "❌ کۆد نادروستە.",
@@ -239,7 +246,7 @@ TEXTS = {
         "trial": "🎁 Free Trial",
         "services": "📦 My Services",
         "renew": "🔄 Renew",
-        "coupon": "🎟 Coupon",
+        "coupon": "🎟 I have a coupon",
         "referral": "👥 Invite Friends",
         "support": "🎫 Support",
         "language": "🌐 Change Language",
@@ -283,6 +290,8 @@ TEXTS = {
         "ticket_created": "✅ Message added to ticket #{id}",
         "ticket_closed": "🔒 Ticket #{id} closed.",
         "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\nYour link:\n{link}",
+        "referral_reward": "🎉 Referral registered successfully!\n\n💰 20,000 Toman was added to your wallet and 20,000 Toman to the new user.",
+        "referral_commission": "💸 Referral commission\n\n🧾 Order #{order}\n💰 10% commission: {amount:,} Toman\n💵 New balance: {balance:,} Toman",
         "referral_error": "❌ Error creating link.",
         "coupon_prompt": "🎟 Send your coupon code.",
         "coupon_invalid": "❌ Invalid coupon.",
@@ -387,7 +396,7 @@ async def show_language_selector_message(message):
 def clear_user_states(context):
     keys = [
         "waiting_custom_volume", "waiting_coupon", "waiting_ticket_message",
-        "ticket_id", "custom_volume", "custom_price", "coupon_code",
+        "ticket_id", "custom_volume", "custom_price", "coupon_code", "coupon_return",
         "renew_order_id", "renew_volume", "renew_price",
         "admin_waiting_volume", "admin_waiting_link", "admin_add_volume",
         "admin_waiting_trial_link", "admin_waiting_coupon", "admin_broadcast",
@@ -428,7 +437,9 @@ def init_db():
             created_at TEXT NOT NULL,
             approved_at TEXT,
             expires_at TEXT,
-            is_charge INTEGER DEFAULT 0
+            is_charge INTEGER DEFAULT 0,
+            payment_method TEXT DEFAULT 'card',
+            referral_commission_paid INTEGER DEFAULT 0
         )
     """)
 
@@ -554,6 +565,8 @@ def init_db():
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
         ("receipt_message_id", "INTEGER"),
+        ("payment_method", "TEXT DEFAULT 'card'"),
+        ("referral_commission_paid", "INTEGER DEFAULT 0"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -723,18 +736,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_user(user)
     clear_user_states(context)
 
+    referral_result = {"status": "none"}
     if context.args:
         try:
-            referrer_id = int(context.args[0])
-            if referrer_id != user.id:
-                conn = get_db()
-                existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
-                if existing and existing["referred_by"] is None:
-                    conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
-                    conn.commit()
-                conn.close()
+            referral_result = register_referral(user.id, int(context.args[0]))
         except Exception:
-            pass
+            referral_result = {"status": "error"}
 
     lang = get_user_language(user.id)
     if not lang and user.id != ADMIN_ID:
@@ -743,6 +750,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user.id == ADMIN_ID:
         set_user_language(user.id, "fa")
+
+    if referral_result.get("status") == "rewarded":
+        reward = referral_result["reward"]
+        referrer_id = referral_result["referrer_id"]
+        try:
+            await update.message.reply_text(
+                f"🎉 رفرال با موفقیت ثبت شد!\n\n💰 {reward:,} تومان به کیف پول شما و {reward:,} تومان به کیف پول معرف اضافه شد."
+            )
+        except Exception:
+            pass
+        try:
+            referrer_lang = get_user_language(referrer_id) or "fa"
+            await context.bot.send_message(chat_id=referrer_id, text=t(referrer_lang, "referral_reward"))
+        except Exception:
+            pass
 
     await send_home(update.message, user.id)
 
@@ -889,6 +911,7 @@ def buy_plans_keyboard(user_id):
             ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
+    keyboard.append([InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon_buy")])
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
     keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="buy")])
     return InlineKeyboardMarkup(keyboard)
@@ -1054,14 +1077,20 @@ def cancel_pending_orders(user_id, is_charge=None):
         conn.close()
 
 
-def create_order(user, volume, price, coupon_code=None, is_charge=0):
+def create_order(user, volume, price, coupon_code=None, is_charge=0, payment_method="card"):
     # A new charge must not cancel a pending purchase receipt, and vice versa.
     cancel_pending_orders(user.id, is_charge=is_charge)
     conn = get_db()
     cursor = conn.execute("""
-        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge))
+        INSERT INTO orders (
+            user_id, username, first_name, volume, price, status, created_at,
+            is_charge, payment_method, referral_commission_paid
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, 0)
+    """, (
+        user.id, user.username or "", user.first_name or "", str(volume),
+        int(price), now_text(), is_charge, payment_method
+    ))
     order_id = cursor.lastrowid
 
     if coupon_code and not is_charge:
@@ -1156,12 +1185,14 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
+        commission_result = pay_referral_commission(conn, order)
         conn.commit()
         return {
             "status": "approved",
             "order": order,
             "link": subscription["link"],
-            "expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S")
+            "expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "commission": commission_result,
         }
     except Exception:
         conn.rollback()
@@ -1254,6 +1285,67 @@ def referral_count(user_id):
     return count
 
 
+def register_referral(user_id, referrer_id):
+    """ثبت رفرال و پرداخت پاداش ورود، فقط یک‌بار و به‌صورت اتمیک."""
+    if not referrer_id or int(referrer_id) == int(user_id):
+        return {"status": "invalid"}
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        target = conn.execute(
+            "SELECT referred_by, referral_rewarded FROM users WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()
+        referrer = conn.execute(
+            "SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)
+        ).fetchone()
+        if not target or not referrer:
+            conn.rollback()
+            return {"status": "not_found"}
+        if target["referred_by"] is not None or int(target["referral_rewarded"] or 0) == 1:
+            conn.rollback()
+            return {"status": "already"}
+        cur = conn.execute(
+            "UPDATE users SET referred_by = ?, referral_rewarded = 1 WHERE user_id = ? AND referred_by IS NULL AND referral_rewarded = 0",
+            (referrer_id, user_id)
+        )
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"status": "already"}
+        reward = REFERRAL_JOIN_REWARD
+        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)", (reward, user_id, referrer_id))
+        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (user_id, reward, "referral_join", f"پاداش ورود از رفرال کاربر #{referrer_id}", now_text()))
+        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (referrer_id, reward, "referral_join", f"پاداش دعوت کاربر #{user_id}", now_text()))
+        conn.commit()
+        return {"status": "rewarded", "referrer_id": int(referrer_id), "reward": reward}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def pay_referral_commission(conn, order):
+    """پورسانت ۱۰٪ فقط برای سفارش سرویس که پرداخت دستی آن تأیید شده است."""
+    if int(order["is_charge"] or 0) != 0 or (order["payment_method"] or "card") != "card":
+        return None
+    if int(order["referral_commission_paid"] or 0) == 1:
+        return None
+    row = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (order["user_id"],)).fetchone()
+    if not row or row["referred_by"] is None:
+        return None
+    referrer_id = int(row["referred_by"])
+    commission = int(int(order["price"]) * REFERRAL_COMMISSION_PERCENT / 100)
+    if commission <= 0:
+        return None
+    updated = conn.execute("UPDATE orders SET referral_commission_paid = 1 WHERE id = ? AND status = 'pending' AND referral_commission_paid = 0", (order["id"],))
+    if updated.rowcount != 1:
+        return None
+    conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
+    conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)", (referrer_id, commission, "referral_commission", f"پورسانت ۱۰٪ رفرال بابت سفارش #{order['id']}", order["id"], now_text()))
+    return {"referrer_id": referrer_id, "amount": commission}
+
+
 def referral_link(bot_username, user_id):
     return f"https://t.me/{bot_username}?start={user_id}"
 
@@ -1296,6 +1388,103 @@ def get_stats():
 
 
 # =========================================================
+# بکاپ دیتابیس
+# =========================================================
+
+async def send_db_backup(bot, chat_id, status_message=None):
+    """ساخت بکاپ از دیتابیس SQLite و ارسال به ادمین."""
+    if status_message:
+        try:
+            await status_message.edit_text("⏳ در حال ساخت بکاپ...")
+        except Exception:
+            pass
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    backup_name = f"hanzuvpn_backup_{timestamp}.db"
+    created_files = []
+
+    try:
+        if not os.path.exists(DB_PATH):
+            msg = f"❌ فایل دیتابیس پیدا نشد:\n`{DB_PATH}`"
+            if status_message:
+                await status_message.edit_text(msg, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
+            return False
+
+        # برای سازگاری با WAL: چک‌پوینت قبل از کپی
+        try:
+            conn = get_db()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.close()
+        except Exception:
+            pass
+
+        shutil.copy2(DB_PATH, backup_name)
+        created_files.append(backup_name)
+
+        # کپی فایل‌های جانبی WAL در صورت وجود
+        for suffix in ("-wal", "-shm"):
+            side = DB_PATH + suffix
+            if os.path.exists(side):
+                dest = backup_name + suffix
+                shutil.copy2(side, dest)
+                created_files.append(dest)
+
+        size_kb = os.path.getsize(backup_name) / 1024
+        caption = (
+            f"✅ بکاپ دیتابیس HanzuVPN\n\n"
+            f"📅 تاریخ: {timestamp}\n"
+            f"📁 فایل: `{DB_PATH}`\n"
+            f"📦 حجم: {size_kb:.1f} KB"
+        )
+
+        with open(backup_name, "rb") as f:
+            await bot.send_document(
+                chat_id=chat_id,
+                document=f,
+                filename=backup_name,
+                caption=caption,
+                parse_mode="Markdown",
+            )
+
+        if status_message:
+            try:
+                await status_message.edit_text("✅ بکاپ با موفقیت ارسال شد.")
+            except Exception:
+                pass
+        return True
+
+    except Exception as e:
+        err = f"❌ خطا در ساخت بکاپ:\n`{e}`"
+        if status_message:
+            try:
+                await status_message.edit_text(err, parse_mode="Markdown")
+            except Exception:
+                await bot.send_message(chat_id=chat_id, text=err, parse_mode="Markdown")
+        else:
+            await bot.send_message(chat_id=chat_id, text=err, parse_mode="Markdown")
+        return False
+
+    finally:
+        for path in created_files:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+
+
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دستور /backup فقط برای ادمین."""
+    user = update.effective_user
+    if not user or user.id != ADMIN_ID:
+        return
+    status = await update.message.reply_text("⏳ در حال ساخت بکاپ...")
+    await send_db_backup(context.bot, ADMIN_ID, status_message=status)
+
+
+# =========================================================
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
@@ -1315,6 +1504,7 @@ async def show_admin(query):
             InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
         ],
         [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
+        [InlineKeyboardButton("💾 بکاپ دیتابیس", callback_data="admin_backup")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
     ]
     await query.edit_message_text(
@@ -1695,7 +1885,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         order_id = None
         try:
             # ساخت سفارش و تحویل سرویس مثل قبل انجام می‌شود.
-            order_id = create_order(user, volume, price, is_charge=0)
+            coupon_code = context.user_data.get("coupon_code")
+            if coupon_code:
+                coupon_result = get_coupon(coupon_code)
+                if not coupon_result or user_used_coupon(coupon_result["id"], user_id) or (coupon_result["max_uses"] > 0 and coupon_result["used_count"] >= coupon_result["max_uses"]):
+                    coupon_code = None
+            order_id = create_order(user, volume, price, coupon_code=coupon_code, is_charge=0, payment_method="wallet")
             result = approve_order(order_id)
             if result["status"] == "approved":
                 await query.edit_message_text(
@@ -1923,11 +2118,13 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # کوپن
-    if data == "coupon":
+    if data in ("coupon", "coupon_buy"):
         context.user_data["waiting_coupon"] = True
+        context.user_data["coupon_return"] = "buy_plans" if data == "coupon_buy" else "home"
+        back_callback = "period_1m" if data == "coupon_buy" else "home"
         await query.edit_message_text(
             t(lang, "coupon_prompt"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data="home")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else ("🔙 گەڕانەوە" if lang == "ku" else "🔙 Back"), callback_data=back_callback)]])
         )
         return
 
@@ -2043,6 +2240,13 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         context.user_data["admin_broadcast"] = True
         await query.edit_message_text("📢 پیام همگانی\n\nمتن پیام را بفرست.")
+        return
+
+    if data == "admin_backup":
+        if user_id != ADMIN_ID:
+            return
+        status = await query.edit_message_text("⏳ در حال ساخت بکاپ...")
+        await send_db_backup(context.bot, ADMIN_ID, status_message=status)
         return
 
     # مدیریت موجودی کاربر توسط ادمین
@@ -2166,6 +2370,17 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                    order=order_id,
                    link=result["link"])
         )
+        commission = result.get("commission")
+        if commission:
+            try:
+                referrer_id = commission["referrer_id"]
+                referrer_lang = get_user_language(referrer_id) or "fa"
+                await context.bot.send_message(
+                    chat_id=referrer_id,
+                    text=t(referrer_lang, "referral_commission", order=order_id, amount=commission["amount"], balance=get_balance(referrer_id))
+                )
+            except Exception:
+                pass
         await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(
@@ -2448,9 +2663,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(lang, "coupon_invalid"))
             return
         context.user_data["coupon_code"] = coupon["code"]
+        return_to_plans = context.user_data.pop("coupon_return", "home") == "buy_plans"
         await update.message.reply_text(
             t(lang, "coupon_valid", code=coupon["code"], percent=coupon["percent"]),
-            reply_markup=buy_keyboard(user.id)
+            reply_markup=buy_plans_keyboard(user.id) if return_to_plans else buy_keyboard(user.id)
         )
         return
 
@@ -2895,7 +3111,8 @@ def main():
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CallbackQueryHandler(_button_handler_impl))
+    app.add_handler(CommandHandler("backup", backup_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
     app.add_handler(MessageHandler(filters.TEXT, text_handler))
 

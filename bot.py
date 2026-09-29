@@ -16,6 +16,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     KeyboardButton,
     BotCommand,
     MenuButtonWebApp,
@@ -142,6 +143,29 @@ TEXTS = {
         "no_history": "📜 تاریخچه تراکنش‌ها\n\nهنوز تراکنشی ثبت نشده است.",
         "history_title": "📜 آخرین تراکنش‌های شما\n\n",
         "history_item": "{emoji} {amount:,} تومان\n📝 {desc}\n🕐 {date}\n\n",
+        'admin_add': '➕ افزودن لینک سرویس',
+        'admin_trial': '🎁 مدیریت تست',
+        'admin_stock': '📦 موجودی',
+        'admin_delete': '🗑 حذف لینک',
+        'admin_coupon': '🎟 کوپن\u200cها',
+        'admin_balance': '💰 مدیریت موجودی کاربر',
+        'admin_broadcast': '📢 پیام همگانی',
+        'admin_stats': '📊 آمار',
+        'admin_orders': '🧾 سفارش\u200cها',
+        'admin_tickets': '🎫 تیکت\u200cها',
+        'admin_panel': '🔙 پنل مدیریت',
+        'admin_trial_add': '➕ افزودن لینک تست',
+        'admin_trial_delete': '🗑 حذف لینک تست',
+        'admin_trial_stock': '📦 موجودی تست',
+        'admin_ticket_view': '🎫 مشاهده تیکت',
+        'admin_close_ticket': '🔒 بستن تیکت',
+        'approve_payment': '✅ تأیید پرداخت',
+        'reject_payment': '❌ رد پرداخت',
+        'renew_item': '🔄 تمدید #{id}',
+        'trial_item': '🗑 تست #{id}',
+        'delete_item': '🗑 #{id} | {volume} گیگ',
+        'ticket_item': '🎫 تیکت #{id}',
+        'volume_label': '📦 {volume} گیگ',
     },
     "ku": {
         "language_title": "🌐 هەڵبژاردنی زمان\n\nتکایە زمانی خۆت هەڵبژێرە:",
@@ -213,6 +237,29 @@ TEXTS = {
         "no_history": "📜 هیچ مامەڵەیەک نییە.",
         "history_title": "📜 دوایین مامەڵەکان\n\n",
         "history_item": "{emoji} {amount:,}\n📝 {desc}\n🕐 {date}\n\n",
+        'admin_add': '➕ زیادکردنی بەستەر',
+        'admin_trial': '🎁 بەڕێوەبردنی تاقیکردنەوە',
+        'admin_stock': '📦 کۆگا',
+        'admin_delete': '🗑 سڕینەوەی بەستەر',
+        'admin_coupon': '🎟 کۆدەکانی داشکاندن',
+        'admin_balance': '💰 بەڕێوەبردنی باڵانسی بەکارهێنەر',
+        'admin_broadcast': '📢 پەیامی گشتی',
+        'admin_stats': '📊 ئامار',
+        'admin_orders': '🧾 داواکارییەکان',
+        'admin_tickets': '🎫 تیکەتەکان',
+        'admin_panel': '🔙 پانێڵی بەڕێوەبردن',
+        'admin_trial_add': '➕ زیادکردنی بەستەری تاقیکردنەوە',
+        'admin_trial_delete': '🗑 سڕینەوەی تاقیکردنەوە',
+        'admin_trial_stock': '📦 کۆگای تاقیکردنەوە',
+        'admin_ticket_view': '🎫 بینینی تیکەت',
+        'admin_close_ticket': '🔒 داخستنی تیکەت',
+        'approve_payment': '✅ پشتڕاستکردنەوەی پارەدان',
+        'reject_payment': '❌ ڕەتکردنەوەی پارەدان',
+        'renew_item': '🔄 نوێکردنەوە #{id}',
+        'trial_item': '🗑 تاقیکردنەوە #{id}',
+        'delete_item': '🗑 #{id} | {volume} گیگ',
+        'ticket_item': '🎫 تیکەتی #{id}',
+        'volume_label': '📦 {volume} گیگ',
     },
     "en": {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
@@ -284,6 +331,29 @@ TEXTS = {
         "no_history": "📜 No transactions yet.",
         "history_title": "📜 Your recent transactions\n\n",
         "history_item": "{emoji} {amount:,} Toman\n📝 {desc}\n🕐 {date}\n\n",
+        'admin_add': '➕ Add Service Link',
+        'admin_trial': '🎁 Trial Management',
+        'admin_stock': '📦 Stock',
+        'admin_delete': '🗑 Delete Link',
+        'admin_coupon': '🎟 Coupons',
+        'admin_balance': '💰 User Balance',
+        'admin_broadcast': '📢 Broadcast',
+        'admin_stats': '📊 Statistics',
+        'admin_orders': '🧾 Orders',
+        'admin_tickets': '🎫 Tickets',
+        'admin_panel': '🔙 Admin Panel',
+        'admin_trial_add': '➕ Add Trial Link',
+        'admin_trial_delete': '🗑 Delete Trial Link',
+        'admin_trial_stock': '📦 Trial Stock',
+        'admin_ticket_view': '🎫 View Ticket',
+        'admin_close_ticket': '🔒 Close Ticket',
+        'approve_payment': '✅ Approve Payment',
+        'reject_payment': '❌ Reject Payment',
+        'renew_item': '🔄 Renew #{id}',
+        'trial_item': '🗑 Trial #{id}',
+        'delete_item': '🗑 #{id} | {volume} GB',
+        'ticket_item': '🎫 Ticket #{id}',
+        'volume_label': '📦 {volume} GB',
     }
 }
 
@@ -589,7 +659,7 @@ def bottom_keyboard(user_id):
         [KeyboardButton(t(lang, "support")), KeyboardButton(t(lang, "language"))],
     ]
     if user_id == ADMIN_ID:
-        rows.append([KeyboardButton(t("fa", "admin"))])
+        rows.append([KeyboardButton(t(lang, "admin"))])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -614,7 +684,7 @@ def home_keyboard(user_id):
         ],
     ]
     if user_id == ADMIN_ID:
-        keyboard.append([InlineKeyboardButton(t("fa", "admin"), callback_data="admin")])
+        keyboard.append([InlineKeyboardButton(t(lang, "admin"), callback_data="admin")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -1159,22 +1229,23 @@ def get_stats():
 # =========================================================
 
 async def show_admin(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
-        [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
-        [InlineKeyboardButton("🎁 مدیریت تست", callback_data="admin_trial")],
+        [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
+        [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
         [
-            InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"),
-            InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete")
+            InlineKeyboardButton(t(lang, "admin_stock"), callback_data="admin_stock"),
+            InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete")
         ],
-        [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon")],
-        [InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
-        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon")],
+        [InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
+        [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
         [
-            InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
-            InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
+            InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
+            InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")
         ],
-        [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+        [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ]
     await query.edit_message_text(
         "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
@@ -1183,6 +1254,7 @@ async def show_admin(query):
 
 
 async def show_admin_stock(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     stock = get_stock()
     trial_stock = get_free_trial_stock()
     text = "📦 موجودی HanzuVPN\n\n"
@@ -1193,11 +1265,12 @@ async def show_admin_stock(query):
         text += "❌ سرویس فروشی موجود نیست.\n"
     text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
 async def show_admin_stats(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     s = get_stats()
     text = (
         "📊 آمار HanzuVPN\n\n"
@@ -1212,11 +1285,12 @@ async def show_admin_stats(query):
         f"🎫 تیکت‌های باز: {s['tickets']}"
     )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
 async def show_admin_orders(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     conn = get_db()
     rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
     conn.close()
@@ -1238,17 +1312,18 @@ async def show_admin_orders(query):
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
 async def show_admin_trial(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     stock = get_free_trial_stock()
     keyboard = [
-        [InlineKeyboardButton("➕ افزودن لینک تست", callback_data="admin_trial_add")],
-        [InlineKeyboardButton("🗑 حذف لینک تست", callback_data="admin_trial_delete")],
-        [InlineKeyboardButton("📦 موجودی تست", callback_data="admin_trial_stock")],
-        [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")],
+        [InlineKeyboardButton(t(lang, "admin_trial_add"), callback_data="admin_trial_add")],
+        [InlineKeyboardButton(t(lang, "admin_trial_delete"), callback_data="admin_trial_delete")],
+        [InlineKeyboardButton(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")],
     ]
     await query.edit_message_text(
         f"🎁 مدیریت تست رایگان\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n📊 موجودی: {stock}",
@@ -1257,28 +1332,30 @@ async def show_admin_trial(query):
 
 
 async def show_admin_trial_delete(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     rows = get_free_trial_list()
     if not rows:
         await query.edit_message_text(
             "🗑 حذف تست\n\n❌ لینک تستی وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 مدیریت تست", callback_data="admin_trial")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
         return
-    keyboard = [[InlineKeyboardButton(f"🗑 تست #{row['id']}", callback_data=f"trial_delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton("🔙 مدیریت تست", callback_data="admin_trial")])
+    keyboard = [[InlineKeyboardButton(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
+    keyboard.append([InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")])
     await query.edit_message_text("🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def show_delete_menu(query):
+    lang = get_user_language(query.from_user.id) or "fa"
     rows = get_subscription_list()
     if not rows:
         await query.edit_message_text(
             "🗑 حذف لینک\n\n❌ لینک استفاده‌نشده‌ای وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]])
         )
         return
-    keyboard = [[InlineKeyboardButton(f"🗑 #{row['id']} | {row['volume']} گیگ", callback_data=f"delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")])
+    keyboard = [[InlineKeyboardButton(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
+    keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
     await query.edit_message_text("🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1316,10 +1393,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         # ReplyKeyboardMarkup مستقل از InlineKeyboardMarkup است؛ بعد از تغییر زبان
         # باید کیبورد پایینی را هم دوباره ارسال کنیم تا متن تمام دکمه‌ها به‌روز شود.
         try:
-            await query.message.reply_text(
-                t(language, "welcome"),
-                reply_markup=bottom_keyboard(user_id)
-            )
+            await query.message.reply_text(t(language, "language_changed"), reply_markup=bottom_keyboard(user_id))
         except Exception as e:
             print("Language reply keyboard update error:", e)
         return
@@ -1669,7 +1743,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
-                    InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
+                    InlineKeyboardButton(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
                     InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
                 ],
                 [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
@@ -1703,7 +1777,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
-                    InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
+                    InlineKeyboardButton(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
                     InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
                 ],
                 [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
@@ -1846,7 +1920,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         delete_subscription(subscription_id)
         await query.edit_message_text("✅ لینک حذف شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
+            [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
 
@@ -1878,7 +1952,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         delete_free_trial(trial_id)
         await query.edit_message_text("✅ لینک تست حذف شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 مدیریت تست", callback_data="admin_trial")]
+            [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]
         ]))
         return
 
@@ -1888,7 +1962,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         stock = get_free_trial_stock()
         await query.edit_message_text(
             f"🎁 موجودی تست\n\n📦 100 مگابایت\n⏳ 1 روز\n🔢 موجودی: {stock}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 مدیریت تست", callback_data="admin_trial")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
         return
 
@@ -1922,14 +1996,14 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         conn.close()
         if not rows:
             text = "🎫 تیکت باز نداریم."
-            keyboard = [[InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]]
+            keyboard = [[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]]
         else:
             text = "🎫 تیکت‌های باز\n\n"
             keyboard = []
             for row in rows:
                 text += f"#{row['id']} | User: {row['user_id']}\n"
-                keyboard.append([InlineKeyboardButton(f"🎫 تیکت #{row['id']}", callback_data=f"ticket_{row['id']}")])
-            keyboard.append([InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")])
+                keyboard.append([InlineKeyboardButton(t(lang, "ticket_item", id=row['id']), callback_data=f"ticket_{row['id']}")])
+            keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -1955,8 +2029,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             text + "\n✏️ پاسخ خود را ارسال کنید.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"close_ticket_{ticket_id}")],
-                [InlineKeyboardButton("🔙 تیکت‌ها", callback_data="admin_tickets")],
+                [InlineKeyboardButton(t(lang, "admin_close_ticket"), callback_data=f"close_ticket_{ticket_id}")],
+                [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
             ])
         )
         return
@@ -1980,7 +2054,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception:
                 pass
         await query.edit_message_text("✅ تیکت بسته شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
+            [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
 
@@ -2153,21 +2227,21 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "buy"), callback_data="buy")], [InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
                 )
                 return
-            keyboard = [[InlineKeyboardButton(f"🔄 تمدید #{row['id']} | {row['volume']} گیگ", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
+            keyboard = [[InlineKeyboardButton(f"{t(lang, 'renew')} #{row['id']} | {row['volume']} {t(lang, 'volume_label', volume='').strip()}", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
             keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
             await update.message.reply_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
             return
         if action == "admin" and user.id == ADMIN_ID:
             # پنل مدیریت را با همان منوی اصلی ادمین نمایش می‌دهیم.
             keyboard = [
-                [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
-                [InlineKeyboardButton("🎁 مدیریت تست", callback_data="admin_trial")],
-                [InlineKeyboardButton("📦 موجودی", callback_data="admin_stock"), InlineKeyboardButton("🗑 حذف لینک", callback_data="admin_delete")],
-                [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon"), InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
-                [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
-                [InlineKeyboardButton("📊 آمار", callback_data="admin_stats"), InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")],
-                [InlineKeyboardButton("🎫 تیکت‌ها", callback_data="admin_tickets")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="home")],
+                [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
+                [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
+                [InlineKeyboardButton(t(lang, "admin_stock"), callback_data="admin_stock"), InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete")],
+                [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon"), InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
+                [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
+                [InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"), InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")],
+                [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
             ]
             await update.message.reply_text("⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
             return
@@ -2208,7 +2282,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=ADMIN_ID,
             text=f"🎫 تیکت جدید #{ticket_id}\n\n👤 {user.first_name or '-'}\n🆔 {user.id}\n\n💬 {text}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎫 مشاهده تیکت", callback_data=f"ticket_{ticket_id}")]
+                [InlineKeyboardButton(t(lang, "admin_ticket_view"), callback_data=f"ticket_{ticket_id}")]
             ])
         )
         await update.message.reply_text(t(lang, "ticket_created", id=ticket_id))
@@ -2461,6 +2535,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_user_language(update.effective_user.id) or "fa"
     user = update.effective_user
     ensure_user(user)
     lang = get_user_language(user.id) or "fa"
@@ -2483,8 +2558,8 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [[
-        InlineKeyboardButton("✅ تأیید پرداخت", callback_data=f"approve_{order['id']}"),
-        InlineKeyboardButton("❌ رد پرداخت", callback_data=f"reject_{order['id']}")
+        InlineKeyboardButton(t(lang, "approve_payment"), callback_data=f"approve_{order['id']}"),
+        InlineKeyboardButton(t(lang, "reject_payment"), callback_data=f"reject_{order['id']}")
     ]]
 
     await context.bot.send_photo(

@@ -707,8 +707,14 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    # Keep the ReplyKeyboard buttons while removing the visible "منوی پایین:" label.
-    await message.reply_text("\u2060", reply_markup=bottom_keyboard(user_id))
+    # Telegram requires a message to deliver a ReplyKeyboard. Send it invisibly,
+    # then delete only the carrier message so the keyboard remains visible.
+    keyboard_message = await message.reply_text("\u2060", reply_markup=bottom_keyboard(user_id))
+    try:
+        await asyncio.sleep(0.15)
+        await keyboard_message.delete()
+    except Exception:
+        pass
 
 
 # =========================================================

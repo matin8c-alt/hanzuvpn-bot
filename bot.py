@@ -707,6 +707,8 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    # Keep the ReplyKeyboard buttons while removing the visible "منوی پایین:" label.
+    await message.reply_text("\u2060", reply_markup=bottom_keyboard(user_id))
 
 
 # =========================================================
@@ -1037,15 +1039,21 @@ def claim_trial(user):
         conn.close()
 
 
-def cancel_pending_orders(user_id):
+def cancel_pending_orders(user_id, is_charge=None):
     conn = get_db()
-    conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
-    conn.commit()
-    conn.close()
+    try:
+        if is_charge is None:
+            conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
+        else:
+            conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending' AND is_charge = ?", (user_id, int(is_charge)))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def create_order(user, volume, price, coupon_code=None, is_charge=0):
-    cancel_pending_orders(user.id)
+    # A new charge must not cancel a pending purchase receipt, and vice versa.
+    cancel_pending_orders(user.id, is_charge=is_charge)
     conn = get_db()
     cursor = conn.execute("""
         INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
@@ -2780,7 +2788,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     conn.execute("BEGIN IMMEDIATE")
                     order=conn.execute("SELECT id, volume, price, expires_at FROM orders WHERE id=? AND user_id=? AND status='approved' AND is_charge=0",(oid,u.id)).fetchone()
                     if not order: conn.rollback(); return self._send(404,{"ok":False,"error":"service_not_found"})
-                    price=int(float(order["volume"]))*PRICE_PER_GB; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
+                    real_volume = _normalize_volume(order["volume"]); price = (TARIFF_PLANS.get(real_volume) or (int(real_volume) * PRICE_PER_GB)) if real_volume else 0; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
                     if bal<price: conn.rollback(); return self._send(200,{"ok":False,"error":"insufficient_balance","balance":bal,"price":price})
                     old=datetime.strptime(order["expires_at"],"%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now(); base=max(old,datetime.now()); newexp=base+timedelta(days=SERVICE_DAYS)
                     conn.execute("UPDATE users SET balance=balance-? WHERE user_id=?",(price,u.id)); conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",(u.id,-price,"renew",f"تمدید سرویس #{oid}",oid,now_text())); conn.execute("UPDATE orders SET expires_at=? WHERE id=?",(newexp.strftime("%Y-%m-%d %H:%M:%S"),oid)); conn.commit(); return self._send(200,{"ok":True,"order_id":oid,"price":price,"balance":bal-price,"expires_at":newexp.strftime("%Y-%m-%d %H:%M:%S")})

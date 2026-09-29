@@ -805,17 +805,12 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     await query.edit_message_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-async def show_card_payment(query, volume, original_price, coupon_code=None):
+async def show_card_payment(query, volume, original_price, coupon_code=None, final_price=None):
     """مرحله دوم پرداخت: نمایش شماره کارت + کد تخفیف + دکمه «پرداخت کردم»."""
     user_id = query.from_user.id
     lang = get_user_language(user_id) or "fa"
-    query_context = query
-    price = original_price
-    # نگه‌داشتن اطلاعات پرداخت برای زمانی که کاربر کد تخفیف وارد می‌کند.
-    query_context = query
-    # context.user_data از CallbackQuery در این نسخه مستقیماً در دسترس نیست؛
-    # state از callbackهای بعدی با volume/PLANS بازسازی می‌شود.
-    if coupon_code:
+    price = original_price if final_price is None else int(final_price)
+    if coupon_code and final_price is None:
         result = apply_coupon(coupon_code, user_id, original_price)
         if result["status"] == "success":
             price = result["price"]
@@ -1318,6 +1313,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(language, "language_changed") + "\n\n" + t(language, "welcome"),
             reply_markup=home_keyboard(user_id)
         )
+        # ReplyKeyboardMarkup مستقل از InlineKeyboardMarkup است؛ بعد از تغییر زبان
+        # باید کیبورد پایینی را هم دوباره ارسال کنیم تا متن تمام دکمه‌ها به‌روز شود.
+        try:
+            await query.message.reply_text(
+                t(language, "welcome"),
+                reply_markup=bottom_keyboard(user_id)
+            )
+        except Exception as e:
+            print("Language reply keyboard update error:", e)
         return
 
     lang = get_user_language(user_id)
@@ -1407,9 +1411,19 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("سفارش نامعتبر است.", show_alert=True)
             return
         coupon_code = context.user_data.get("coupon_code") or context.user_data.get("pending_payment_coupon")
+        final_price = int(original_price)
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, int(original_price))
+            if result["status"] == "success":
+                final_price = int(result["price"])
+            else:
+                coupon_code = None
+                context.user_data.pop("coupon_code", None)
+                context.user_data.pop("pending_payment_coupon", None)
         context.user_data["pending_payment_volume"] = str(volume)
         context.user_data["pending_payment_original_price"] = int(original_price)
-        await show_card_payment(query, str(volume), int(original_price), coupon_code)
+        context.user_data["pending_payment_price"] = int(final_price)
+        await show_card_payment(query, str(volume), int(original_price), coupon_code, int(final_price))
         return
 
     if data.startswith("paymentback_"):
@@ -1468,12 +1482,13 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # اعمال کوپن (اگر وجود داشته باشد)
         coupon_code = context.user_data.get("coupon_code")
-        price = base_price
+        stored_price = context.user_data.get("pending_payment_price")
+        price = int(stored_price) if stored_price is not None else int(base_price)
 
-        if coupon_code:
+        if stored_price is None and coupon_code:
             result = apply_coupon(coupon_code, user_id, base_price)
             if result["status"] == "success":
-                price = result["price"]
+                price = int(result["price"])
             else:
                 coupon_code = None
                 context.user_data.pop("coupon_code", None)
@@ -1485,6 +1500,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.pop("coupon_code", None)
         context.user_data.pop("custom_volume", None)
         context.user_data.pop("custom_price", None)
+        context.user_data.pop("pending_payment_price", None)
+        context.user_data.pop("pending_payment_coupon", None)
+        context.user_data.pop("pending_payment_volume", None)
+        context.user_data.pop("pending_payment_original_price", None)
         context.user_data["last_order_id"] = order_id
 
         await query.edit_message_text(
@@ -2385,8 +2404,17 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ])
                     )
                 else:
+                    result = apply_coupon(coupon["code"], user.id, int(original_price))
+                    if result["status"] != "success":
+                        await update.message.reply_text(t(lang, "coupon_invalid"))
+                        return
+                    final_price = int(result["price"])
+                    context.user_data["pending_payment_price"] = final_price
+                    context.user_data["pending_payment_volume"] = str(volume)
+                    context.user_data["pending_payment_original_price"] = int(original_price)
+                    context.user_data["pending_payment_coupon"] = coupon["code"]
                     await update.message.reply_text(
-                        t(lang, "payment", volume=volume, price=apply_coupon(coupon["code"], user.id, int(original_price))["price"])
+                        t(lang, "payment", volume=volume, price=final_price)
                         + t(lang, "original_price", original=int(original_price), coupon=coupon["code"])
                         + t(lang, "card", card=CARD_NUMBER),
                         parse_mode="Markdown",

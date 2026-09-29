@@ -6,10 +6,6 @@ import base64
 import hashlib
 import hmac
 import threading
-import tempfile
-import sys
-import platform
-import traceback
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,17 +15,10 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
-    InputFile,
 )
-try:
-    from telegram import CopyTextButton
-except ImportError:
-    CopyTextButton = None
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -85,7 +74,6 @@ TEXTS = {
         "language_title": "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
         "language_changed": "✅ زبان با موفقیت تغییر کرد.",
         "welcome": "🌐 HanzuVPN\n\nبه ربات HanzuVPN خوش آمدید ❤️\n\nاز منوی زیر انتخاب کنید:",
-        "select_option": "لطفا یکی از گزینه ها را انتخاب کنید:",
         "buy": "🛒 خرید سرویس",
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
@@ -96,7 +84,6 @@ TEXTS = {
         "language": "🌐 تغییر زبان",
         "admin": "⚙️ پنل مدیریت",
         "back": "🔙 بازگشت",
-        "back_to_period": "🔙 بازگشت",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
         "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
@@ -120,12 +107,7 @@ TEXTS = {
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
         "renew_paid": "💳 پرداخت تمدید\n\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n⏳ مدت: 30 روز\n\n💳 شماره کارت:\n`{card}`\n\nبعد از پرداخت روی دکمه زیر بزنید.",
         "renew_created": "✅ درخواست تمدید ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
-        "custom_prompt": "✏️ حجم دلخواه\n\nحجم را با دکمه‌های زیر انتخاب کنید.\nهر بار ۵ گیگ کم یا زیاد می‌شود.",
-        "custom_minus": "➖ ۵ گیگ",
-        "custom_plus": "➕ ۵ گیگ",
-        "custom_confirm": "✅ انتخاب این حجم",
-        "copy_card": "📋 کپی شماره کارت",
-        "back_to_volume": "🔙 بازگشت",
+        "custom_prompt": "✏️ حجم دلخواه\n\nحجم موردنظر را به گیگ وارد کن.\n\nمثال:\n25",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
         "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
@@ -133,7 +115,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکت #{id}\n\nپیام خود را ارسال کنید.",
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
-        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\n🎁 با دعوت هر دوست: ۲۰٬۰۰۰ تومان برای هر دو نفر\n💰 با خرید دوست دعوت‌شده: ۱۰٪ پورسانت برای شما\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
+        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -162,7 +144,6 @@ TEXTS = {
         "language_title": "🌐 هەڵبژاردنی زمان\n\nتکایە زمانی خۆت هەڵبژێرە:",
         "language_changed": "✅ زمان بە سەرکەوتوویی گۆڕدرا.",
         "welcome": "🌐 HanzuVPN\n\nبەخێربێیت بۆ HanzuVPN ❤️\n\nلە خوارەوە هەڵبژاردەیەک هەڵبژێرە:",
-        "select_option": "تکایە یەکێک لە هەڵبژاردەکان هەڵبژێرە:",
         "buy": "🛒 کڕینی خزمەتگوزاری",
         "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
         "services": "📦 خزمەتگوزارییەکانم",
@@ -173,7 +154,6 @@ TEXTS = {
         "language": "🌐 گۆڕینی زمان",
         "admin": "⚙️ بەڕێوەبردن",
         "back": "🔙 گەڕانەوە",
-        "back_to_period": "🔙 گەڕانەوە",
         "main_menu": "🔙 پەڕەی سەرەکی",
         "wallet": "💰 جزدان",
         "buy_title": "🛒 هەڵبژاردنی خزمەتگوزاری\n\n⏳ ماوەی هەموو خزمەتگوزارییەکان: 30 ڕۆژ\n\nقەبارەی خۆت هەڵبژێرە:",
@@ -197,12 +177,7 @@ TEXTS = {
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "renew_paid": "💳 پارەدانی نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n💳 `{card}`",
         "renew_created": "✅ داواکاری نوێکردنەوە تۆمار کرا.\n\n🧾 #{order}",
-        "custom_prompt": "✏️ قەبارەی دڵخواز\n\nبە دوگمەکان قەبارەکە هەڵبژێرە.\nهەر جار ٥ گیگ کەم یان زیاد دەبێت.",
-        "custom_minus": "➖ ٥ گیگ",
-        "custom_plus": "➕ ٥ گیگ",
-        "custom_confirm": "✅ ئەم قەبارەیە هەڵبژێرە",
-        "copy_card": "📋 کۆپی ژمارەی کارت",
-        "back_to_volume": "🔙 گەڕانەوە",
+        "custom_prompt": "✏️ قەبارە بە گیگ بنووسە:\n\nنموونە: 25",
         "invalid_volume": "❌ قەبارە نادروستە.",
         "custom_summary": "🛒 خزمەتگوزاری دڵخواز\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
         "support_title": "🎫 پشتگیری\n\nتیکەت دروست بکە.",
@@ -210,7 +185,7 @@ TEXTS = {
         "ticket_prompt": "🎫 تیکەتی #{id}\n\nنامەکەت بنێرە.",
         "ticket_created": "✅ نامە تۆمار کرا لە تیکەتی #{id}",
         "ticket_closed": "🔒 تیکەتی #{id} داخرا.",
-        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\n🎁 بۆ هەر بانگهێشتێک: ٢٠٬٠٠٠ تومان بۆ هەردووکتان\n💰 کاتێک هاوڕێکەت بکڕێت: ١٠٪ پورسانت بۆ تۆ\n\nبەستەر:\n{link}",
+        "referral_title": "👥 بانگهێشت\n\n👤 ژمارە: {count}\n\nبەستەر:\n{link}",
         "referral_error": "❌ هەڵە لە دروستکردنی بەستەر.",
         "coupon_prompt": "🎟 کۆدی داشکان بنێرە.",
         "coupon_invalid": "❌ کۆد نادروستە.",
@@ -239,7 +214,6 @@ TEXTS = {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
         "language_changed": "✅ Language changed successfully.",
         "welcome": "🌐 HanzuVPN\n\nWelcome to HanzuVPN ❤️\n\nChoose an option below:",
-        "select_option": "Please choose one of the options:",
         "buy": "🛒 Buy Service",
         "trial": "🎁 Free Trial",
         "services": "📦 My Services",
@@ -250,7 +224,6 @@ TEXTS = {
         "language": "🌐 Change Language",
         "admin": "⚙️ Admin Panel",
         "back": "🔙 Back",
-        "back_to_period": "🔙 Back",
         "main_menu": "🔙 Main Menu",
         "wallet": "💰 Wallet",
         "buy_title": "🛒 Choose a Service\n\n⏳ All services are valid for 30 days.\n\nChoose your desired volume:",
@@ -274,12 +247,7 @@ TEXTS = {
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "renew_paid": "💳 Renewal Payment\n\n📦 {volume} GB\n💰 {price:,} Toman\n\n💳 `{card}`",
         "renew_created": "✅ Renewal request registered.\n\n🧾 #{order}",
-        "custom_prompt": "✏️ Custom Volume\n\nChoose the volume with the buttons below.\nEach step changes by 5 GB.",
-        "custom_minus": "➖ 5 GB",
-        "custom_plus": "➕ 5 GB",
-        "custom_confirm": "✅ Confirm this volume",
-        "copy_card": "📋 Copy card number",
-        "back_to_volume": "🔙 Back",
+        "custom_prompt": "✏️ Enter volume in GB:\n\nExample: 25",
         "invalid_volume": "❌ Invalid volume.",
         "custom_summary": "🛒 Custom Service\n\n📦 {volume} GB\n💰 {price:,} Toman",
         "support_title": "🎫 Support\n\nCreate a ticket.",
@@ -287,7 +255,7 @@ TEXTS = {
         "ticket_prompt": "🎫 Ticket #{id}\n\nSend your message.",
         "ticket_created": "✅ Message added to ticket #{id}",
         "ticket_closed": "🔒 Ticket #{id} closed.",
-        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\n🎁 Each referral: 20,000 Toman for both of you\n💰 When your referral buys: 10% commission for you\n\nYour link:\n{link}",
+        "referral_title": "👥 Invite Friends\n\n👤 Referrals: {count}\n\nYour link:\n{link}",
         "referral_error": "❌ Error creating link.",
         "coupon_prompt": "🎟 Send your coupon code.",
         "coupon_invalid": "❌ Invalid coupon.",
@@ -336,8 +304,6 @@ def now_text():
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA cache_size=-8192")
     return conn
 
 
@@ -358,6 +324,8 @@ def ensure_user(user):
 
 
 def get_user_language(user_id):
+    if user_id == ADMIN_ID:
+        return "fa"
     conn = get_db()
     row = conn.execute("SELECT language FROM users WHERE user_id = ?", (user_id,)).fetchone()
     conn.close()
@@ -384,9 +352,7 @@ def language_keyboard():
 
 
 async def show_language_selector_message(message):
-    user_id = message.from_user.id if message and message.from_user else 0
-    current_lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(current_lang, "language_title"), reply_markup=language_keyboard())
+    await message.reply_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
 
 
 def clear_user_states(context):
@@ -534,22 +500,6 @@ def init_db():
         )
     """)
 
-    # ایندکس‌های سبک برای مسیرهای پرتکرار (ساختنشان فقط یک‌بار انجام می‌شود).
-    for sql in (
-        "CREATE INDEX IF NOT EXISTS idx_orders_user_status_id ON orders(user_id, status, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_orders_status_id ON orders(status, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_wallet_user_id ON wallet_transactions(user_id, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_tickets_user_status ON tickets(user_id, status, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket_id ON ticket_messages(ticket_id, id DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_subscriptions_volume_used ON subscriptions(volume, used, id)",
-        "CREATE INDEX IF NOT EXISTS idx_free_trials_used_id ON free_trials(used, id)",
-        "CREATE INDEX IF NOT EXISTS idx_reminders_order_type ON reminders(order_id, reminder_type)",
-    ):
-        conn.execute(sql)
-
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
     conn.commit()
 
     # سازگاری
@@ -558,7 +508,6 @@ def init_db():
         ("is_charge", "INTEGER DEFAULT 0"),
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
-        ("receipt_message_id", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -570,7 +519,6 @@ def init_db():
         ("referral_rewarded", "INTEGER DEFAULT 0"),
         ("language", "TEXT"),
         ("balance", "INTEGER DEFAULT 0"),
-        ("last_home_message_id", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {default}")
@@ -611,40 +559,6 @@ def change_balance(user_id, amount, type_, description="", order_id=None):
         conn.close()
 
 
-def debit_balance_atomic(user_id, amount, type_, description="", order_id=None):
-    """Atomically debit wallet balance only when sufficient funds exist."""
-    amount = int(amount)
-    if amount <= 0:
-        return {"ok": False, "balance": get_balance(user_id)}
-    conn = get_db()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        cur = conn.execute(
-            "UPDATE users SET balance = COALESCE(balance, 0) - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
-            (amount, user_id, amount),
-        )
-        if cur.rowcount != 1:
-            row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
-            conn.rollback()
-            return {"ok": False, "balance": int(row["balance"] or 0) if row else 0}
-        conn.execute(
-            "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, -amount, type_, description, order_id, now_text()),
-        )
-        row = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        new_balance = int(row["balance"] or 0) if row else 0
-        conn.commit()
-        return {"ok": True, "balance": new_balance}
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        return {"ok": False, "balance": get_balance(user_id)}
-    finally:
-        conn.close()
-
-
 def get_wallet_history(user_id, limit=15):
     conn = get_db()
     rows = conn.execute("""
@@ -660,87 +574,39 @@ def get_wallet_history(user_id, limit=15):
 # منوی اصلی
 # =========================================================
 
-def bottom_keyboard(user_id):
-    lang = get_user_language(user_id) or "fa"
-    if lang == "en":
-        rows = [
-            ["🏠 Home", "🛒 Buy Service"],
-            ["📦 My Services", "💰 Wallet"],
-            ["🎁 Free Trial", "🎫 Support"],
-            ["🌐 Change Language"],
-        ]
-    elif lang == "ku":
-        rows = [
-            ["🏠 سەرەکی", "🛒 کڕینی خزمەتگوزاری"],
-            ["📦 خزمەتگوزارییەکانم", "💰 جزدان"],
-            ["🎁 تاقیکردنەوەی بەخۆڕایی", "🎫 پشتگیری"],
-            ["🌐 گۆڕینی زمان"],
-        ]
-    else:
-        rows = [
-            ["🏠 خانه", "🛒 خرید سرویس"],
-            ["📦 سرویس‌های من", "💰 کیف پول"],
-            ["🎁 تست رایگان", "🎫 پشتیبانی"],
-            ["🌐 تغییر زبان"],
-        ]
-    return ReplyKeyboardMarkup([[KeyboardButton(x) for x in row] for row in rows], resize_keyboard=True)
-
-
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
-        [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-        [InlineKeyboardButton(t(lang, "trial"), callback_data="trial")],
+        [
+            InlineKeyboardButton(t(lang, "buy"), callback_data="buy"),
+            InlineKeyboardButton(t(lang, "trial"), callback_data="trial"),
+        ],
         [
             InlineKeyboardButton(t(lang, "services"), callback_data="my_services"),
             InlineKeyboardButton(t(lang, "renew"), callback_data="renew"),
         ],
-        [InlineKeyboardButton(t(lang, "referral"), callback_data="referral")],
-        [InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet")],
-        [InlineKeyboardButton(t(lang, "support"), callback_data="support")],
-        [InlineKeyboardButton(t(lang, "language"), callback_data="language")],
+        [
+            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
+            InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet"),
+        ],
+        [
+            InlineKeyboardButton(t(lang, "support"), callback_data="support"),
+            InlineKeyboardButton(t(lang, "language"), callback_data="language"),
+        ],
     ]
     if user_id == ADMIN_ID:
         keyboard.append([InlineKeyboardButton(t("fa", "admin"), callback_data="admin")])
     return InlineKeyboardMarkup(keyboard)
 
 
-def set_last_home_message_id(user_id, message_id):
-    conn = get_db()
-    try:
-        conn.execute("UPDATE users SET last_home_message_id = ? WHERE user_id = ?", (int(message_id), user_id))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_last_home_message_id(user_id):
-    conn = get_db()
-    try:
-        row = conn.execute("SELECT last_home_message_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        return int(row["last_home_message_id"]) if row and row["last_home_message_id"] else None
-    finally:
-        conn.close()
-
-
 async def show_home(query, user_id):
     lang = get_user_language(user_id) or "fa"
     await query.edit_message_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    try:
-        set_last_home_message_id(user_id, query.message.message_id)
-    except Exception:
-        pass
 
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    home_msg = await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
-    try:
-        set_last_home_message_id(user_id, home_msg.message_id)
-    except Exception:
-        pass
-    # Keep the ReplyKeyboard buttons while showing a useful prompt instead of an empty carrier message.
-    await message.reply_text(t(lang, "select_option"), reply_markup=bottom_keyboard(user_id))
+    await message.reply_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
 
 
 # =========================================================
@@ -758,8 +624,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if referrer_id != user.id:
                 conn = get_db()
                 existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
+                if existing and existing["referred_by"] is None:
+                    conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
+                    conn.commit()
                 conn.close()
-                register_referral(referrer_id, user.id)
         except Exception:
             pass
 
@@ -863,63 +731,26 @@ async def set_bot_commands(application):
 # =========================================================
 
 def buy_keyboard(user_id):
-    """مرحله اول خرید: انتخاب مدت سرویس."""
-    lang = get_user_language(user_id) or "fa"
-    if lang == "en":
-        text = "📅 1 Month"
-    elif lang == "ku":
-        text = "📅 یەک مانگ"
-    else:
-        text = "📅 یکماهه"
-
-    keyboard = [
-        [InlineKeyboardButton(text, callback_data="period_1m")],
-        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-
-def buy_plans_keyboard(user_id):
-    """مرحله دوم خرید: انتخاب حجم سرویس پس از انتخاب مدت."""
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
         buttons = [
-            ("1 GB | 3,500 Toman", "plan_1"),
             ("10 GB | 35,000 Toman", "plan_10"),
-            ("15 GB | 52,500 Toman", "plan_15"),
             ("20 GB | 70,000 Toman", "plan_20"),
             ("30 GB | 105,000 Toman", "plan_30"),
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
-            ("100 GB | 350,000 Toman", "plan_100"),
-        ]
-    elif lang == "ku":
-        buttons = [
-            ("1 گیگ | 3,500 تومان", "plan_1"),
-            ("10 گیگ | 35,000 تومان", "plan_10"),
-            ("15 گیگ | 52,500 تومان", "plan_15"),
-            ("20 گیگ | 70,000 تومان", "plan_20"),
-            ("30 گیگ | 105,000 تومان", "plan_30"),
-            ("40 گیگ | 140,000 تومان", "plan_40"),
-            ("50 گیگ | 175,000 تومان", "plan_50"),
-            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     else:
         buttons = [
-            ("1 گیگ | 3,500 تومان", "plan_1"),
             ("10 گیگ | 35,000 تومان", "plan_10"),
-            ("15 گیگ | 52,500 تومان", "plan_15"),
             ("20 گیگ | 70,000 تومان", "plan_20"),
             ("30 گیگ | 105,000 تومان", "plan_30"),
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
-            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
-    keyboard.append([InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -928,28 +759,6 @@ async def send_buy_message(message):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "buy_title"), reply_markup=buy_keyboard(user_id))
 
-
-async def show_custom_volume_selector(query, context, lang):
-    volume = int(context.user_data.get("custom_selector_volume", 5))
-    price = volume * PRICE_PER_GB
-    text = t(lang, "custom_prompt") + f"\n\n📦 {volume} گیگ\n💰 {price:,} تومان" if lang == "fa" else (
-        t(lang, "custom_prompt") + f"\n\n📦 {volume} GB\n💰 {price:,} Toman" if lang == "en" else
-        t(lang, "custom_prompt") + f"\n\n📦 {volume} گیگ\n💰 {price:,} تومان"
-    )
-    keyboard = [
-        [
-            InlineKeyboardButton(t(lang, "custom_minus"), callback_data="custom_minus"),
-            InlineKeyboardButton(
-                f"{volume} GB" if lang == "en" else f"{volume} گیگ",
-                callback_data="custom_confirm"
-            ),
-            InlineKeyboardButton(t(lang, "custom_plus"), callback_data="custom_plus"),
-        ],
-        [InlineKeyboardButton(t(lang, "custom_confirm"), callback_data="custom_confirm")],
-        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="period_1m")],
-    ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def show_buy_menu(query):
     lang = get_user_language(query.from_user.id) or "fa"
@@ -971,14 +780,16 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     caption += t(lang, "card", card=CARD_NUMBER)
 
-    keyboard = []
-    # پرداخت با کیف پول همیشه نمایش داده می‌شود؛ اگر موجودی کافی نباشد
-    # هنگام کلیک پیام کمبود موجودی نمایش داده می‌شود.
-    keyboard.append([InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
-    keyboard.append([InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")])
-    if CARD_NUMBER and CopyTextButton:
-        keyboard.append([InlineKeyboardButton(t(lang, "copy_card"), copy_text=CopyTextButton(text=CARD_NUMBER))])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="period_1m")])
+    keyboard = [
+        [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]
+    ]
+
+    # دکمه پرداخت از کیف پول
+    balance = get_balance(user_id)
+    if balance >= price:
+        keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
+
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
 
     await query.edit_message_text(
         caption,
@@ -1075,21 +886,15 @@ def claim_trial(user):
         conn.close()
 
 
-def cancel_pending_orders(user_id, is_charge=None):
+def cancel_pending_orders(user_id):
     conn = get_db()
-    try:
-        if is_charge is None:
-            conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
-        else:
-            conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending' AND is_charge = ?", (user_id, int(is_charge)))
-        conn.commit()
-    finally:
-        conn.close()
+    conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
+    conn.commit()
+    conn.close()
 
 
 def create_order(user, volume, price, coupon_code=None, is_charge=0):
-    # A new charge must not cancel a pending purchase receipt, and vice versa.
-    cancel_pending_orders(user.id, is_charge=is_charge)
+    cancel_pending_orders(user.id)
     conn = get_db()
     cursor = conn.execute("""
         INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
@@ -1134,20 +939,6 @@ def _normalize_volume(value):
         return None
 
 
-async def delete_customer_receipt_message(context, order):
-    """Delete the customer's receipt preview after the order is decided."""
-    try:
-        message_id = order["receipt_message_id"] if "receipt_message_id" in order.keys() else None
-    except Exception:
-        message_id = None
-    if not message_id:
-        return
-    try:
-        await context.bot.delete_message(chat_id=order["user_id"], message_id=int(message_id))
-    except Exception as e:
-        print(f"Could not delete customer receipt message for order #{order['id']}: {e}")
-
-
 def approve_order(order_id):
     conn = get_db()
     try:
@@ -1189,7 +980,6 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
-        apply_referral_commission_tx(conn, order)
         conn.commit()
         return {
             "status": "approved",
@@ -1281,72 +1071,6 @@ def apply_coupon(code, user_id, price):
     return {"status": "success", "coupon": coupon, "price": max(new_price, 0)}
 
 
-REFERRAL_SIGNUP_BONUS = 20_000
-REFERRAL_COMMISSION_PERCENT = 10
-
-
-def register_referral(referrer_id, referred_user_id):
-    """ثبت اولین دعوت و پرداخت ۲۰٬۰۰۰ تومان به هر دو نفر، فقط یک‌بار."""
-    try:
-        referrer_id = int(referrer_id)
-        referred_user_id = int(referred_user_id)
-    except (TypeError, ValueError):
-        return False
-    if referrer_id == referred_user_id:
-        return False
-
-    conn = get_db()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        referrer = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-        referred = conn.execute("SELECT referred_by, referral_rewarded FROM users WHERE user_id = ?", (referred_user_id,)).fetchone()
-        if not referrer or not referred or referred["referred_by"] is not None or int(referred["referral_rewarded"] or 0) != 0:
-            conn.rollback()
-            return False
-        now = now_text()
-        cur = conn.execute(
-            "UPDATE users SET referred_by = ?, referral_rewarded = 1 WHERE user_id = ? AND referred_by IS NULL AND COALESCE(referral_rewarded, 0) = 0",
-            (referrer_id, referred_user_id)
-        )
-        if cur.rowcount != 1:
-            conn.rollback()
-            return False
-        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)", (REFERRAL_SIGNUP_BONUS, referrer_id, referred_user_id))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-                     (referrer_id, REFERRAL_SIGNUP_BONUS, "referral_bonus", f"پاداش دعوت کاربر #{referred_user_id}", now))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-                     (referred_user_id, REFERRAL_SIGNUP_BONUS, "referral_bonus", f"پاداش عضویت از دعوت کاربر #{referrer_id}", now))
-        conn.commit()
-        return True
-    except Exception:
-        try: conn.rollback()
-        except Exception: pass
-        return False
-    finally:
-        conn.close()
-
-
-def apply_referral_commission_tx(conn, order):
-    """در همان تراکنش تأیید خرید، ۱۰٪ پورسانت را به دعوت‌کننده می‌دهد."""
-    try:
-        row = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (order["user_id"],)).fetchone()
-        if not row or not row["referred_by"] or int(row["referred_by"]) == int(order["user_id"]):
-            return 0
-        commission = int(int(order["price"] or 0) * REFERRAL_COMMISSION_PERCENT / 100)
-        if commission <= 0:
-            return 0
-        referrer_id = int(row["referred_by"])
-        exists = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-        if not exists:
-            return 0
-        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
-        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     (referrer_id, commission, "referral_commission", f"پورسانت {REFERRAL_COMMISSION_PERCENT}% از خرید کاربر #{order['user_id']}", order["id"], now_text()))
-        return commission
-    except Exception:
-        return 0
-
-
 def referral_count(user_id):
     conn = get_db()
     count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (user_id,)).fetchone()[0]
@@ -1399,67 +1123,6 @@ def get_stats():
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
-
-def create_consistent_db_backup():
-    """Create a consistent SQLite snapshot even while the bot is running."""
-    source_path = os.path.abspath(DB_PATH)
-    if not os.path.isfile(source_path):
-        raise FileNotFoundError(f"Database not found: {source_path}")
-    fd, backup_path = tempfile.mkstemp(prefix="hanzuvpn_backup_", suffix=".db")
-    os.close(fd)
-    src = dst = None
-    try:
-        src = sqlite3.connect(source_path, timeout=30)
-        dst = sqlite3.connect(backup_path, timeout=30)
-        src.backup(dst)
-        dst.commit()
-        return backup_path
-    except Exception:
-        try:
-            os.remove(backup_path)
-        except OSError:
-            pass
-        raise
-    finally:
-        if src is not None:
-            src.close()
-        if dst is not None:
-            dst.close()
-
-
-async def send_db_backup(query, context):
-    """Create and send a consistent SQLite backup without re-answering the callback query."""
-    if query.from_user.id != ADMIN_ID:
-        return
-    backup_path = None
-    try:
-        backup_path = create_consistent_db_backup()
-        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
-        await context.bot.send_document(
-            chat_id=ADMIN_ID,
-            document=InputFile(backup_path, filename=filename),
-            caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
-        )
-        # CallbackQuery was already acknowledged by _button_handler_impl.
-        # Send a normal confirmation instead of answering the same query twice.
-        await context.bot.send_message(chat_id=ADMIN_ID, text="✅ بکاپ با موفقیت ارسال شد.")
-    except Exception as e:
-        print(f"Backup error: {type(e).__name__}: {e}")
-        try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"❌ دریافت بکاپ ناموفق بود.\n\nخطا: {type(e).__name__}: {e}"
-            )
-        except Exception:
-            pass
-    finally:
-        if backup_path:
-            try:
-                os.remove(backup_path)
-            except OSError:
-                pass
-
-
 async def show_admin(query):
     keyboard = [
         [InlineKeyboardButton("➕ افزودن لینک سرویس", callback_data="admin_add")],
@@ -1471,7 +1134,6 @@ async def show_admin(query):
         [InlineKeyboardButton("🎟 کوپن‌ها", callback_data="admin_coupon")],
         [InlineKeyboardButton("💰 مدیریت موجودی کاربر", callback_data="admin_balance")],
         [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
         [
             InlineKeyboardButton("📊 آمار", callback_data="admin_stats"),
             InlineKeyboardButton("🧾 سفارش‌ها", callback_data="admin_orders")
@@ -1519,61 +1181,30 @@ async def show_admin_stats(query):
     ]))
 
 
-async def show_admin_orders(query, status_filter=None):
+async def show_admin_orders(query):
     conn = get_db()
-    if status_filter in ("pending", "approved", "rejected"):
-        rows = conn.execute(
-            "SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 15",
-            (status_filter,)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM orders ORDER BY id DESC LIMIT 8"
-        ).fetchall()
+    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
     conn.close()
-
-    if status_filter == "pending":
-        title = "⏳ رسیدهای در انتظار تأیید"
-    elif status_filter == "approved":
-        title = "✅ رسیدهای پرداخت‌شده"
-    elif status_filter == "rejected":
-        title = "❌ رسیدهای ردشده"
-    else:
-        title = "🧾 آخرین سفارش‌ها"
-
     if not rows:
-        text = f"{title}\n\n📭 موردی پیدا نشد."
+        text = "🧾 سفارشی ثبت نشده است."
     else:
-        text = f"{title}\n\n"
+        text = "🧾 آخرین سفارش‌ها\n\n"
         for row in rows:
             status = {
                 "pending": "⏳ در انتظار",
-                "approved": "✅ پرداخت‌شده",
-                "rejected": "❌ ردشده",
-                "cancelled": "🚫 لغوشده"
+                "approved": "✅ تأیید",
+                "rejected": "❌ رد",
+                "cancelled": "🚫 لغو شده"
             }.get(row["status"], row["status"])
-            username = f"@{row['username']}" if row['username'] else "ندارد"
-            kind = "💰 شارژ کیف پول" if row["is_charge"] else "🛒 خرید سرویس"
+            charge = " (شارژ کیف پول)" if row["is_charge"] else ""
             text += (
-                f"🧾 سفارش #{row['id']}  •  {kind}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 {row['first_name'] or '-'}  |  {username}\n"
-                f"🆔 آیدی: {row['user_id']}\n"
-                f"📦 حجم: {row['volume']}\n"
-                f"💰 مبلغ: {row['price']:,} تومان\n"
-                f"📌 وضعیت: {status}\n"
-                f"🕐 {row['created_at']}\n\n"
+                f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
+                f"📦 {row['volume']} | {row['price']:,} تومان\n"
+                f"{status}\n🕐 {row['created_at']}\n\n"
             )
-
-    keyboard = [
-        [
-            InlineKeyboardButton("🧾 همه سفارش‌ها", callback_data="admin_orders"),
-            InlineKeyboardButton("✅ پرداخت‌شده", callback_data="admin_orders_approved")
-        ],
-        [InlineKeyboardButton("❌ ردشده", callback_data="admin_orders_rejected")],
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 پنل مدیریت", callback_data="admin")]
-    ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    ]))
 
 
 async def show_admin_trial(query):
@@ -1633,47 +1264,28 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # زبان
     if data == "language":
-        current_lang = get_user_language(user_id) or "fa"
-        await query.edit_message_text(t(current_lang, "language_title"), reply_markup=language_keyboard())
+        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
 
     if data.startswith("language_"):
         language = data.split("_", 1)[1]
         if language not in LANGUAGES:
-            await query.answer("Invalid language." if language == "en" else ("زمانی نادروست." if language == "ku" else "زبان نامعتبر است."), show_alert=True)
+            await query.answer("زبان نامعتبر است.", show_alert=True)
             return
-
-        # زبان کاربر را ذخیره می‌کنیم و همان پیام فعلی را با تمام دکمه‌های زبان جدید بازسازی می‌کنیم.
-        # این کار مهم است چون ممکن است last_home_message_id به یک پیام قدیمی اشاره کند؛
-        # در آن حالت ترجمه‌ی پیام قدیمی باعث می‌شد دکمه‌های پیام فعلی همچنان فارسی بمانند.
         set_user_language(user_id, language)
         clear_user_states(context)
-
-        localized_home = t(language, "language_changed") + "\n\n" + t(language, "welcome")
         await query.edit_message_text(
-            localized_home,
+            t(language, "language_changed") + "\n\n" + t(language, "welcome"),
             reply_markup=home_keyboard(user_id)
-        )
-        try:
-            set_last_home_message_id(user_id, query.message.message_id)
-        except Exception:
-            pass
-
-        # Reply Keyboard پایین تلگرام هم بلافاصله با زبان جدید بازسازی می‌شود.
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=t(language, "select_option"),
-            reply_markup=bottom_keyboard(user_id)
         )
         return
 
     lang = get_user_language(user_id)
-    if not lang:
-        if user_id == ADMIN_ID:
-            lang = "fa"
-        else:
-            await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
-            return
+    if not lang and user_id != ADMIN_ID:
+        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+        return
+    if user_id == ADMIN_ID:
+        lang = "fa"
 
     # خانه
     if data == "home":
@@ -1696,10 +1308,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data == "charge_wallet":
         context.user_data["waiting_charge_amount"] = True
-        await query.edit_message_text(
-            t(lang, "charge_prompt", min=MIN_CHARGE),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="wallet")]])
-        )
+        await query.edit_message_text(t(lang, "charge_prompt", min=MIN_CHARGE))
         return
 
     if data == "wallet_history":
@@ -1724,19 +1333,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "buy":
         clear_user_states(context)
         await show_buy_menu(query)
-        return
-
-    # مرحله دوم خرید: بعد از انتخاب «یکماهه»، نمایش حجم‌ها
-    if data == "period_1m":
-        clear_user_states(context)
-        lang = get_user_language(user_id) or "fa"
-        if lang == "en":
-            title = "🛒 Choose your 1-month service volume:"
-        elif lang == "ku":
-            title = "🛒 قەبارەی خزمەتگوزاریی یەک مانگ هەڵبژێرە:"
-        else:
-            title = "🛒 حجم سرویس یکماهه را انتخاب کنید:"
-        await query.edit_message_text(title, reply_markup=buy_plans_keyboard(user_id))
         return
 
     if data.startswith("plan_"):
@@ -1860,94 +1456,49 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(parts) < 3:
             return
         volume = parts[1]
+        try:
+            price = int(parts[2])
+        except ValueError:
+            return
 
-        # مبلغ نهایی همیشه روی سرور دوباره محاسبه می‌شود تا درصد تخفیف دقیق
-        # باشد و مبلغ داخل callback قابل دستکاری نباشد.
-        if volume in PLANS:
-            base_price = PLANS[volume]
-        else:
-            custom_volume = context.user_data.get("custom_volume")
-            custom_price = context.user_data.get("custom_price")
-            if not custom_volume or str(custom_volume) != str(volume):
-                await query.answer("سفارش نامعتبر است. دوباره انتخاب کنید.", show_alert=True)
-                return
-            base_price = int(custom_price)
-
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                coupon_code = None
-                context.user_data.pop("coupon_code", None)
-
-        # کسر موجودی به‌صورت اتمیک با مبلغ نهاییِ بعد از تخفیف.
-        debit = debit_balance_atomic(
-            user_id, price, "purchase", f"خرید سرویس {volume} گیگ", None
-        )
-        if not debit["ok"]:
+        balance = get_balance(user_id)
+        if balance < price:
             await query.answer(t(lang, "not_enough_balance"), show_alert=True)
             return
 
-        order_id = None
-        try:
-            order_id = create_order(user, volume, price, coupon_code=coupon_code, is_charge=0)
-            result = approve_order(order_id)
-            if result["status"] == "approved":
-                context.user_data.pop("coupon_code", None)
-                context.user_data.pop("custom_volume", None)
-                context.user_data.pop("custom_price", None)
-                await query.edit_message_text(
-                    t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
-                    "\n\n" +
-                    t(lang, "payment_confirmed",
-                      volume=volume,
-                      expires=result["expires_at"],
-                      order=order_id,
-                      link=result["link"])
-                )
-            else:
-                change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id}")
-                if result["status"] == "no_stock":
-                    await query.edit_message_text("❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
-                else:
-                    await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
-        except Exception:
-            change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id or '-'}")
+        # کسر از کیف پول
+        success = change_balance(user_id, -price, "purchase", f"خرید سرویس {volume} گیگ", None)
+        if not success:
+            await query.answer("خطا در کسر موجودی.", show_alert=True)
+            return
+
+        # ساخت سفارش و تأیید خودکار
+        order_id = create_order(user, volume, price, is_charge=0)
+        result = approve_order(order_id)
+
+        if result["status"] == "approved":
+            await query.edit_message_text(
+                t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                "\n\n" +
+                t(lang, "payment_confirmed",
+                  volume=volume,
+                  expires=result["expires_at"],
+                  order=order_id,
+                  link=result["link"])
+            )
+        elif result["status"] == "no_stock":
+            # برگشت پول
+            change_balance(user_id, price, "refund", f"برگشت وجه به دلیل نبود موجودی - سفارش #{order_id}")
+            await query.edit_message_text("❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
+        else:
+            change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id}")
             await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
         return
 
-    # حجم دلخواه: انتخاب با گام‌های ۵ گیگ
+    # حجم دلخواه
     if data == "custom":
-        context.user_data["custom_selector_volume"] = 5
-        await show_custom_volume_selector(query, context, lang)
-        return
-
-    if data in {"custom_minus", "custom_plus"}:
-        current = int(context.user_data.get("custom_selector_volume", 5))
-        current += -5 if data == "custom_minus" else 5
-        current = max(5, min(1000, current))
-        context.user_data["custom_selector_volume"] = current
-        await show_custom_volume_selector(query, context, lang)
-        return
-
-    if data == "custom_confirm":
-        volume = int(context.user_data.get("custom_selector_volume", 5))
-        base_price = volume * PRICE_PER_GB
-        context.user_data["custom_volume"] = volume
-        context.user_data["custom_price"] = base_price
-        coupon_code = context.user_data.get("coupon_code")
-        price = base_price
-        if coupon_code:
-            result = apply_coupon(coupon_code, user_id, base_price)
-            if result["status"] == "success":
-                price = result["price"]
-            else:
-                context.user_data.pop("coupon_code", None)
-                coupon_code = None
-        await show_payment(query, str(volume), price, base_price, coupon_code)
+        context.user_data["waiting_custom_volume"] = True
+        await query.edit_message_text(t(lang, "custom_prompt"))
         return
 
     # تست
@@ -1997,12 +1548,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         keyboard = []
         for row in rows[:10]:
-            if lang == "en":
-                label = f"🔄 Renew #{row['id']} | {row['volume']} GB"
-            elif lang == "ku":
-                label = f"🔄 نوێکردنەوە #{row['id']} | {row['volume']} گیگ"
-            else:
-                label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
+            label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"renew_{row['id']}")])
         keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
         await query.edit_message_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
@@ -2020,85 +1566,95 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if not order:
             await query.answer("سرویس پیدا نشد.", show_alert=True)
             return
-        volume = order["volume"]
-        try:
-            price = int(float(volume)) * PRICE_PER_GB
-        except:
-            await query.answer("حجم نامعتبر است.", show_alert=True)
-            return
-        context.user_data["renew_volume"] = volume
-        context.user_data["renew_price"] = price
+        # انتخاب حجم تمدید با گام‌های ۵ گیگ
+        context.user_data["renew_order_id"] = order_id
+        context.user_data["renew_volume"] = 5
+        context.user_data["renew_price"] = 5 * PRICE_PER_GB
+        volume = 5
+        price = 5 * PRICE_PER_GB
         await query.edit_message_text(
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"renewwallet_{order_id}_{volume}_{price}")],
+                [
+                    InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
+                    InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
+                    InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
+                ],
                 [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpay_{volume}")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
             ])
         )
         return
 
-    if data.startswith("renewwallet_"):
-        parts = data.split("_")
-        if len(parts) < 4:
-            return
+    # افزایش حجم تمدید، هر بار ۵ گیگ
+    if data.startswith("renewplus_") or data.startswith("renewminus_"):
         try:
-            order_id = int(parts[1])
-            volume = parts[2]
-            price = int(parts[3])
+            order_id = int(data.split("_")[1])
         except (ValueError, IndexError):
-            await query.answer("اطلاعات پرداخت نامعتبر است.", show_alert=True)
             return
-        # تمدید از کیف پول باید کسر موجودی و تغییر انقضا را در یک تراکنش انجام دهد.
-        conn = get_db()
+        if context.user_data.get("renew_order_id") != order_id:
+            await query.answer("سفارش تمدید معتبر نیست.", show_alert=True)
+            return
         try:
-            conn.execute("BEGIN IMMEDIATE")
-            order = conn.execute(
-                "SELECT id, volume, expires_at FROM orders WHERE id = ? AND user_id = ? AND status = 'approved' AND is_charge = 0",
-                (order_id, user_id)
-            ).fetchone()
-            if not order:
-                conn.rollback()
-                await query.answer("سرویس پیدا نشد.", show_alert=True)
-                return
-            real_volume = _normalize_volume(order["volume"])
-            if not real_volume:
-                conn.rollback()
-                await query.answer("حجم سرویس نامعتبر است.", show_alert=True)
-                return
-            real_price = TARIFF_PLANS.get(real_volume) or (int(real_volume) * PRICE_PER_GB)
-            if real_price != price:
-                price = real_price
-            cur = conn.execute(
-                "UPDATE users SET balance = balance - ? WHERE user_id = ? AND COALESCE(balance, 0) >= ?",
-                (price, user_id, price)
-            )
-            if cur.rowcount != 1:
-                bal = conn.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
-                conn.rollback()
-                await query.answer(t(lang, "not_enough_balance"), show_alert=True)
-                return
-            old = datetime.strptime(order["expires_at"], "%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now()
-            base = max(old, datetime.now())
-            newexp = base + timedelta(days=SERVICE_DAYS)
-            conn.execute(
-                "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?,?,?,?,?,?)",
-                (user_id, -price, "renewal", f"تمدید سرویس #{order_id} - {real_volume} گیگ", order_id, now_text())
-            )
-            conn.execute("UPDATE orders SET expires_at=? WHERE id=? AND user_id=? AND status='approved'", (newexp.strftime("%Y-%m-%d %H:%M:%S"), order_id, user_id))
-            conn.commit()
-            await query.edit_message_text(
-                t(lang, "renew_done") + f"\n\n📅 {newexp.strftime('%Y-%m-%d %H:%M:%S')}\n💰 {price:,} تومان"
-            )
-        except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            await query.answer("خطا در تمدید سرویس.", show_alert=True)
-        finally:
-            conn.close()
+            volume = int(context.user_data.get("renew_volume", 5))
+        except (TypeError, ValueError):
+            volume = 5
+        if data.startswith("renewplus_"):
+            volume += 5
+        else:
+            volume = max(5, volume - 5)
+        price = volume * PRICE_PER_GB
+        context.user_data["renew_volume"] = volume
+        context.user_data["renew_price"] = price
+        await query.edit_message_text(
+            t(lang, "renew_payment", volume=volume, price=price),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
+                    InlineKeyboardButton(f"📦 {volume} گیگ", callback_data="renew_noop"),
+                    InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
+                ],
+                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpay_{volume}")],
+                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+            ])
+        )
+        await query.answer()
         return
+
+    if data == "renew_noop":
+        await query.answer()
+        return
+
+    if data.startswith("renewpay_"):
+        volume = data.split("_")[1]
+        stored_volume = context.user_data.get("renew_volume")
+        stored_price = context.user_data.get("renew_price")
+        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
+            await query.answer("سفارش نامعتبر است.", show_alert=True)
+            return
+        await query.edit_message_text(
+            t(lang, "renew_paid", volume=volume, price=stored_price, card=CARD_NUMBER),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
+                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+            ])
+        )
+        return
+
+    if data.startswith("renewpaid_"):
+        volume = data.split("_")[1]
+        stored_volume = context.user_data.get("renew_volume")
+        stored_price = context.user_data.get("renew_price")
+        if not stored_volume or str(stored_volume) != str(volume) or not stored_price:
+            await query.answer("سفارش نامعتبر است.", show_alert=True)
+            return
+        order_id = create_order(user, volume, stored_price)
+        context.user_data.pop("renew_volume", None)
+        context.user_data.pop("renew_price", None)
+        await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=stored_price))
+        return
+
     # پشتیبانی
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
@@ -2131,10 +1687,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     # کوپن
     if data == "coupon":
         context.user_data["waiting_coupon"] = True
-        await query.edit_message_text(
-            t(lang, "coupon_prompt"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
-        )
+        await query.edit_message_text(t(lang, "coupon_prompt"))
         return
 
     # ==================== ادمین ====================
@@ -2156,23 +1709,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data == "admin_backup":
+    if data == "admin_orders":
         if user_id != ADMIN_ID:
             return
-        await send_db_backup(query, context)
-        return
-
-    if data in ("admin_orders", "admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):
-        if user_id != ADMIN_ID:
-            return
-        status_filter = None
-        if data == "admin_orders_pending":
-            status_filter = "pending"
-        elif data == "admin_orders_approved":
-            status_filter = "approved"
-        elif data == "admin_orders_rejected":
-            status_filter = "rejected"
-        await show_admin_orders(query, status_filter=status_filter)
+        await show_admin_orders(query)
         return
 
     if data == "admin_add":
@@ -2363,7 +1903,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 chat_id=order["user_id"],
                 text=t(recipient_lang, "charge_success", amount=order["price"], balance=balance)
             )
-            await delete_customer_receipt_message(context, order)
             try:
                 await query.edit_message_caption(caption=f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             except Exception:
@@ -2378,7 +1917,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                    order=order_id,
                    link=result["link"])
         )
-        await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(
                 caption=f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}"
@@ -2408,7 +1946,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             chat_id=order["user_id"],
             text=t(recipient_lang, "payment_rejected", order=order_id)
         )
-        await delete_customer_receipt_message(context, order)
         try:
             await query.edit_message_caption(caption=f"❌ سفارش #{order_id} رد شد.\n📦 {order['volume']}\n💰 {order['price']:,} تومان")
         except Exception:
@@ -2428,40 +1965,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not lang:
         await show_language_selector_message(update.message)
-        return
-
-    # دکمه‌های کیبورد پایین ربات
-    bottom_actions = {
-        "🏠 خانه": "home", "🏠 Home": "home", "🏠 سەرەکی": "home",
-        "🛒 خرید سرویس": "buy", "🛒 Buy Service": "buy", "🛒 کڕینی خزمەتگوزاری": "buy",
-        "📦 سرویس‌های من": "my_services", "📦 My Services": "my_services", "📦 خزمەتگوزارییەکانم": "my_services",
-        "💰 کیف پول": "wallet", "💰 Wallet": "wallet", "💰 جزدان": "wallet",
-        "🎁 تست رایگان": "trial", "🎁 Free Trial": "trial", "🎁 تاقیکردنەوەی بەخۆڕایی": "trial",
-        "🎫 پشتیبانی": "support", "🎫 Support": "support", "🎫 پشتگیری": "support",
-        "🌐 تغییر زبان": "language", "🌐 Change Language": "language", "🌐 گۆڕینی زمان": "language",
-    }
-    action = bottom_actions.get(text)
-    if action:
-        if action == "home":
-            clear_user_states(context)
-            await send_home(update.message, user.id)
-        elif action == "buy":
-            await buy_command(update, context)
-        elif action == "my_services":
-            await services_command(update, context)
-        elif action == "wallet":
-            balance = get_balance(user.id)
-            await update.message.reply_text(t(lang, "wallet_title", balance=balance), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
-                [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
-                [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
-            ]))
-        elif action == "trial":
-            await trial_command(update, context)
-        elif action == "support":
-            await support_command(update, context)
-        elif action == "language":
-            await language_command(update, context)
         return
 
     # شارژ کیف پول - دریافت مبلغ
@@ -2623,26 +2126,46 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ خطا در تغییر موجودی.")
         return
 
-    # حجم دلخواه: ورودی متنی قدیمی هم با ضریب ۵ پذیرفته می‌شود
+    # حجم دلخواه
     if context.user_data.get("waiting_custom_volume"):
         context.user_data["waiting_custom_volume"] = False
         try:
             volume = int(text)
-            if volume <= 0 or volume > 1000 or volume % 5 != 0:
+            if volume <= 0 or volume > 1000:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text(t(lang, "invalid_volume") + "\nحجم باید مضربی از ۵ باشد.")
+            await update.message.reply_text(t(lang, "invalid_volume"))
             return
+
         price = volume * PRICE_PER_GB
         context.user_data["custom_volume"] = volume
         context.user_data["custom_price"] = price
+
+        coupon_code = context.user_data.get("coupon_code")
+        final_price = price
+        original_price = price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user.id, price)
+            if result["status"] == "success":
+                final_price = result["price"]
+            else:
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+
+        payment_text = t(lang, "payment", volume=volume, price=final_price)
+        if original_price != final_price and coupon_code:
+            payment_text += t(lang, "original_price", original=original_price, coupon=coupon_code)
+        payment_text += t(lang, "card", card=CARD_NUMBER)
+
+        keyboard = [[InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")]]
+        if get_balance(user.id) >= final_price:
+            keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{final_price}")])
+        keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
+
         await update.message.reply_text(
-            t(lang, "custom_summary", volume=volume, price=price),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")],
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="period_1m")]
-            ])
+            payment_text,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
@@ -2725,38 +2248,12 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ رد پرداخت", callback_data=f"reject_{order['id']}")
     ]]
 
-    photo_file_id = update.message.photo[-1].file_id
-
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
-        photo=photo_file_id,
+        photo=update.message.photo[-1].file_id,
         caption=caption,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
-    # رسید را برای خود مشتری هم به‌صورت تصویر واقعی نمایش می‌دهیم، نه فقط نام فایل.
-    customer_caption = (
-        f"🧾 رسید سفارش #{order['id']}\n"
-        f"📌 وضعیت: در انتظار تأیید مدیریت\n"
-        f"📦 {order['volume']}\n"
-        f"💰 مبلغ: {order['price']:,} تومان"
-    )
-    customer_msg = await context.bot.send_photo(
-        chat_id=user.id,
-        photo=photo_file_id,
-        caption=customer_caption
-    )
-
-    # شناسه پیام را ذخیره می‌کنیم تا بعد از تأیید/رد، تصویر رسید از چت مشتری حذف شود.
-    conn = get_db()
-    try:
-        conn.execute(
-            "UPDATE orders SET receipt_message_id = ? WHERE id = ? AND user_id = ?",
-            (customer_msg.message_id, order["id"], user.id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
 
     await update.message.reply_text(t(lang, "receipt_received", order=order["id"]))
 
@@ -2907,9 +2404,6 @@ def _api_purchase_wallet(user, volume, price):
             if used.rowcount != 1:
                 raise RuntimeError("subscription_race")
 
-            approved_order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-            apply_referral_commission_tx(conn, approved_order)
-
             conn.commit()
             return {
                 "status":"approved",
@@ -2990,13 +2484,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=self._user()
         if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
-        try:
-            content_length = int(self.headers.get("Content-Length", "0") or 0)
-        except Exception:
-            content_length = 0
-        if content_length > 8 * 1024 * 1024:
-            return self._send(413,{"ok":False,"error":"request_too_large"})
-        try: payload=json.loads(self.rfile.read(content_length) or b"{}")
+        try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))) or b"{}")
         except Exception: return self._send(400,{"ok":False,"error":"bad_json"})
         path=self.path.split("?",1)[0]
         if path in ("/api/buy","/api/renew"):
@@ -3006,7 +2494,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     conn.execute("BEGIN IMMEDIATE")
                     order=conn.execute("SELECT id, volume, price, expires_at FROM orders WHERE id=? AND user_id=? AND status='approved' AND is_charge=0",(oid,u.id)).fetchone()
                     if not order: conn.rollback(); return self._send(404,{"ok":False,"error":"service_not_found"})
-                    real_volume = _normalize_volume(order["volume"]); price = (TARIFF_PLANS.get(real_volume) or (int(real_volume) * PRICE_PER_GB)) if real_volume else 0; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
+                    price=int(float(order["volume"]))*PRICE_PER_GB; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
                     if bal<price: conn.rollback(); return self._send(200,{"ok":False,"error":"insufficient_balance","balance":bal,"price":price})
                     old=datetime.strptime(order["expires_at"],"%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now(); base=max(old,datetime.now()); newexp=base+timedelta(days=SERVICE_DAYS)
                     conn.execute("UPDATE users SET balance=balance-? WHERE user_id=?",(price,u.id)); conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",(u.id,-price,"renew",f"تمدید سرویس #{oid}",oid,now_text())); conn.execute("UPDATE orders SET expires_at=? WHERE id=?",(newexp.strftime("%Y-%m-%d %H:%M:%S"),oid)); conn.commit(); return self._send(200,{"ok":True,"order_id":oid,"price":price,"balance":bal-price,"expires_at":newexp.strftime("%Y-%m-%d %H:%M:%S")})
@@ -3039,16 +2527,6 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if amount<MIN_CHARGE: return self._send(400,{"ok":False,"error":"min_charge","min":MIN_CHARGE})
             oid=create_order(u,"CHARGE",amount,is_charge=1)
             return self._send(200,{"ok":True,"order_id":oid,"amount":amount,"card":CARD_NUMBER})
-        if path=="/api/order-status":
-            oid=int(payload.get("order_id",0) or 0)
-            if not oid: return self._send(400,{"ok":False,"error":"invalid_order"})
-            conn=get_db()
-            try:
-                row=conn.execute("SELECT id, status, is_charge, volume, price FROM orders WHERE id=? AND user_id=?",(oid,u.id)).fetchone()
-            finally:
-                conn.close()
-            if not row: return self._send(404,{"ok":False,"error":"order_not_found"})
-            return self._send(200,{"ok":True,"order_id":row["id"],"status":row["status"],"is_charge":int(row["is_charge"] or 0),"volume":row["volume"],"price":row["price"]})
         if path=="/api/charge-receipt":
             oid=int(payload.get("order_id",0) or 0); amount=int(payload.get("amount",0) or 0); img=payload.get("image","")
             if not oid or not img: return self._send(400,{"ok":False,"error":"invalid_charge_receipt"})
@@ -3073,28 +2551,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
 
 def start_miniapp_api():
-    """Start the Mini App API without preventing the Telegram bot from starting."""
-    try:
-        server = ThreadingHTTPServer((API_HOST, API_PORT), MiniAppHandler)
-        threading.Thread(target=server.serve_forever, daemon=True, name="miniapp-api").start()
-        print(f"Mini App API listening on {API_HOST}:{API_PORT}")
-        return server
-    except OSError as e:
-        # A port conflict must not kill the Telegram bot.
-        print(f"Mini App API disabled: {type(e).__name__}: {e}")
-        return None
-    except Exception as e:
-        print(f"Mini App API startup error: {type(e).__name__}: {e}")
-        return None
-
-
-async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Never let an update exception silently kill/obscure the bot."""
-    try:
-        print(f"Telegram update error: {type(context.error).__name__}: {context.error}")
-    except Exception:
-        pass
-
+    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
+    threading.Thread(target=server.serve_forever,daemon=True).start()
+    print(f"Mini App API listening on {API_HOST}:{API_PORT}")
 
 
 # =========================================================
@@ -3102,26 +2561,7 @@ async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_T
 # =========================================================
 
 async def post_init(application):
-    # Verify the token before polling; this makes bad BOT_TOKEN deployments obvious.
-    try:
-        me = await application.bot.get_me()
-        print(f"[TELEGRAM] Connected as @{me.username or 'no_username'} (id={me.id})")
-    except Exception as e:
-        print(f"[TELEGRAM] Token/network check failed: {type(e).__name__}: {e}")
-        raise
-
-    # This bot uses polling. Remove an old webhook so Telegram delivers updates here.
-    try:
-        await application.bot.delete_webhook(drop_pending_updates=False)
-        print("Telegram webhook cleared; polling mode enabled.")
-    except Exception as e:
-        print(f"Webhook cleanup warning: {type(e).__name__}: {e}")
-
-    try:
-        await set_bot_commands(application)
-    except Exception as e:
-        print(f"Bot commands setup warning: {type(e).__name__}: {e}")
-
+    await set_bot_commands(application)
     try:
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
@@ -3135,37 +2575,25 @@ async def post_init(application):
 
 
 def main():
-    try:
-        if not BOT_TOKEN:
-            raise RuntimeError("BOT_TOKEN تنظیم نشده است. متغیر محیطی BOT_TOKEN را تنظیم کنید.")
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
+    init_db()
+    start_miniapp_api()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-        print(f"[START] Python={sys.version.split()[0]} | Platform={platform.system()} {platform.release()}")
-        print("[START] BOT_TOKEN detected=True")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("buy", buy_command))
+    app.add_handler(CommandHandler("services", services_command))
+    app.add_handler(CommandHandler("trial", trial_command))
+    app.add_handler(CommandHandler("support", support_command))
+    app.add_handler(CommandHandler("language", language_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
+    app.add_handler(MessageHandler(filters.TEXT, text_handler))
 
-        init_db()
-        print(f"[START] Database ready: {DB_PATH}")
-        start_miniapp_api()
-        app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("buy", buy_command))
-        app.add_handler(CommandHandler("services", services_command))
-        app.add_handler(CommandHandler("trial", trial_command))
-        app.add_handler(CommandHandler("support", support_command))
-        app.add_handler(CommandHandler("language", language_command))
-        app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(CallbackQueryHandler(_button_handler_impl))
-        app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
-        app.add_handler(MessageHandler(filters.TEXT, text_handler))
-        app.add_error_handler(telegram_error_handler)
-
-        print("HanzuVPN Bot is running...")
-        # Explicitly use polling and accept every Telegram update type used by this bot.
-        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
-    except Exception as e:
-        print(f"[FATAL] Bot startup/runtime failure: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        raise
+    print("HanzuVPN Bot is running...")
+    app.run_polling()
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

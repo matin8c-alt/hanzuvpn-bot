@@ -24,7 +24,7 @@ from telegram import (
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
-    FSInputFile,
+    InputFile,
 )
 try:
     from telegram import CopyTextButton
@@ -1374,7 +1374,7 @@ async def send_db_backup(query, context):
         filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
         await context.bot.send_document(
             chat_id=ADMIN_ID,
-            document=FSInputFile(backup_path, filename=filename),
+            document=InputFile(backup_path, filename=filename),
             caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
         )
         # CallbackQuery was already acknowledged by _button_handler_impl.

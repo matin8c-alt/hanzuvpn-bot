@@ -1283,6 +1283,7 @@ async def send_db_backup(query, context):
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
+        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
         [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
         [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
         [
@@ -1292,7 +1293,6 @@ async def show_admin(query):
         [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon")],
         [InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
         [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
-        [InlineKeyboardButton(t(lang, "admin_backup"), callback_data="admin_backup")],
         [
             InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
             InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")

@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import threading
+import tempfile
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta
 
 from telegram import (
     Update,
+    InputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -150,6 +152,7 @@ TEXTS = {
         'admin_coupon': '🎟 کوپن\u200cها',
         'admin_balance': '💰 مدیریت موجودی کاربر',
         'admin_broadcast': '📢 پیام همگانی',
+        'admin_backup': '💾 دریافت بکاپ',
         'admin_stats': '📊 آمار',
         'admin_orders': '🧾 سفارش\u200cها',
         'admin_tickets': '🎫 تیکت\u200cها',
@@ -1223,6 +1226,60 @@ def get_stats():
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
+def create_consistent_db_backup():
+    """Create a consistent SQLite snapshot without changing the live database."""
+    source_path = os.path.abspath(DB_PATH)
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Database not found: {source_path}")
+
+    fd, backup_path = tempfile.mkstemp(prefix="hanzuvpn_backup_", suffix=".db")
+    os.close(fd)
+    src = dst = None
+    try:
+        src = sqlite3.connect(source_path, timeout=30)
+        dst = sqlite3.connect(backup_path, timeout=30)
+        src.backup(dst)
+        dst.commit()
+        return backup_path
+    except Exception:
+        try:
+            os.remove(backup_path)
+        except OSError:
+            pass
+        raise
+    finally:
+        if src is not None:
+            src.close()
+        if dst is not None:
+            dst.close()
+
+
+async def send_db_backup(query, context):
+    if query.from_user.id != ADMIN_ID:
+        return
+
+    backup_path = None
+    try:
+        backup_path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        with open(backup_path, "rb") as f:
+            await context.bot.send_document(
+                chat_id=ADMIN_ID,
+                document=InputFile(f, filename=filename),
+                caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
+            )
+        await query.answer("✅ بکاپ با موفقیت ارسال شد.")
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        await query.answer("❌ دریافت بکاپ ناموفق بود.", show_alert=True)
+    finally:
+        if backup_path:
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+
+
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
@@ -1235,6 +1292,7 @@ async def show_admin(query):
         [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon")],
         [InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
         [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
+        [InlineKeyboardButton(t(lang, "admin_backup"), callback_data="admin_backup")],
         [
             InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
             InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")
@@ -1882,6 +1940,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         await show_admin_stats(query)
+        return
+
+    if data == "admin_backup":
+        if user_id != ADMIN_ID:
+            return
+        await send_db_backup(query, context)
         return
 
     if data == "admin_orders":

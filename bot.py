@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 
 from telegram import (
     Update,
-    InputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -23,6 +22,7 @@ from telegram import (
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
+    InputFile,
 )
 from telegram.ext import (
     Application,
@@ -152,7 +152,6 @@ TEXTS = {
         'admin_coupon': '🎟 کوپن\u200cها',
         'admin_balance': '💰 مدیریت موجودی کاربر',
         'admin_broadcast': '📢 پیام همگانی',
-        'admin_backup': '💾 دریافت بکاپ',
         'admin_stats': '📊 آمار',
         'admin_orders': '🧾 سفارش\u200cها',
         'admin_tickets': '🎫 تیکت\u200cها',
@@ -729,33 +728,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_home(update.message, user.id)
 
 
-async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send a complete SQLite database backup to the admin via /backup."""
-    user = update.effective_user
-    if not user or user.id != ADMIN_ID:
-        return
-
-    backup_path = None
-    try:
-        backup_path = create_consistent_db_backup()
-        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
-        with open(backup_path, "rb") as f:
-            await context.bot.send_document(
-                chat_id=user.id,
-                document=InputFile(f, filename=filename),
-                caption="💾 بکاپ کامل دیتابیس HanzuVPN"
-            )
-    except Exception as e:
-        print(f"Backup error: {type(e).__name__}: {e}")
-        await update.message.reply_text("❌ دریافت بکاپ ناموفق بود.")
-    finally:
-        if backup_path:
-            try:
-                os.remove(backup_path)
-            except OSError:
-                pass
-
-
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     ensure_user(user)
@@ -1250,15 +1222,14 @@ def get_stats():
 
 
 # =========================================================
-# پنل مدیریت + کیف پول ادمین
+# =========================================================
+# بکاپ دیتابیس
 # =========================================================
 
 def create_consistent_db_backup():
-    """Create a consistent SQLite snapshot without changing the live database."""
     source_path = os.path.abspath(DB_PATH)
     if not os.path.isfile(source_path):
         raise FileNotFoundError(f"Database not found: {source_path}")
-
     fd, backup_path = tempfile.mkstemp(prefix="hanzuvpn_backup_", suffix=".db")
     os.close(fd)
     src = dst = None
@@ -1268,44 +1239,46 @@ def create_consistent_db_backup():
         src.backup(dst)
         dst.commit()
         return backup_path
-    except Exception:
-        try:
-            os.remove(backup_path)
-        except OSError:
-            pass
-        raise
     finally:
-        if src is not None:
-            src.close()
-        if dst is not None:
-            dst.close()
-
+        if src is not None: src.close()
+        if dst is not None: dst.close()
 
 async def send_db_backup(query, context):
-    if query.from_user.id != ADMIN_ID:
-        return
-
-    backup_path = None
+    if query.from_user.id != ADMIN_ID: return
+    path = None
     try:
-        backup_path = create_consistent_db_backup()
+        path = create_consistent_db_backup()
         filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
-        with open(backup_path, "rb") as f:
-            await context.bot.send_document(
-                chat_id=ADMIN_ID,
-                document=InputFile(f, filename=filename),
-                caption="💾 بکاپ کامل دیتابیس HanzuVPN\n\nاین فایل شامل اطلاعات فعلی ربات است."
-            )
+        with open(path, "rb") as f:
+            await context.bot.send_document(chat_id=ADMIN_ID, document=InputFile(f, filename=filename), caption="💾 بکاپ کامل دیتابیس HanzuVPN")
         await query.answer("✅ بکاپ با موفقیت ارسال شد.")
     except Exception as e:
         print(f"Backup error: {type(e).__name__}: {e}")
         await query.answer("❌ دریافت بکاپ ناموفق بود.", show_alert=True)
     finally:
-        if backup_path:
-            try:
-                os.remove(backup_path)
-            except OSError:
-                pass
+        if path:
+            try: os.remove(path)
+            except OSError: pass
 
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or user.id != ADMIN_ID: return
+    path = None
+    try:
+        path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        with open(path, "rb") as f:
+            await context.bot.send_document(chat_id=user.id, document=InputFile(f, filename=filename), caption="💾 بکاپ کامل دیتابیس HanzuVPN")
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        if update.message: await update.message.reply_text("❌ دریافت بکاپ ناموفق بود.")
+    finally:
+        if path:
+            try: os.remove(path)
+            except OSError: pass
+
+# پنل مدیریت + کیف پول ادمین
+# =========================================================
 
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
@@ -1969,16 +1942,16 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data == "admin_backup":
-        if user_id != ADMIN_ID:
-            return
-        await send_db_backup(query, context)
-        return
-
     if data == "admin_orders":
         if user_id != ADMIN_ID:
             return
         await show_admin_orders(query)
+        return
+
+    if data == "admin_backup":
+        if user_id != ADMIN_ID:
+            return
+        await send_db_backup(query, context)
         return
 
     if data == "admin_add":
@@ -2979,6 +2952,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("services", services_command))
     app.add_handler(CommandHandler("trial", trial_command))

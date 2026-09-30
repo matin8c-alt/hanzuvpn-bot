@@ -729,6 +729,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_home(update.message, user.id)
 
 
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a complete SQLite database backup to the admin via /backup."""
+    user = update.effective_user
+    if not user or user.id != ADMIN_ID:
+        return
+
+    backup_path = None
+    try:
+        backup_path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        with open(backup_path, "rb") as f:
+            await context.bot.send_document(
+                chat_id=user.id,
+                document=InputFile(f, filename=filename),
+                caption="💾 بکاپ کامل دیتابیس HanzuVPN"
+            )
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        await update.message.reply_text("❌ دریافت بکاپ ناموفق بود.")
+    finally:
+        if backup_path:
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+
+
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     ensure_user(user)

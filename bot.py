@@ -1363,29 +1363,15 @@ async def show_admin_stats(query):
     ]))
 
 
-async def show_admin_orders(query, status_filter=None):
+async def show_admin_orders(query):
     lang = get_user_language(query.from_user.id) or "fa"
     conn = get_db()
-    if status_filter in ("pending", "approved", "rejected"):
-        rows = conn.execute(
-            "SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 15",
-            (status_filter,)
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
+    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
     conn.close()
-
-    titles = {
-        "pending": "⏳ سفارش‌های در انتظار تأیید",
-        "approved": "✅ سفارش‌های تأیید شده",
-        "rejected": "❌ سفارش‌های رد شده",
-    }
-    title = titles.get(status_filter, "🧾 آخرین سفارش‌ها")
-
     if not rows:
-        text = f"{title}\n\n📭 موردی پیدا نشد."
+        text = "🧾 سفارشی ثبت نشده است."
     else:
-        text = f"{title}\n\n"
+        text = "🧾 آخرین سفارش‌ها\n\n"
         for row in rows:
             status = {
                 "pending": "⏳ در انتظار",
@@ -1399,17 +1385,9 @@ async def show_admin_orders(query, status_filter=None):
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )
-
-    keyboard = [
-        [
-            InlineKeyboardButton("⏳ در انتظار تأیید", callback_data="admin_orders_pending"),
-            InlineKeyboardButton("✅ تأیید شده", callback_data="admin_orders_approved"),
-        ],
-        [InlineKeyboardButton("❌ رد شده", callback_data="admin_orders_rejected")],
-        [InlineKeyboardButton("🧾 همه سفارش‌ها", callback_data="admin_orders")],
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")],
-    ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+    ]))
 
 
 async def show_admin_trial(query):
@@ -1994,13 +1972,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         await show_admin_orders(query)
-        return
-
-    if data in ("admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):
-        if user_id != ADMIN_ID:
-            return
-        status_filter = data.rsplit("_", 1)[1]
-        await show_admin_orders(query, status_filter=status_filter)
         return
 
     if data == "admin_backup":

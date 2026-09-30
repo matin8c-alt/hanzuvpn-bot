@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import threading
+import tempfile
 from urllib.parse import parse_qsl, unquote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ from telegram import (
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
+    InputFile,
 )
 from telegram.ext import (
     Application,
@@ -597,12 +599,6 @@ def init_db():
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {default}")
         except sqlite3.OperationalError:
             pass
-
-    # ایندکس‌های سبک برای جست‌وجوی سریع‌تر سفارش‌ها و موجودی لینک‌ها
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_stock ON subscriptions(used, volume, id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_user_status ON orders(user_id, status, is_charge, id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_wallet_user_id ON wallet_transactions(user_id, id)")
 
     conn.commit()
     conn.close()
@@ -1228,12 +1224,68 @@ def get_stats():
 
 
 # =========================================================
+# =========================================================
+# بکاپ دیتابیس
+# =========================================================
+
+def create_consistent_db_backup():
+    source_path = os.path.abspath(DB_PATH)
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Database not found: {source_path}")
+    fd, backup_path = tempfile.mkstemp(prefix="hanzuvpn_backup_", suffix=".db")
+    os.close(fd)
+    src = dst = None
+    try:
+        src = sqlite3.connect(source_path, timeout=30)
+        dst = sqlite3.connect(backup_path, timeout=30)
+        src.backup(dst)
+        dst.commit()
+        return backup_path
+    finally:
+        if src is not None: src.close()
+        if dst is not None: dst.close()
+
+async def send_db_backup(query, context):
+    if query.from_user.id != ADMIN_ID: return
+    path = None
+    try:
+        path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        with open(path, "rb") as f:
+            await context.bot.send_document(chat_id=ADMIN_ID, document=InputFile(f, filename=filename), caption="💾 بکاپ کامل دیتابیس HanzuVPN")
+        await query.answer("✅ بکاپ با موفقیت ارسال شد.")
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        await query.answer("❌ دریافت بکاپ ناموفق بود.", show_alert=True)
+    finally:
+        if path:
+            try: os.remove(path)
+            except OSError: pass
+
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or user.id != ADMIN_ID: return
+    path = None
+    try:
+        path = create_consistent_db_backup()
+        filename = f"hanzuvpn-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        with open(path, "rb") as f:
+            await context.bot.send_document(chat_id=user.id, document=InputFile(f, filename=filename), caption="💾 بکاپ کامل دیتابیس HanzuVPN")
+    except Exception as e:
+        print(f"Backup error: {type(e).__name__}: {e}")
+        if update.message: await update.message.reply_text("❌ دریافت بکاپ ناموفق بود.")
+    finally:
+        if path:
+            try: os.remove(path)
+            except OSError: pass
+
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
+        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
         [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
         [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
         [
@@ -1250,13 +1302,8 @@ async def show_admin(query):
         [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ]
-    admin_title = {
-        "fa": "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
-        "ku": "⚙️ پانێڵی بەڕێوەبردنی HanzuVPN\n\nبەڕێوەبردنی تەواوی بۆتەکە:",
-        "en": "⚙️ HanzuVPN Admin Panel\n\nManage the bot:",
-    }.get(lang, "⚙️ HanzuVPN Admin Panel\n\nManage the bot:")
     await query.edit_message_text(
-        admin_title,
+        "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -1314,12 +1361,8 @@ async def show_admin_orders(query):
                 "cancelled": "🚫 لغو شده"
             }.get(row["status"], row["status"])
             charge = " (شارژ کیف پول)" if row["is_charge"] else ""
-            username = (row["username"] or "").strip()
-            username_text = f"@{username.lstrip('@')}" if username else "-"
             text += (
                 f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
-                f"👤 Username: {username_text}\n"
-                f"🆔 Telegram ID: {row['user_id']}\n"
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )
@@ -1905,6 +1948,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         await show_admin_orders(query)
+        return
+
+    if data == "admin_backup":
+        if user_id != ADMIN_ID:
+            return
+        await send_db_backup(query, context)
         return
 
     if data == "admin_add":
@@ -2566,10 +2615,9 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🕐 زمان: {order['created_at']}"
     )
 
-    admin_lang = get_user_language(ADMIN_ID) or "fa"
     keyboard = [[
-        InlineKeyboardButton(t(admin_lang, "approve_payment"), callback_data=f"approve_{order['id']}"),
-        InlineKeyboardButton(t(admin_lang, "reject_payment"), callback_data=f"reject_{order['id']}")
+        InlineKeyboardButton(t(lang, "approve_payment"), callback_data=f"approve_{order['id']}"),
+        InlineKeyboardButton(t(lang, "reject_payment"), callback_data=f"reject_{order['id']}")
     ]]
 
     await context.bot.send_photo(
@@ -2906,6 +2954,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("services", services_command))
     app.add_handler(CommandHandler("trial", trial_command))

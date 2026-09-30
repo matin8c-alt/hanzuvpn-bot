@@ -816,6 +816,20 @@ async def set_bot_commands(application):
 # خرید
 # =========================================================
 
+def buy_period_keyboard(user_id):
+    lang = get_user_language(user_id) or "fa"
+    if lang == "en":
+        period_text = "1 Month"
+    elif lang == "ku":
+        period_text = "١ مانگ"
+    else:
+        period_text = "یکماهه"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(period_text, callback_data="buy_monthly")],
+        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+    ])
+
+
 def buy_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
@@ -845,10 +859,15 @@ def buy_keyboard(user_id):
 async def send_buy_message(message):
     user_id = message.from_user.id
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "buy_title"), reply_markup=buy_keyboard(user_id))
+    await message.reply_text(t(lang, "buy_title"), reply_markup=buy_period_keyboard(user_id))
 
 
 async def show_buy_menu(query):
+    lang = get_user_language(query.from_user.id) or "fa"
+    await query.edit_message_text(t(lang, "buy_title"), reply_markup=buy_period_keyboard(query.from_user.id))
+
+
+async def show_buy_services(query):
     lang = get_user_language(query.from_user.id) or "fa"
     await query.edit_message_text(t(lang, "buy_title"), reply_markup=buy_keyboard(query.from_user.id))
 
@@ -1503,6 +1522,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "buy":
         clear_user_states(context)
         await show_buy_menu(query)
+        return
+
+    if data == "buy_monthly":
+        clear_user_states(context)
+        await show_buy_services(query)
         return
 
     if data.startswith("plan_"):

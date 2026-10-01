@@ -474,7 +474,8 @@ def init_db():
             created_at TEXT NOT NULL,
             approved_at TEXT,
             expires_at TEXT,
-            is_charge INTEGER DEFAULT 0
+            is_charge INTEGER DEFAULT 0,
+            coupon_code TEXT
         )
     """)
 
@@ -583,6 +584,7 @@ def init_db():
         ("is_charge", "INTEGER DEFAULT 0"),
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
+        ("coupon_code", "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -713,8 +715,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if referrer_id != user.id:
                 conn = get_db()
                 existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
-                if existing and existing["referred_by"] is None:
+                referrer_exists = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
+                if existing and existing["referred_by"] is None and referrer_exists:
                     conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
+                    already_rewarded = conn.execute("SELECT referral_rewarded FROM users WHERE user_id = ?", (user.id,)).fetchone()[0] or 0
+                    if not already_rewarded:
+                        reward = 20000
+                        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)", (reward, referrer_id, user.id))
+                        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (referrer_id, reward, "referral_reward", "پاداش دعوت دوست", now_text()))
+                        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (user.id, reward, "referral_reward", "پاداش ثبت دعوت", now_text()))
+                        conn.execute("UPDATE users SET referral_rewarded = 1 WHERE user_id = ?", (user.id,))
                     conn.commit()
                 conn.close()
         except Exception:
@@ -836,19 +846,34 @@ def buy_keyboard(user_id):
         buttons = [
             ("1 GB | 3,500 Toman", "plan_1"),
             ("10 GB | 35,000 Toman", "plan_10"),
+            ("15 GB | 52,500 Toman", "plan_15"),
             ("20 GB | 70,000 Toman", "plan_20"),
             ("30 GB | 105,000 Toman", "plan_30"),
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
+            ("100 GB | 350,000 Toman", "plan_100"),
+        ]
+    elif lang == "ku":
+        buttons = [
+            ("1 گیگ | 3,500 تومان", "plan_1"),
+            ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("15 گیگ | 52,500 تومان", "plan_15"),
+            ("20 گیگ | 70,000 تومان", "plan_20"),
+            ("30 گیگ | 105,000 تومان", "plan_30"),
+            ("40 گیگ | 140,000 تومان", "plan_40"),
+            ("50 گیگ | 175,000 تومان", "plan_50"),
+            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     else:
         buttons = [
             ("1 گیگ | 3,500 تومان", "plan_1"),
             ("10 گیگ | 35,000 تومان", "plan_10"),
+            ("15 گیگ | 52,500 تومان", "plan_15"),
             ("20 گیگ | 70,000 تومان", "plan_20"),
             ("30 گیگ | 105,000 تومان", "plan_30"),
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
+            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
@@ -1011,27 +1036,37 @@ def claim_trial(user):
 
 def cancel_pending_orders(user_id):
     conn = get_db()
-    conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
-    conn.commit()
-    conn.close()
+    try:
+        rows = conn.execute("SELECT id, coupon_code FROM orders WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchall()
+        for row in rows:
+            if row["coupon_code"]:
+                coupon = conn.execute("SELECT id FROM coupons WHERE code = ?", (row["coupon_code"].upper(),)).fetchone()
+                if coupon:
+                    conn.execute("DELETE FROM coupon_uses WHERE coupon_id = ? AND user_id = ? AND order_id = ?", (coupon["id"], user_id, row["id"]))
+                    conn.execute("UPDATE coupons SET used_count = MAX(0, used_count - 1) WHERE id = ?", (coupon["id"],))
+        conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def create_order(user, volume, price, coupon_code=None, is_charge=0):
     cancel_pending_orders(user.id)
     conn = get_db()
     cursor = conn.execute("""
-        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge))
+        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, coupon_code)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge, coupon_code.upper() if coupon_code else None))
     order_id = cursor.lastrowid
 
     if coupon_code and not is_charge:
         coupon = get_coupon(coupon_code)
         if coupon:
             try:
-                conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
-                             (coupon["id"], user.id, order_id, now_text()))
-                conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
+                inserted = conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
+                                         (coupon["id"], user.id, order_id, now_text()))
+                if inserted.rowcount == 1:
+                    conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
             except Exception:
                 pass
 
@@ -1103,6 +1138,7 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
+        reward_referral_commission(conn, order["user_id"], order_id, order["price"])
         conn.commit()
         return {
             "status": "approved",
@@ -1119,11 +1155,21 @@ def approve_order(order_id):
 
 def reject_order(order_id):
     conn = get_db()
-    updated = conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
-    conn.commit()
-    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-    conn.close()
-    return updated.rowcount == 1, order
+    try:
+        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if not order:
+            return False, None
+        updated = conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
+        if updated.rowcount == 1 and order["coupon_code"]:
+            coupon = conn.execute("SELECT id FROM coupons WHERE code = ?", (order["coupon_code"].upper(),)).fetchone()
+            if coupon:
+                conn.execute("DELETE FROM coupon_uses WHERE coupon_id = ? AND user_id = ? AND order_id = ?", (coupon["id"], order["user_id"], order_id))
+                conn.execute("UPDATE coupons SET used_count = MAX(0, used_count - 1) WHERE id = ?", (coupon["id"],))
+        conn.commit()
+        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        return updated.rowcount == 1, order
+    finally:
+        conn.close()
 
 
 def get_user_services(user_id):
@@ -1192,6 +1238,24 @@ def apply_coupon(code, user_id, price):
         return {"status": "full"}
     new_price = int(price * (100 - coupon["percent"]) / 100)
     return {"status": "success", "coupon": coupon, "price": max(new_price, 0)}
+
+
+def reward_referral_commission(conn, user_id, order_id, price):
+    """Credit 10% commission to the direct referrer for an approved service order."""
+    row = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,)).fetchone()
+    if not row or not row["referred_by"] or int(row["referred_by"]) == int(user_id):
+        return 0
+    referrer_id = int(row["referred_by"])
+    referrer = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
+    if not referrer:
+        return 0
+    commission = max(0, int(price) * 10 // 100)
+    if commission <= 0:
+        return 0
+    conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
+    conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                 (referrer_id, commission, "referral_commission", f"کمیسیون دعوت از سفارش #{order_id}", order_id, now_text()))
+    return commission
 
 
 def referral_count(user_id):
@@ -1363,74 +1427,47 @@ async def show_admin_stats(query):
     ]))
 
 
-async def show_admin_orders(query):
+async def show_admin_orders(query, status_filter=None):
     lang = get_user_language(query.from_user.id) or "fa"
     conn = get_db()
-    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
-    conn.close()
-    if not rows:
-        text = "🧾 سفارشی ثبت نشده است."
+    if status_filter in ("pending", "approved", "rejected"):
+        rows = conn.execute("SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 50", (status_filter,)).fetchall()
     else:
-        text = "🧾 آخرین سفارش‌ها\n\n"
+        rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 50").fetchall()
+    conn.close()
+    labels = {
+        "pending": "⏳ در انتظار تأیید",
+        "approved": "✅ تأیید شده",
+        "rejected": "❌ رد شده",
+        "cancelled": "🚫 لغو شده"
+    }
+    title = {
+        None: "🧾 همه سفارش‌ها",
+        "pending": "⏳ سفارش‌های در انتظار تأیید",
+        "approved": "✅ سفارش‌های تأیید شده",
+        "rejected": "❌ سفارش‌های رد شده",
+    }.get(status_filter, "🧾 سفارش‌ها")
+    if not rows:
+        text = f"{title}\n\nموردی پیدا نشد."
+    else:
+        text = f"{title}\n\n"
         for row in rows:
-            status = {
-                "pending": "⏳ در انتظار",
-                "approved": "✅ تأیید",
-                "rejected": "❌ رد",
-                "cancelled": "🚫 لغو شده"
-            }.get(row["status"], row["status"])
+            username = (row["username"] or "").strip()
+            user_label = f"@{username.lstrip('@')}" if username else "بدون username"
             charge = " (شارژ کیف پول)" if row["is_charge"] else ""
             text += (
-                f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
+                f"#{row['id']} | {row['first_name'] or '-'} | {user_label} | ID: {row['user_id']}{charge}\n"
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
-                f"{status}\n🕐 {row['created_at']}\n\n"
+                f"{labels.get(row['status'], row['status'])}\n🕐 {row['created_at']}\n\n"
             )
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
-    ]))
-
-
-async def show_admin_trial(query):
-    lang = get_user_language(query.from_user.id) or "fa"
-    stock = get_free_trial_stock()
     keyboard = [
-        [InlineKeyboardButton(t(lang, "admin_trial_add"), callback_data="admin_trial_add")],
-        [InlineKeyboardButton(t(lang, "admin_trial_delete"), callback_data="admin_trial_delete")],
-        [InlineKeyboardButton(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
+        [InlineKeyboardButton("⏳ در انتظار تأیید", callback_data="admin_orders_pending")],
+        [InlineKeyboardButton("✅ تأیید شده", callback_data="admin_orders_approved")],
+        [InlineKeyboardButton("❌ رد شده", callback_data="admin_orders_rejected")],
+        [InlineKeyboardButton("🧾 همه سفارش‌ها", callback_data="admin_orders_all")],
         [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")],
     ]
-    await query.edit_message_text(
-        f"🎁 مدیریت تست رایگان\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n📊 موجودی: {stock}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def show_admin_trial_delete(query):
-    lang = get_user_language(query.from_user.id) or "fa"
-    rows = get_free_trial_list()
-    if not rows:
-        await query.edit_message_text(
-            "🗑 حذف تست\n\n❌ لینک تستی وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
-        )
-        return
-    keyboard = [[InlineKeyboardButton(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")])
-    await query.edit_message_text("🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-
-async def show_delete_menu(query):
-    lang = get_user_language(query.from_user.id) or "fa"
-    rows = get_subscription_list()
-    if not rows:
-        await query.edit_message_text(
-            "🗑 حذف لینک\n\n❌ لینک استفاده‌نشده‌ای وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]])
-        )
-        return
-    keyboard = [[InlineKeyboardButton(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
-    await query.edit_message_text("🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -1968,10 +2005,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data == "admin_orders":
+    if data in ("admin_orders", "admin_orders_all", "admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):
         if user_id != ADMIN_ID:
             return
-        await show_admin_orders(query)
+        status_filter = {
+            "admin_orders_pending": "pending",
+            "admin_orders_approved": "approved",
+            "admin_orders_rejected": "rejected",
+        }.get(data)
+        await show_admin_orders(query, status_filter)
         return
 
     if data == "admin_backup":
@@ -2687,13 +2729,13 @@ async def expiration_checker(application):
                 exists = conn.execute("SELECT id FROM reminders WHERE order_id = ? AND reminder_type = ?",
                                       (row["id"], reminder_type)).fetchone()
                 if not exists:
-                    conn.execute("INSERT INTO reminders (order_id, user_id, reminder_type, sent_at) VALUES (?, ?, ?, ?)",
-                                 (row["id"], row["user_id"], reminder_type, now_text()))
-                    conn.commit()
                     try:
                         await application.bot.send_message(chat_id=row["user_id"], text=message)
-                    except Exception:
-                        pass
+                        conn.execute("INSERT OR IGNORE INTO reminders (order_id, user_id, reminder_type, sent_at) VALUES (?, ?, ?, ?)",
+                                     (row["id"], row["user_id"], reminder_type, now_text()))
+                        conn.commit()
+                    except Exception as send_error:
+                        print(f"Reminder send error for order #{row['id']}: {type(send_error).__name__}: {send_error}")
                 conn.close()
         except Exception as e:
             print("Expiration checker error:", e)
@@ -2799,6 +2841,7 @@ def _api_purchase_wallet(user, volume, price):
             used = conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (sub["id"],))
             if used.rowcount != 1:
                 raise RuntimeError("subscription_race")
+            reward_referral_commission(conn, user.id, order_id, price)
 
             conn.commit()
             return {
@@ -2880,8 +2923,13 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=self._user()
         if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
-        try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))) or b"{}")
-        except Exception: return self._send(400,{"ok":False,"error":"bad_json"})
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length > 12 * 1024 * 1024:
+                return self._send(413, {"ok":False,"error":"payload_too_large"})
+            payload=json.loads(self.rfile.read(content_length) or b"{}")
+        except Exception:
+            return self._send(400,{"ok":False,"error":"bad_json"})
         path=self.path.split("?",1)[0]
         if path in ("/api/buy","/api/renew"):
             if path=="/api/renew":
@@ -2947,9 +2995,14 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
 
 def start_miniapp_api():
-    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
-    threading.Thread(target=server.serve_forever,daemon=True).start()
+    try:
+        server = ThreadingHTTPServer((API_HOST, API_PORT), MiniAppHandler)
+    except OSError as e:
+        print(f"Mini App API disabled: {type(e).__name__}: {e}")
+        return None
+    threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"Mini App API listening on {API_HOST}:{API_PORT}")
+    return server
 
 
 # =========================================================

@@ -2110,6 +2110,75 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # ==================== ادمین ====================
+    # تایید / رد رسید پرداخت توسط ادمین
+    if data.startswith("approve_") or data.startswith("reject_"):
+        if user_id != ADMIN_ID:
+            return
+        try:
+            order_id = int(data.split("_", 1)[1])
+        except (ValueError, IndexError):
+            await query.answer("❌ سفارش نامعتبر است.", show_alert=True)
+            return
+
+        if data.startswith("approve_"):
+            try:
+                result = approve_order(order_id)
+            except Exception as e:
+                print(f"Approve order error: {type(e).__name__}: {e}")
+                await query.answer("❌ خطا در تأیید سفارش.", show_alert=True)
+                return
+
+            if result.get("status") == "approved":
+                order = result.get("order")
+                link = result.get("link") or "-"
+                expires = result.get("expires_at") or "-"
+                recipient_lang = get_user_language(order["user_id"]) or "fa"
+                await query.edit_message_reply_markup(reply_markup=None)
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=t(recipient_lang, "payment_confirmed",
+                          volume=order["volume"], expires=expires, order=order_id, link=link)
+                )
+                await query.answer("✅ پرداخت تأیید شد.")
+                return
+
+            if result.get("status") == "charge_approved":
+                order = result.get("order")
+                recipient_lang = get_user_language(order["user_id"]) or "fa"
+                await query.edit_message_reply_markup(reply_markup=None)
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=t(recipient_lang, "charge_success", amount=order["price"], balance=get_balance(order["user_id"]))
+                )
+                await query.answer("✅ شارژ کیف پول تأیید شد.")
+                return
+
+            if result.get("status") == "no_stock":
+                await query.answer("❌ برای این سفارش لینک دستی موجود نیست.", show_alert=True)
+                return
+
+            await query.answer("⚠️ این سفارش قبلاً پردازش شده است.", show_alert=True)
+            return
+
+        # رد سفارش
+        try:
+            ok, order = reject_order(order_id)
+        except Exception as e:
+            print(f"Reject order error: {type(e).__name__}: {e}")
+            await query.answer("❌ خطا در رد سفارش.", show_alert=True)
+            return
+        if not ok:
+            await query.answer("⚠️ این سفارش قبلاً پردازش شده است.", show_alert=True)
+            return
+        await query.edit_message_reply_markup(reply_markup=None)
+        recipient_lang = get_user_language(order["user_id"]) or "fa"
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=t(recipient_lang, "payment_rejected", order=order_id)
+        )
+        await query.answer("❌ پرداخت رد شد.")
+        return
+
     if data == "admin":
         if user_id != ADMIN_ID:
             return

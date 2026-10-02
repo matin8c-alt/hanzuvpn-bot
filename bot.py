@@ -3145,7 +3145,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
                 finally: conn.close()
-            volume = _normalize_volume(payload.get("volume"))
+            raw_volume = str(payload.get("volume", "")).strip()
+            volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
             if not volume:
                 return self._send(400,{"ok":False,"error":"invalid_volume"})
             price = plan_price(volume)

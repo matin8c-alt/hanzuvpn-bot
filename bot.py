@@ -63,12 +63,6 @@ MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
-# PasarGuard: فقط برای سرویس‌های نامحدود
-PASARGUARD_BASE_URL = os.getenv("PASARGUARD_BASE_URL", "https://panel.zirava.ir").rstrip("/")
-if PASARGUARD_BASE_URL.startswith("http://"):
-    PASARGUARD_BASE_URL = "https://" + PASARGUARD_BASE_URL[len("http://"):].rstrip("/")
-PASARGUARD_API_KEY = os.getenv("PASARGUARD_API_KEY", "pg_key_ecef932d-8792-4506-bb91-6fa4cb4d7ddf")
-PASARGUARD_GROUP_NAME = "All"
 UNLIMITED_PLANS = {
     "UNLIMITED_1": {"label_fa": "تک کاربره", "label_en": "Single User", "label_ku": "یەک بەکارهێنەر", "price": 150000, "hwid": 1},
     "UNLIMITED_2": {"label_fa": "دو کاربره", "label_en": "Two Users", "label_ku": "دوو بەکارهێنەر", "price": 250000, "hwid": 2},
@@ -831,7 +825,7 @@ async def set_bot_commands(application):
 
 
 # =========================================================
-# PasarGuard — سرویس‌های نامحدود
+# سرویس‌های نامحدود — ورود دستی لینک
 # =========================================================
 
 def is_unlimited_volume(volume):
@@ -848,65 +842,31 @@ def unlimited_display(volume, lang="fa"):
     info = unlimited_plan_info(volume, lang)
     return f"♾️ {info[1]}" if info else str(volume)
 
-def _pasarguard_request(method, path, payload=None):
-    if not PASARGUARD_API_KEY:
-        raise RuntimeError("PasarGuard API key is not configured")
-    data = None
-    headers = {"X-Api-Key": PASARGUARD_API_KEY, "Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    req = urlrequest.Request(PASARGUARD_BASE_URL + path, data=data, headers=headers, method=method)
+
+def plan_price(volume):
+    key = str(volume).strip().upper()
+    if key in UNLIMITED_PLANS:
+        return int(UNLIMITED_PLANS[key]["price"])
+    normalized = _normalize_volume(key) if "_normalize_volume" in globals() else None
+    if normalized and normalized in TARIFF_PLANS:
+        return int(TARIFF_PLANS[normalized])
     try:
-        with urlrequest.urlopen(req, timeout=20) as response:
-            raw = response.read().decode("utf-8")
-            return response.status, (json.loads(raw) if raw else {})
-    except Exception as e:
-        if hasattr(e, "read"):
-            try:
-                raw = e.read().decode("utf-8")
-                return getattr(e, "code", 0), (json.loads(raw) if raw else {})
-            except Exception:
-                pass
-        raise
+        return int(TARIFF_PLANS.get(str(int(float(key))), int(float(key)) * PRICE_PER_GB))
+    except Exception:
+        return 0
 
-def _pasarguard_group_id():
-    status, data = _pasarguard_request("GET", "/api/groups/simple")
-    if status != 200:
-        raise RuntimeError(f"PasarGuard groups API failed: HTTP {status}")
-    groups = data.get("groups") if isinstance(data, dict) else data
-    if not isinstance(groups, list):
-        raise RuntimeError("PasarGuard groups response is invalid")
-    for group in groups:
-        if str(group.get("name", "")).strip().lower() == PASARGUARD_GROUP_NAME.lower():
-            return int(group["id"])
-    raise RuntimeError(f"PasarGuard group '{PASARGUARD_GROUP_NAME}' not found")
 
-def _random_pasarguard_username():
-    return "hanzu_" + hashlib.sha256(os.urandom(32)).hexdigest()[:10]
-
-def create_pasarguard_unlimited(hwid_limit):
-    group_id = _pasarguard_group_id()
-    last_error = None
-    for _ in range(3):
-        username = _random_pasarguard_username()
-        payload = {
-            "username": username, "proxy_settings": {},
-            "expire": (datetime.now() + timedelta(days=SERVICE_DAYS)).strftime("%Y-%m-%dT%H:%M:%S"),
-            "data_limit": 0, "data_limit_reset_strategy": "no_reset",
-            "hwid_limit": int(hwid_limit), "status": "active", "group_ids": [group_id],
-        }
-        try:
-            status, data = _pasarguard_request("POST", "/api/user", payload)
-            if status in (200, 201):
-                subscription_url = data.get("subscription_url")
-                if not subscription_url:
-                    raise RuntimeError("PasarGuard did not return subscription_url")
-                return {"username": data.get("username", username), "subscription_url": subscription_url, "user_id": data.get("id"), "expire": data.get("expire") or payload["expire"]}
-            last_error = f"HTTP {status}: {data}"
-        except Exception as e:
-            last_error = str(e)
-    raise RuntimeError(f"PasarGuard create user failed: {last_error}")
+def stock_subscription_query(conn, volume):
+    key = str(volume).strip()
+    if key.upper() in UNLIMITED_PLANS:
+        return conn.execute("SELECT id, link FROM subscriptions WHERE UPPER(TRIM(volume)) = ? AND used = 0 ORDER BY id LIMIT 1", (key.upper(),)).fetchone()
+    normalized = _normalize_volume(key)
+    if not normalized:
+        return None
+    return conn.execute(
+        "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
+        (int(normalized),)
+    ).fetchone()
 
 # =========================================================
 # خرید
@@ -1226,33 +1186,7 @@ def approve_order(order_id):
             conn.commit()
             return {"status": "charge_approved", "order": order}
 
-        if is_unlimited_volume(order["volume"]):
-            plan = UNLIMITED_PLANS[str(order["volume"]).upper()]
-            try:
-                pg = create_pasarguard_unlimited(plan["hwid"])
-            except Exception as e:
-                conn.rollback()
-                print(f"PasarGuard unlimited creation error: {type(e).__name__}: {e}")
-                return {"status": "pg_error", "order": order, "error": str(e)}
-            approved_at = datetime.now()
-            expires_at = approved_at + timedelta(days=SERVICE_DAYS)
-            conn.execute("""
-                UPDATE orders SET status = 'approved', approved_at = ?, expires_at = ?,
-                    pg_username = ?, pg_subscription_url = ?, unlimited_hwid = ?
-                WHERE id = ? AND status = 'pending'
-            """, (approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"),
-                  pg["username"], pg["subscription_url"], plan["hwid"], order_id))
-            conn.commit()
-            return {"status": "approved", "order": order, "link": pg["subscription_url"], "expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S"), "pg_username": pg["username"]}
-
-        normalized_order_volume = _normalize_volume(order["volume"])
-        if not normalized_order_volume:
-            conn.rollback()
-            return {"status": "invalid_volume", "order": order}
-        subscription = conn.execute(
-            "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
-            (int(normalized_order_volume),)
-        ).fetchone()
+        subscription = stock_subscription_query(conn, order["volume"])
         if not subscription:
             conn.rollback()
             return {"status": "no_stock", "order": order}
@@ -1504,7 +1438,8 @@ async def show_admin_stock(query):
     text = "📦 موجودی HanzuVPN\n\n"
     if stock:
         for volume, count in stock.items():
-            text += f"🔹 {volume} گیگ: {count} عدد\n"
+            label = unlimited_display(volume, lang) if is_unlimited_volume(volume) else f"{volume} گیگ"
+            text += f"🔹 {label}: {count} عدد\n"
     else:
         text += "❌ سرویس فروشی موجود نیست.\n"
     text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
@@ -2209,7 +2144,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_volume"] = True
-        await query.edit_message_text("➕ افزودن لینک سرویس\n\nحجم را به گیگ وارد کن:\n\nمثال: 10")
+        await query.edit_message_text("➕ افزودن لینک سرویس\n\nحجم را وارد کن:\n\nمثال: 10\nبرای نامحدود: UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3")
         return
 
     if data == "admin_delete":
@@ -2821,17 +2756,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # حجم لینک ادمین
     if user.id == ADMIN_ID and context.user_data.get("admin_waiting_volume"):
-        try:
-            volume = int(text)
-            if volume <= 0 or volume > 1000:
-                raise ValueError
-        except ValueError:
-            await update.message.reply_text("❌ حجم نامعتبر است.")
-            return
+        raw_volume = text.strip().upper().replace(" ", "")
+        if raw_volume in UNLIMITED_PLANS:
+            volume = raw_volume
+            label = unlimited_display(volume, "fa")
+        else:
+            try:
+                volume_num = int(float(raw_volume))
+                if volume_num <= 0 or volume_num > 1000:
+                    raise ValueError
+                volume = str(volume_num)
+                label = f"{volume_num} گیگ"
+            except ValueError:
+                await update.message.reply_text("❌ حجم نامعتبر است.\n\nبرای نامحدود از UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3 استفاده کن.")
+                return
         context.user_data["admin_waiting_volume"] = False
-        context.user_data["admin_add_volume"] = str(volume)
+        context.user_data["admin_add_volume"] = volume
         context.user_data["admin_waiting_link"] = True
-        await update.message.reply_text(f"✅ حجم {volume} گیگ ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
+        await update.message.reply_text(f"✅ {label} ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
         return
 
     # لینک سرویس ادمین
@@ -2843,7 +2785,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_subscription(volume, text)
         context.user_data.pop("admin_waiting_link", None)
         context.user_data.pop("admin_add_volume", None)
-        await update.message.reply_text(f"✅ لینک اضافه شد.\n\n📦 حجم: {volume} گیگ")
+        label = unlimited_display(volume, "fa") if is_unlimited_volume(volume) else f"📦 {volume} گیگ"
+        await update.message.reply_text(f"✅ لینک اضافه شد.\n\n{label}")
         return
 
 
@@ -2984,7 +2927,8 @@ def _api_purchase_wallet(user, volume, price):
     # خرید کیف پول کاملاً اتمیک است: یا همه مراحل انجام می‌شوند یا هیچ‌کدام.
     # volume به شکل عددی نرمال می‌شود تا موجودی‌هایی مثل «10»، «10GB» یا «10 گیگ»
     # هم قابل تطبیق باشند.
-    normalized_volume = _normalize_volume(volume)
+    raw_volume = str(volume).strip()
+    normalized_volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
     if not normalized_volume:
         return {"status":"invalid_volume"}
 
@@ -3002,10 +2946,7 @@ def _api_purchase_wallet(user, volume, price):
                 return {"status":"insufficient_balance", "balance":balance}
 
             # تطبیق عددی حجم، مستقل از فرمت ذخیره‌شده در subscriptions.volume
-            sub = conn.execute(
-                "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
-                (int(normalized_volume),)
-            ).fetchone()
+            sub = stock_subscription_query(conn, normalized_volume)
             if not sub:
                 conn.rollback()
                 return {"status":"no_stock", "balance":balance, "volume":normalized_volume}
@@ -3024,7 +2965,7 @@ def _api_purchase_wallet(user, volume, price):
 
             tx = conn.execute(
                 "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-                (user.id, -price, "purchase", f"خرید سرویس {normalized_volume} گیگ", now_text())
+                (user.id, -price, "purchase", f"خرید سرویس {unlimited_display(normalized_volume, 'fa') if is_unlimited_volume(normalized_volume) else normalized_volume + ' گیگ'}", now_text())
             )
             order_id = conn.execute(
                 "INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, subscription_id, approved_at, expires_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, 0, ?, ?, ?)",
@@ -3104,7 +3045,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return self._send(200,{"ok":True,"balance":get_balance(u.id)})
         if self.path.startswith("/api/bootstrap"):
             rows=get_user_services(u.id)
-            plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()]
+            plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()] + [
+                {"volume":k,"price":int(v["price"]),"available":bool(get_stock().get(k,0)),"kind":"unlimited","label_fa":v["label_fa"],"label_en":v["label_en"],"label_ku":v["label_ku"]}
+                for k,v in UNLIMITED_PLANS.items()
+            ]
             conn=get_db()
             try:
                 tx=conn.execute("SELECT amount, type, description, created_at FROM wallet_transactions WHERE user_id=? ORDER BY id DESC LIMIT 20", (u.id,)).fetchall()
@@ -3125,7 +3069,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     conn.execute("BEGIN IMMEDIATE")
                     order=conn.execute("SELECT id, volume, price, expires_at FROM orders WHERE id=? AND user_id=? AND status='approved' AND is_charge=0",(oid,u.id)).fetchone()
                     if not order: conn.rollback(); return self._send(404,{"ok":False,"error":"service_not_found"})
-                    price=int(float(order["volume"]))*PRICE_PER_GB; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
+                    price=plan_price(order["volume"]); bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
                     if bal<price: conn.rollback(); return self._send(200,{"ok":False,"error":"insufficient_balance","balance":bal,"price":price})
                     old=datetime.strptime(order["expires_at"],"%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now(); base=max(old,datetime.now()); newexp=base+timedelta(days=SERVICE_DAYS)
                     conn.execute("UPDATE users SET balance=balance-? WHERE user_id=?",(price,u.id)); conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",(u.id,-price,"renew",f"تمدید سرویس #{oid}",oid,now_text())); conn.execute("UPDATE orders SET expires_at=? WHERE id=?",(newexp.strftime("%Y-%m-%d %H:%M:%S"),oid)); conn.commit(); return self._send(200,{"ok":True,"order_id":oid,"price":price,"balance":bal-price,"expires_at":newexp.strftime("%Y-%m-%d %H:%M:%S")})
@@ -3135,7 +3079,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             volume = _normalize_volume(payload.get("volume"))
             if not volume:
                 return self._send(400,{"ok":False,"error":"invalid_volume"})
-            price = TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)
+            price = plan_price(volume)
             # خرید واقعی فقط در تراکنش اتمیک انجام می‌شود؛ موجودی/موجودی سرویس
             # بین pre-check و خرید دیگر نمی‌تواند باعث race condition شود.
             r=_api_purchase_wallet(u,volume,price)
@@ -3174,7 +3118,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             tg=_telegram_send_photo_base64(u.id,"شارژ کیف پول",real_amount,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         if path=="/api/buy-receipt":
-            volume=_normalize_volume(payload.get("volume")); price=(TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)) if volume else 0; img=payload.get("image","")
+            raw_volume=str(payload.get("volume", "")).strip()
+            volume=raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
+            price=plan_price(volume) if volume else 0
+            img=payload.get("image","")
             if not volume or price <= 0 or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})
             oid=create_order(u,volume,price); tg=_telegram_send_photo_base64(u.id,volume,price,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
@@ -3197,7 +3144,7 @@ async def post_init(application):
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text="🛒 HanzuVPN",
-                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260928-v6"),
+                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20261002-manual-unlimited"),
             )
         )
     except Exception as e:

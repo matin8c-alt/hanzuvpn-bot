@@ -64,7 +64,9 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
 # PasarGuard: فقط برای سرویس‌های نامحدود
-PASARGUARD_BASE_URL = os.getenv("PASARGUARD_BASE_URL", "http://panel.zirava.ir").rstrip("/")
+PASARGUARD_BASE_URL = os.getenv("PASARGUARD_BASE_URL", "https://panel.zirava.ir").rstrip("/")
+if PASARGUARD_BASE_URL.startswith("http://"):
+    PASARGUARD_BASE_URL = "https://" + PASARGUARD_BASE_URL[len("http://"):].rstrip("/")
 PASARGUARD_API_KEY = os.getenv("PASARGUARD_API_KEY", "pg_key_ecef932d-8792-4506-bb91-6fa4cb4d7ddf")
 PASARGUARD_GROUP_NAME = "All"
 UNLIMITED_PLANS = {
@@ -918,8 +920,15 @@ def buy_period_keyboard(user_id):
         period_text = "١ مانگ"
     else:
         period_text = "یکماهه"
+    if lang == "en":
+        unlimited_text = "♾️ Unlimited"
+    elif lang == "ku":
+        unlimited_text = "♾️ بێ سنوور"
+    else:
+        unlimited_text = "♾️ نامحدود"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(period_text, callback_data="buy_monthly")],
+        [InlineKeyboardButton(unlimited_text, callback_data="unlimited")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ])
 
@@ -1850,7 +1859,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if is_unlimited_volume(volume):
             title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
-            receipt = "📸 Send the receipt." if lang == "en" else "📸 وێنەی پسوڵە بنێرە."
+            receipt = (
+                "📸 Send the receipt." if lang == "en"
+                else ("📸 وێنەی پسوڵە بنێرە." if lang == "ku" else "📸 لطفاً تصویر رسید را ارسال کنید.")
+            )
             amount_label = "Toman" if lang == "en" else "تومان"
             await query.edit_message_text(f"{title}\n\n🧾 #{order_id}\n👤 {unlimited_display(volume, lang).replace('♾️ ', '')}\n💰 {price:,} {amount_label}\n\n{receipt}")
         else:

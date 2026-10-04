@@ -23,7 +23,6 @@ from telegram import (
     MenuButtonWebApp,
     WebAppInfo,
     InputFile,
-    ReplyKeyboardRemove,
 )
 from telegram.ext import (
     Application,
@@ -1272,11 +1271,6 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    # حذف قطعی Reply Keyboard قدیمی که ممکن است از نسخه‌های قبلی در چت باقی مانده باشد.
-    try:
-        await update.message.reply_text("‎", reply_markup=ReplyKeyboardRemove(remove_keyboard=True))
-    except Exception as e:
-        print("Reply keyboard cleanup error:", e)
     ensure_user(user)
     clear_user_states(context)
 

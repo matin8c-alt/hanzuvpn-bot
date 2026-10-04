@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 import sqlite3
 import asyncio
 import json
@@ -41,36 +40,6 @@ from telegram.ext import (
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
-BUTTON_STYLE_FILE = os.getenv("BUTTON_STYLE_FILE", "button_style.json")
-BUTTON_STYLE_OPTIONS = {
-    "default": "⚪ پیش‌فرض",
-    "success": "🟢 سبز",
-    "danger": "🔴 قرمز",
-    "primary": "🔵 آبی",
-}
-
-def get_button_style():
-    try:
-        p = Path(BUTTON_STYLE_FILE)
-        if p.exists():
-            value = json.loads(p.read_text(encoding="utf-8")).get("style", "default")
-            return value if value in BUTTON_STYLE_OPTIONS else "default"
-    except Exception:
-        pass
-    return "default"
-
-def set_button_style(style):
-    if style not in BUTTON_STYLE_OPTIONS:
-        style = "default"
-    try:
-        Path(BUTTON_STYLE_FILE).write_text(
-            json.dumps({"style": style}, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
-    return style
-
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 
 PRICE_PER_GB = 3500
@@ -93,6 +62,34 @@ TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, 
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
+
+BUTTON_STYLE_FILE = os.getenv("BUTTON_STYLE_FILE", "button_style.json")
+BUTTON_STYLE_OPTIONS = {
+    "default": "⚪ پیش‌فرض",
+    "success": "🟢 سبز",
+    "danger": "🔴 قرمز",
+    "primary": "🔵 آبی",
+}
+
+def get_button_style():
+    try:
+        p = Path(BUTTON_STYLE_FILE)
+        if p.exists():
+            value = json.loads(p.read_text(encoding="utf-8")).get("style", "default")
+            return value if value in BUTTON_STYLE_OPTIONS else "default"
+    except Exception:
+        pass
+    return "default"
+
+def set_button_style(style):
+    if style not in BUTTON_STYLE_OPTIONS:
+        style = "default"
+    Path(BUTTON_STYLE_FILE).write_text(
+        json.dumps({"style": style}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return style
+
 
 UNLIMITED_PLANS = {
     "UNLIMITED_1": {"label_fa": "تک کاربره", "label_en": "Single User", "label_ku": "یەک بەکارهێنەر", "price": 150000, "hwid": 1},
@@ -455,24 +452,12 @@ def set_user_language(user_id, language):
     conn.close()
 
 
-# =========================================================
-# Telegram native button style control
-# =========================================================
+
 def styled_inline_button(text, callback_data=None, **kwargs):
-    data = str(callback_data or "")
     selected = get_button_style()
     if selected != "default":
         kwargs["style"] = selected
-    else:
-        if (
-            data in {"buy", "buy_monthly", "unlimited", "custom", "charge_wallet"}
-            or data.startswith(("pay_", "paid_", "renewpaid_", "walletpay_", "approve_"))
-        ):
-            kwargs.setdefault("style", "success")
-        elif data == "home" or data.startswith(("paymentback_", "reject_")):
-            kwargs.setdefault("style", "danger")
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
-
 
 def language_keyboard():
     return InlineKeyboardMarkup([
@@ -1635,6 +1620,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         set_button_style(selected)
         await show_button_style_panel(query)
         return
+
 
     # زبان
     if data == "language":

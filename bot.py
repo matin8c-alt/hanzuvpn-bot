@@ -18,9 +18,6 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     CopyTextButton,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
-    KeyboardButton,
     MessageEntity,
     BotCommand,
     MenuButtonWebApp,
@@ -759,9 +756,7 @@ def _rich_button_html(button):
 
 
 def _rich_markup_html(reply_markup):
-    """Turn an InlineKeyboardMarkup into Rich Message button rows.
-    ReplyKeyboardMarkup is intentionally left to Telegram as normal markup.
-    """
+    """Turn only InlineKeyboardMarkup into Rich Message button rows."""
     if not isinstance(reply_markup, InlineKeyboardMarkup):
         return None
 
@@ -817,9 +812,15 @@ def _telegram_api_call(method, payload):
     return result.get("result")
 
 
+def _rich_only_inline_markup(reply_markup):
+    """Disable ordinary Telegram reply keyboards; keep only inline Rich buttons."""
+    return reply_markup if isinstance(reply_markup, InlineKeyboardMarkup) else None
+
+
 async def send_rich_message(bot, chat_id, text, reply_markup=None,
                             parse_mode=None, **kwargs):
     """Send a persistent Telegram Rich Message, with automatic fallback."""
+    reply_markup = _rich_only_inline_markup(reply_markup)
     if not RICH_MESSAGES_ENABLED:
         return await bot.send_message(
             chat_id=chat_id, text=text, reply_markup=reply_markup,
@@ -837,11 +838,6 @@ async def send_rich_message(bot, chat_id, text, reply_markup=None,
     ):
         if key in kwargs and kwargs[key] is not None:
             payload[key] = kwargs[key]
-
-    # Reply keyboards are not Rich buttons and can be supplied normally.
-    if reply_markup is not None and not isinstance(reply_markup, InlineKeyboardMarkup):
-        if hasattr(reply_markup, "to_json"):
-            payload["reply_markup"] = json.loads(reply_markup.to_json())
 
     try:
         result = await asyncio.to_thread(_telegram_api_call, "sendRichMessage", payload)
@@ -1191,21 +1187,6 @@ def get_wallet_history(user_id, limit=15):
 # منوی اصلی
 # =========================================================
 
-def bottom_keyboard(user_id):
-    """کیبورد پایینی اصلی؛ دو دکمه در هر ردیف و کاملاً وابسته به زبان کاربر."""
-    lang = get_user_language(user_id) or "fa"
-    rows = [
-        [KeyboardButton(t(lang, "panel"))],
-        [KeyboardButton(t(lang, "buy")), KeyboardButton(t(lang, "trial"))],
-        [KeyboardButton(t(lang, "services")), KeyboardButton(t(lang, "renew"))],
-        [KeyboardButton(t(lang, "referral")), KeyboardButton(t(lang, "wallet"))],
-        [KeyboardButton(t(lang, "support")), KeyboardButton(t(lang, "language"))],
-    ]
-    if user_id == ADMIN_ID:
-        rows.append([KeyboardButton(t(lang, "admin"))])
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
-
-
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
@@ -1241,7 +1222,7 @@ async def show_home(query, user_id):
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await rich_reply_text(message, t(lang, "welcome"), reply_markup=bottom_keyboard(user_id))
+    await rich_reply_text(message, t(lang, "welcome"))
 
 
 def dashboard_text(user, lang):
@@ -2361,10 +2342,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(language, "language_changed") + "\n\n" + t(language, "welcome"),
             reply_markup=home_keyboard(user_id)
         )
-        # ReplyKeyboardMarkup مستقل از InlineKeyboardMarkup است؛ بعد از تغییر زبان
-        # باید کیبورد پایینی را هم دوباره ارسال کنیم تا متن تمام دکمه‌ها به‌روز شود.
         try:
-            await rich_reply_text(query.message, t(language, "language_changed"), reply_markup=bottom_keyboard(user_id))
+            await rich_reply_text(query.message, t(language, "language_changed"))
         except Exception as e:
             print("Language reply keyboard update error:", e)
         return

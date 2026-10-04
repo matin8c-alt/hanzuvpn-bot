@@ -84,7 +84,7 @@ TEXTS = {
     "fa": {
         "language_title": "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
         "language_changed": "✅ زبان با موفقیت تغییر کرد.",
-        "welcome": "🌐 <b>HanzuVPN</b>\n\n<b>خوش آمدید 👋</b>\n\nبه ربات رسمی HanzuVPN خوش آمدید.\nاز منوی زیر می‌توانید سرویس خود را مدیریت کنید.\n\n👇 <b>یک گزینه را انتخاب کنید</b>",
+        "welcome": "🌐 HanzuVPN\n\nخوش آمدید 👋\n\nاز منوی زیر یک گزینه را انتخاب کنید:",
         "buy": "🛒 خرید سرویس",
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
@@ -122,7 +122,7 @@ TEXTS = {
         "no_pending": "❌ سفارش در انتظار پرداختی پیدا نشد.",
         "services_title": "📦 <b>سرویس‌های من</b>\n\nسرویس‌های فعال شما در ادامه نمایش داده می‌شوند:",
         "no_services": "📦 <b>سرویس‌های من</b>\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
-        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n━━━━━━━━━━━━\n\n",
+        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n",
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
         "renew_choose": "🔄 تمدید سرویس\n\nسرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
@@ -187,7 +187,7 @@ TEXTS = {
     "ku": {
         "language_title": "🌐 هەڵبژاردنی زمان\n\nتکایە زمانی خۆت هەڵبژێرە:",
         "language_changed": "✅ زمان بە سەرکەوتوویی گۆڕدرا.",
-        "welcome": "🌐 HanzuVPN\n\nبەخێربێیت بۆ HanzuVPN ❤️\n\nلە خوارەوە هەڵبژاردەیەک هەڵبژێرە:",
+        "welcome": "🌐 HanzuVPN\n\nبەخێربێیت 👋\n\nلە خوارەوە یەک هەڵبژاردە هەڵبژێرە:",
         "buy": "🛒 کڕینی خزمەتگوزاری",
         "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
         "services": "📦 خزمەتگوزارییەکانم",
@@ -216,7 +216,7 @@ TEXTS = {
         "no_pending": "❌ هیچ داواکارییەکی چاوەڕوان نەدۆزرایەوە.",
         "services_title": "📦 خزمەتگوزارییەکانت\n\n",
         "no_services": "📦 هیچ خزمەتگوزارییەکی چالاکت نییە.",
-        "service_item": "🧾 #{id}\n📦 {volume} گیگ\n⏳ {expires}\n\n🔗 {link}\n\n━━━━━━━━━━━━\n\n",
+        "service_item": "🧾 #{id}\n📦 {volume} گیگ\n⏳ {expires}\n\n🔗 {link}\n\n",
         "renew_no_services": "🔄 هیچ خزمەتگوزارییەکی چالاکت نییە.",
         "renew_choose": "🔄 خزمەتگوزارییەک هەڵبژێرە بۆ نوێکردنەوە:",
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
@@ -281,7 +281,7 @@ TEXTS = {
     "en": {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
         "language_changed": "✅ Language changed successfully.",
-        "welcome": "🌐 HanzuVPN\n\nWelcome to HanzuVPN ❤️\n\nChoose an option below:",
+        "welcome": "🌐 HanzuVPN\n\nWelcome 👋\n\nChoose an option below:",
         "buy": "🛒 Buy Service",
         "trial": "🎁 Free Trial",
         "services": "📦 My Services",
@@ -310,7 +310,7 @@ TEXTS = {
         "no_pending": "❌ No pending order found.",
         "services_title": "📦 Your Services\n\n",
         "no_services": "📦 You don't have any active services.",
-        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n⏳ {expires}\n\n🔗 {link}\n\n━━━━━━━━━━━━\n\n",
+        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n⏳ {expires}\n\n🔗 {link}\n\n",
         "renew_no_services": "🔄 You don't have any active services.",
         "renew_choose": "🔄 Choose the service to renew:",
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
@@ -375,14 +375,13 @@ TEXTS = {
 }
 
 
-# منوهای اصلی با طرح داشبورد: هر دکمه در یک ردیف و تمام‌عرض.
-# اگر دوباره دو دکمه در هر ردیف می‌خواهید، False کنید.
-MENU_ONE_PER_ROW = True
+# منوی اصلی جمع‌وجور و مناسب موبایل؛ دو دکمه در هر ردیف.
+MENU_ONE_PER_ROW = False
 
 TEXTS["fa"].update({
     "panel": "پنل کاربری",
     "panel_btn": "📊 پنل کاربری",
-    "dash_title": "📊 <b>پنل کاربری</b>\n\n👋 سلام <b>{name}</b>\n\n💰 <b>موجودی کیف پول</b>\n{balance:,} تومان\n\n📦 <b>سرویس‌های فعال</b>\n{count} عدد\n\n👇 <b>از منوی زیر انتخاب کنید</b>",
+    "dash_title": "📊 پنل کاربری\n\n👋 سلام {name}\n\n💰 موجودی: {balance:,} تومان\n📦 سرویس‌های فعال: {count} عدد\n\nیک گزینه را انتخاب کنید:",
     "dash_first_service": "➕ خرید اولین سرویس خود",
     "dash_balance": "👛 موجودی: {balance:,} تومان",
     "dash_new_service": "🛒 خرید سرویس جدید",
@@ -391,7 +390,7 @@ TEXTS["fa"].update({
 TEXTS["ku"].update({
     "panel": "پانێلی بەکارهێنەر",
     "panel_btn": "📊 پانێلی بەکارهێنەر",
-    "dash_title": "📊 داشبۆردی بەکارهێنەر\n\n👤 زانیاری بەکارهێنەر:\n• ناو: {name}\n• موجودی: {balance:,} تومان\n• ژمارەی خزمەتگوزارییەکان: {count}\n\n🎯 بۆ دەستپێکردن، یەکێک لە بژاردەکانی خوارەوە هەڵبژێرە:",
+    "dash_title": "📊 پانێلی بەکارهێنەر\n\n👋 بەخێربێیت {name}\n\n💰 موجودی: {balance:,} تومان\n📦 خزمەتگوزارییە چالاکەکان: {count}\n\nیەکێک لە هەڵبژاردەکان هەڵبژێرە:",
     "dash_first_service": "➕ یەکەم خزمەتگوزاریت بکڕە",
     "dash_balance": "👛 موجودی: {balance:,} تومان",
     "dash_new_service": "🛒 کڕینی خزمەتگوزاری نوێ",
@@ -400,7 +399,7 @@ TEXTS["ku"].update({
 TEXTS["en"].update({
     "panel": "Dashboard",
     "panel_btn": "📊 Dashboard",
-    "dash_title": "📊 User Dashboard\n\n👤 User info:\n• Name: {name}\n• Balance: {balance:,} Toman\n• Services: {count}\n\n🎯 To get started, choose one of the options below:",
+    "dash_title": "📊 User Dashboard\n\n👋 Hello {name}\n\n💰 Balance: {balance:,} Toman\n📦 Active services: {count}\n\nChoose an option below:",
     "dash_first_service": "➕ Buy your first service",
     "dash_balance": "👛 Balance: {balance:,} Toman",
     "dash_new_service": "🛒 Buy a new service",
@@ -773,11 +772,13 @@ def _rich_markup_html(reply_markup):
 
 
 def _polish_bot_text(text):
-    """Clean common legacy separators/spacing without changing message meaning."""
+    """Make bot text clean and mobile-friendly: no decorative separator lines or raw formatting tags."""
     import re
     text = "" if text is None else str(text)
-    # Long decorative separators look noisy on narrow mobile screens.
-    text = re.sub(r"(?m)^[ \t]*[━─—_]{6,}[ \t]*$", "", text)
+    # Remove decorative separator-only lines (━, ─, —, _, -, =, etc.).
+    text = re.sub(r"(?m)^[ \t]*(?:[━─—_\-=]){3,}[ \t]*$", "", text)
+    # Never let legacy Telegram formatting tags leak as visible text.
+    text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)>", "", text, flags=re.I)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -801,27 +802,33 @@ def _rich_html_from_mixed_text(text):
     return escaped
 
 
+def _is_rtl_text(text):
+    import re
+    return bool(re.search(r"[\u0600-\u06ff]", text or ""))
+
+
 def _rich_content(text, parse_mode=None, reply_markup=None):
-    """Build InputRichMessage payload using Telegram's HTML rich syntax."""
+    """Build clean Telegram Rich Message content with correct RTL handling."""
     import html
 
     text = _polish_bot_text(text)
     mode = str(parse_mode or "").upper()
-    if mode == "HTML":
+
+    if mode in {"MARKDOWN", "MARKDOWNV2"}:
         content = text
-    elif mode in {"MARKDOWN", "MARKDOWNV2"}:
-        # Rich Markdown accepts the existing Telegram Markdown plus HTML tags.
+        field = "markdown"
+    elif mode == "HTML":
         content = text
+        field = "html"
     else:
-        # Preserve intentional simple HTML already present in bot templates,
-        # while escaping all other content safely.
         content = _rich_html_from_mixed_text(text)
+        field = "html"
 
     button_html = _rich_markup_html(reply_markup)
     if button_html:
         content += "\n\n" + button_html
 
-    return {"html": content}
+    return {field: content, "is_rtl": _is_rtl_text(text)}
 
 
 def _telegram_api_call(method, payload):
@@ -874,9 +881,14 @@ async def send_rich_message(bot, chat_id, text, reply_markup=None,
         return result
     except Exception as rich_error:
         print(f"Rich send fallback: {type(rich_error).__name__}: {rich_error}")
+        fallback_text = _polish_bot_text(text)
+        fallback_mode = parse_mode
+        if str(fallback_mode or "").upper() == "HTML":
+            fallback_text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)(?:\s[^>]*)?>", "", fallback_text, flags=re.I)
+            fallback_mode = None
         return await bot.send_message(
-            chat_id=chat_id, text=text, reply_markup=reply_markup,
-            parse_mode=parse_mode, **kwargs
+            chat_id=chat_id, text=fallback_text, reply_markup=reply_markup,
+            parse_mode=fallback_mode, **kwargs
         )
 
 
@@ -912,9 +924,14 @@ async def rich_edit(query, text, reply_markup=None, parse_mode=None, **kwargs):
         return result
     except Exception as rich_error:
         print(f"Rich edit fallback: {type(rich_error).__name__}: {rich_error}")
+        fallback_text = _polish_bot_text(text)
+        fallback_mode = parse_mode
+        if str(fallback_mode or "").upper() == "HTML":
+            fallback_text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)(?:\s[^>]*)?>", "", fallback_text, flags=re.I)
+            fallback_mode = None
         return await message.edit_text(
-            text=text, reply_markup=reply_markup,
-            parse_mode=parse_mode, **kwargs
+            text=fallback_text, reply_markup=reply_markup,
+            parse_mode=fallback_mode, **kwargs
         )
 
 
@@ -1853,11 +1870,11 @@ async def send_services_message(message, user_id):
             if is_unlimited_volume(row["volume"]):
                 plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                 if lang == "en":
-                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 elif lang == "ku":
-                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 else:
-                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
             else:
                 text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
     await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
@@ -2732,11 +2749,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 if is_unlimited_volume(row["volume"]):
                     plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                     if lang == "en":
-                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                     elif lang == "ku":
-                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                     else:
-                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 else:
                     text += t(lang, "service_item", id=row["id"], volume=row["volume"],
                               expires=row["expires_at"] or "-", link=row["link"] or "-")

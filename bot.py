@@ -16,6 +16,7 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    CopyTextButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     KeyboardButton,
@@ -92,6 +93,15 @@ TEXTS = {
         "coupon": "🎟 کد تخفیف",
         "referral": "👥 دعوت دوستان",
         "support": "🎫 پشتیبانی",
+    "plan_1": "📦 پلن ۱ گیگ",
+    "plan_10": "📦 پلن ۱۰ گیگ",
+    "plan_15": "📦 پلن ۱۵ گیگ",
+    "plan_20": "📦 پلن ۲۰ گیگ",
+    "plan_30": "📦 پلن ۳۰ گیگ",
+    "plan_40": "📦 پلن ۴۰ گیگ",
+    "plan_50": "📦 پلن ۵۰ گیگ",
+    "plan_100": "📦 پلن ۱۰۰ گیگ",
+    "copy_card": "📋 کپی شماره کارت",
         "language": "🌐 تغییر زبان",
         "admin": "⚙️ پنل مدیریت",
         "back": "🔙 بازگشت",
@@ -498,6 +508,13 @@ def get_button_color(callback_data):
         return "danger"
 
     return "default"
+
+def styled_copy_card_button():
+    style = get_button_color("copy_card")
+    kwargs = {"copy_text": CopyTextButton(CARD_NUMBER)}
+    if style != "default":
+        kwargs["style"] = style
+    return InlineKeyboardButton("📋 کپی شماره کارت", **kwargs)
 
 def button_style_icon(style):
     return {
@@ -1036,6 +1053,7 @@ def buy_keyboard(user_id):
             ("30 GB | 105,000 Toman", "plan_30"),
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
+            ("100 GB | 350,000 Toman", "plan_100"),
         ]
     else:
         buttons = [
@@ -1045,6 +1063,7 @@ def buy_keyboard(user_id):
             ("30 گیگ | 105,000 تومان", "plan_30"),
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
+            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[styled_inline_button(text, callback_data=cb)] for text, cb in buttons]
     if lang == "en":
@@ -1146,6 +1165,7 @@ async def show_card_payment(query, volume, original_price, coupon_code=None, fin
     caption += t(lang, "card", card=CARD_NUMBER)
 
     keyboard = [
+        [styled_copy_card_button()],
         [styled_inline_button(t(lang, "paid"), callback_data=f"paid_{volume}")],
         [styled_inline_button(t(lang, "coupon"), callback_data="coupon")],
     ]

@@ -63,6 +63,12 @@ MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
+UNLIMITED_PLANS = {
+    "UNLIMITED_1": {"label_fa": "تک کاربره", "label_en": "Single User", "label_ku": "یەک بەکارهێنەر", "price": 150000, "hwid": 1},
+    "UNLIMITED_2": {"label_fa": "دو کاربره", "label_en": "Two Users", "label_ku": "دوو بەکارهێنەر", "price": 250000, "hwid": 2},
+    "UNLIMITED_3": {"label_fa": "سه کاربره", "label_en": "Three Users", "label_ku": "سێ بەکارهێنەر", "price": 350000, "hwid": 3},
+}
+
 
 # =========================================================
 # ترجمه
@@ -475,7 +481,9 @@ def init_db():
             approved_at TEXT,
             expires_at TEXT,
             is_charge INTEGER DEFAULT 0,
-            coupon_code TEXT
+            pg_username TEXT,
+            pg_subscription_url TEXT,
+            unlimited_hwid INTEGER
         )
     """)
 
@@ -584,7 +592,9 @@ def init_db():
         ("is_charge", "INTEGER DEFAULT 0"),
         ("subscription_id", "INTEGER"),
         ("approved_at", "TEXT"),
-        ("coupon_code", "TEXT"),
+        ("pg_username", "TEXT"),
+        ("pg_subscription_url", "TEXT"),
+        ("unlimited_hwid", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {default}")
@@ -715,16 +725,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if referrer_id != user.id:
                 conn = get_db()
                 existing = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user.id,)).fetchone()
-                referrer_exists = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-                if existing and existing["referred_by"] is None and referrer_exists:
+                if existing and existing["referred_by"] is None:
                     conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user.id))
-                    already_rewarded = conn.execute("SELECT referral_rewarded FROM users WHERE user_id = ?", (user.id,)).fetchone()[0] or 0
-                    if not already_rewarded:
-                        reward = 20000
-                        conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id IN (?, ?)", (reward, referrer_id, user.id))
-                        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (referrer_id, reward, "referral_reward", "پاداش دعوت دوست", now_text()))
-                        conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)", (user.id, reward, "referral_reward", "پاداش ثبت دعوت", now_text()))
-                        conn.execute("UPDATE users SET referral_rewarded = 1 WHERE user_id = ?", (user.id,))
                     conn.commit()
                 conn.close()
         except Exception:
@@ -823,6 +825,50 @@ async def set_bot_commands(application):
 
 
 # =========================================================
+# سرویس‌های نامحدود — ورود دستی لینک
+# =========================================================
+
+def is_unlimited_volume(volume):
+    return str(volume).upper() in UNLIMITED_PLANS
+
+def unlimited_plan_info(volume, lang="fa"):
+    plan = UNLIMITED_PLANS.get(str(volume).upper())
+    if not plan:
+        return None
+    key = "label_en" if lang == "en" else ("label_ku" if lang == "ku" else "label_fa")
+    return plan, plan[key]
+
+def unlimited_display(volume, lang="fa"):
+    info = unlimited_plan_info(volume, lang)
+    return f"♾️ {info[1]}" if info else str(volume)
+
+
+def plan_price(volume):
+    key = str(volume).strip().upper()
+    if key in UNLIMITED_PLANS:
+        return int(UNLIMITED_PLANS[key]["price"])
+    normalized = _normalize_volume(key) if "_normalize_volume" in globals() else None
+    if normalized and normalized in TARIFF_PLANS:
+        return int(TARIFF_PLANS[normalized])
+    try:
+        return int(TARIFF_PLANS.get(str(int(float(key))), int(float(key)) * PRICE_PER_GB))
+    except Exception:
+        return 0
+
+
+def stock_subscription_query(conn, volume):
+    key = str(volume).strip()
+    if key.upper() in UNLIMITED_PLANS:
+        return conn.execute("SELECT id, link FROM subscriptions WHERE UPPER(TRIM(volume)) = ? AND used = 0 ORDER BY id LIMIT 1", (key.upper(),)).fetchone()
+    normalized = _normalize_volume(key)
+    if not normalized:
+        return None
+    return conn.execute(
+        "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
+        (int(normalized),)
+    ).fetchone()
+
+# =========================================================
 # خرید
 # =========================================================
 
@@ -834,8 +880,15 @@ def buy_period_keyboard(user_id):
         period_text = "١ مانگ"
     else:
         period_text = "یکماهه"
+    if lang == "en":
+        unlimited_text = "♾️ Unlimited"
+    elif lang == "ku":
+        unlimited_text = "♾️ بێ سنوور"
+    else:
+        unlimited_text = "♾️ نامحدود"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(period_text, callback_data="buy_monthly")],
+        [InlineKeyboardButton(unlimited_text, callback_data="unlimited")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ])
 
@@ -846,36 +899,28 @@ def buy_keyboard(user_id):
         buttons = [
             ("1 GB | 3,500 Toman", "plan_1"),
             ("10 GB | 35,000 Toman", "plan_10"),
-            ("15 GB | 52,500 Toman", "plan_15"),
             ("20 GB | 70,000 Toman", "plan_20"),
             ("30 GB | 105,000 Toman", "plan_30"),
             ("40 GB | 140,000 Toman", "plan_40"),
             ("50 GB | 175,000 Toman", "plan_50"),
-            ("100 GB | 350,000 Toman", "plan_100"),
-        ]
-    elif lang == "ku":
-        buttons = [
-            ("1 گیگ | 3,500 تومان", "plan_1"),
-            ("10 گیگ | 35,000 تومان", "plan_10"),
-            ("15 گیگ | 52,500 تومان", "plan_15"),
-            ("20 گیگ | 70,000 تومان", "plan_20"),
-            ("30 گیگ | 105,000 تومان", "plan_30"),
-            ("40 گیگ | 140,000 تومان", "plan_40"),
-            ("50 گیگ | 175,000 تومان", "plan_50"),
-            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     else:
         buttons = [
             ("1 گیگ | 3,500 تومان", "plan_1"),
             ("10 گیگ | 35,000 تومان", "plan_10"),
-            ("15 گیگ | 52,500 تومان", "plan_15"),
             ("20 گیگ | 70,000 تومان", "plan_20"),
             ("30 گیگ | 105,000 تومان", "plan_30"),
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
-            ("100 گیگ | 350,000 تومان", "plan_100"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
+    if lang == "en":
+        unlimited_text = "♾️ Unlimited"
+    elif lang == "ku":
+        unlimited_text = "♾️ بێ سنوور"
+    else:
+        unlimited_text = "♾️ نامحدود"
+    keyboard.append([InlineKeyboardButton(unlimited_text, callback_data="unlimited")])
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
     keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
     return InlineKeyboardMarkup(keyboard)
@@ -897,6 +942,22 @@ async def show_buy_services(query):
     await query.edit_message_text(t(lang, "buy_title"), reply_markup=buy_keyboard(query.from_user.id))
 
 
+async def show_unlimited_services(query):
+    lang = get_user_language(query.from_user.id) or "fa"
+    if lang == "en":
+        buttons = [("👤 Single User | 150,000 Toman", "unlimited_plan_1"), ("👥 Two Users | 250,000 Toman", "unlimited_plan_2"), ("👥 Three Users | 350,000 Toman", "unlimited_plan_3")]
+        title = "♾️ Unlimited Service\n\nChoose your plan:"
+    elif lang == "ku":
+        buttons = [("👤 یەک بەکارهێنەر | 150,000 تومان", "unlimited_plan_1"), ("👥 دوو بەکارهێنەر | 250,000 تومان", "unlimited_plan_2"), ("👥 سێ بەکارهێنەر | 350,000 تومان", "unlimited_plan_3")]
+        title = "♾️ خزمەتگوزاری بێ سنوور\n\nپلانەکەت هەڵبژێرە:"
+    else:
+        buttons = [("👤 تک کاربره | 150,000 تومان", "unlimited_plan_1"), ("👥 دو کاربره | 250,000 تومان", "unlimited_plan_2"), ("👥 سه کاربره | 350,000 تومان", "unlimited_plan_3")]
+        title = "♾️ سرویس نامحدود\n\nپلن موردنظر را انتخاب کنید:"
+    keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy_monthly")])
+    await query.edit_message_text(title, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 # =========================================================
 # پرداخت
 # =========================================================
@@ -908,7 +969,15 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     if original_price is None:
         original_price = price
 
-    caption = t(lang, "payment", volume=volume, price=price)
+    if is_unlimited_volume(volume):
+        if lang == "en":
+            caption = f"♾️ Unlimited Service\n\n👤 Plan: {unlimited_display(volume, lang)}\n💰 Price: {price:,} Toman\n⏳ 30 days\n"
+        elif lang == "ku":
+            caption = f"♾️ خزمەتگوزاری بێ سنوور\n\n👤 پلان: {unlimited_display(volume, lang)}\n💰 نرخ: {price:,} تومان\n⏳ 30 ڕۆژ\n"
+        else:
+            caption = f"♾️ سرویس نامحدود\n\n👤 پلن: {unlimited_display(volume, lang)}\n💰 مبلغ: {price:,} تومان\n⏳ ۳۰ روز\n"
+    else:
+        caption = t(lang, "payment", volume=volume, price=price)
     if original_price != price and coupon_code:
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     keyboard = [
@@ -930,7 +999,15 @@ async def show_card_payment(query, volume, original_price, coupon_code=None, fin
         else:
             coupon_code = None
 
-    caption = t(lang, "payment", volume=volume, price=price)
+    if is_unlimited_volume(volume):
+        if lang == "en":
+            caption = f"♾️ Unlimited Service\n\n👤 Plan: {unlimited_display(volume, lang)}\n💰 Price: {price:,} Toman\n⏳ 30 days\n"
+        elif lang == "ku":
+            caption = f"♾️ خزمەتگوزاری بێ سنوور\n\n👤 پلان: {unlimited_display(volume, lang)}\n💰 نرخ: {price:,} تومان\n⏳ 30 ڕۆژ\n"
+        else:
+            caption = f"♾️ سرویس نامحدود\n\n👤 پلن: {unlimited_display(volume, lang)}\n💰 مبلغ: {price:,} تومان\n⏳ ۳۰ روز\n"
+    else:
+        caption = t(lang, "payment", volume=volume, price=price)
     if original_price != price and coupon_code:
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     caption += t(lang, "card", card=CARD_NUMBER)
@@ -1036,37 +1113,27 @@ def claim_trial(user):
 
 def cancel_pending_orders(user_id):
     conn = get_db()
-    try:
-        rows = conn.execute("SELECT id, coupon_code FROM orders WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchall()
-        for row in rows:
-            if row["coupon_code"]:
-                coupon = conn.execute("SELECT id FROM coupons WHERE code = ?", (row["coupon_code"].upper(),)).fetchone()
-                if coupon:
-                    conn.execute("DELETE FROM coupon_uses WHERE coupon_id = ? AND user_id = ? AND order_id = ?", (coupon["id"], user_id, row["id"]))
-                    conn.execute("UPDATE coupons SET used_count = MAX(0, used_count - 1) WHERE id = ?", (coupon["id"],))
-        conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
+    conn.commit()
+    conn.close()
 
 
 def create_order(user, volume, price, coupon_code=None, is_charge=0):
     cancel_pending_orders(user.id)
     conn = get_db()
     cursor = conn.execute("""
-        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, coupon_code)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge, coupon_code.upper() if coupon_code else None))
+        INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+    """, (user.id, user.username or "", user.first_name or "", str(volume), int(price), now_text(), is_charge))
     order_id = cursor.lastrowid
 
     if coupon_code and not is_charge:
         coupon = get_coupon(coupon_code)
         if coupon:
             try:
-                inserted = conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
-                                         (coupon["id"], user.id, order_id, now_text()))
-                if inserted.rowcount == 1:
-                    conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
+                conn.execute("INSERT OR IGNORE INTO coupon_uses (coupon_id, user_id, order_id, created_at) VALUES (?, ?, ?, ?)",
+                             (coupon["id"], user.id, order_id, now_text()))
+                conn.execute("UPDATE coupons SET used_count = used_count + 1 WHERE id = ?", (coupon["id"],))
             except Exception:
                 pass
 
@@ -1119,14 +1186,7 @@ def approve_order(order_id):
             conn.commit()
             return {"status": "charge_approved", "order": order}
 
-        normalized_order_volume = _normalize_volume(order["volume"])
-        if not normalized_order_volume:
-            conn.rollback()
-            return {"status": "invalid_volume", "order": order}
-        subscription = conn.execute(
-            "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
-            (int(normalized_order_volume),)
-        ).fetchone()
+        subscription = stock_subscription_query(conn, order["volume"])
         if not subscription:
             conn.rollback()
             return {"status": "no_stock", "order": order}
@@ -1138,7 +1198,6 @@ def approve_order(order_id):
             WHERE id = ? AND status = 'pending'
         """, (subscription["id"], approved_at.strftime("%Y-%m-%d %H:%M:%S"), expires_at.strftime("%Y-%m-%d %H:%M:%S"), order_id))
         conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (subscription["id"],))
-        reward_referral_commission(conn, order["user_id"], order_id, order["price"])
         conn.commit()
         return {
             "status": "approved",
@@ -1155,27 +1214,17 @@ def approve_order(order_id):
 
 def reject_order(order_id):
     conn = get_db()
-    try:
-        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        if not order:
-            return False, None
-        updated = conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
-        if updated.rowcount == 1 and order["coupon_code"]:
-            coupon = conn.execute("SELECT id FROM coupons WHERE code = ?", (order["coupon_code"].upper(),)).fetchone()
-            if coupon:
-                conn.execute("DELETE FROM coupon_uses WHERE coupon_id = ? AND user_id = ? AND order_id = ?", (coupon["id"], order["user_id"], order_id))
-                conn.execute("UPDATE coupons SET used_count = MAX(0, used_count - 1) WHERE id = ?", (coupon["id"],))
-        conn.commit()
-        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        return updated.rowcount == 1, order
-    finally:
-        conn.close()
+    updated = conn.execute("UPDATE orders SET status = 'rejected' WHERE id = ? AND status = 'pending'", (order_id,))
+    conn.commit()
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    conn.close()
+    return updated.rowcount == 1, order
 
 
 def get_user_services(user_id):
     conn = get_db()
     rows = conn.execute("""
-        SELECT o.id, o.volume, o.price, o.approved_at, o.expires_at, s.link
+        SELECT o.id, o.volume, o.price, o.approved_at, o.expires_at, COALESCE(s.link, o.pg_subscription_url) AS link
         FROM orders o
         LEFT JOIN subscriptions s ON o.subscription_id = s.id
         WHERE o.user_id = ? AND o.status = 'approved' AND o.is_charge = 0
@@ -1193,7 +1242,16 @@ async def send_services_message(message, user_id):
     else:
         text = t(lang, "services_title")
         for row in rows:
-            text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
+            if is_unlimited_volume(row["volume"]):
+                plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
+                if lang == "en":
+                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                elif lang == "ku":
+                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                else:
+                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+            else:
+                text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton(t(lang, "renew"), callback_data="renew")],
         [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
@@ -1238,24 +1296,6 @@ def apply_coupon(code, user_id, price):
         return {"status": "full"}
     new_price = int(price * (100 - coupon["percent"]) / 100)
     return {"status": "success", "coupon": coupon, "price": max(new_price, 0)}
-
-
-def reward_referral_commission(conn, user_id, order_id, price):
-    """Credit 10% commission to the direct referrer for an approved service order."""
-    row = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,)).fetchone()
-    if not row or not row["referred_by"] or int(row["referred_by"]) == int(user_id):
-        return 0
-    referrer_id = int(row["referred_by"])
-    referrer = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)).fetchone()
-    if not referrer:
-        return 0
-    commission = max(0, int(price) * 10 // 100)
-    if commission <= 0:
-        return 0
-    conn.execute("UPDATE users SET balance = COALESCE(balance, 0) + ? WHERE user_id = ?", (commission, referrer_id))
-    conn.execute("INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                 (referrer_id, commission, "referral_commission", f"کمیسیون دعوت از سفارش #{order_id}", order_id, now_text()))
-    return commission
 
 
 def referral_count(user_id):
@@ -1398,7 +1438,8 @@ async def show_admin_stock(query):
     text = "📦 موجودی HanzuVPN\n\n"
     if stock:
         for volume, count in stock.items():
-            text += f"🔹 {volume} گیگ: {count} عدد\n"
+            label = unlimited_display(volume, lang) if is_unlimited_volume(volume) else f"{volume} گیگ"
+            text += f"🔹 {label}: {count} عدد\n"
     else:
         text += "❌ سرویس فروشی موجود نیست.\n"
     text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
@@ -1427,47 +1468,74 @@ async def show_admin_stats(query):
     ]))
 
 
-async def show_admin_orders(query, status_filter=None):
+async def show_admin_orders(query):
     lang = get_user_language(query.from_user.id) or "fa"
     conn = get_db()
-    if status_filter in ("pending", "approved", "rejected"):
-        rows = conn.execute("SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 50", (status_filter,)).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 50").fetchall()
+    rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 15").fetchall()
     conn.close()
-    labels = {
-        "pending": "⏳ در انتظار تأیید",
-        "approved": "✅ تأیید شده",
-        "rejected": "❌ رد شده",
-        "cancelled": "🚫 لغو شده"
-    }
-    title = {
-        None: "🧾 همه سفارش‌ها",
-        "pending": "⏳ سفارش‌های در انتظار تأیید",
-        "approved": "✅ سفارش‌های تأیید شده",
-        "rejected": "❌ سفارش‌های رد شده",
-    }.get(status_filter, "🧾 سفارش‌ها")
     if not rows:
-        text = f"{title}\n\nموردی پیدا نشد."
+        text = "🧾 سفارشی ثبت نشده است."
     else:
-        text = f"{title}\n\n"
+        text = "🧾 آخرین سفارش‌ها\n\n"
         for row in rows:
-            username = (row["username"] or "").strip()
-            user_label = f"@{username.lstrip('@')}" if username else "بدون username"
+            status = {
+                "pending": "⏳ در انتظار",
+                "approved": "✅ تأیید",
+                "rejected": "❌ رد",
+                "cancelled": "🚫 لغو شده"
+            }.get(row["status"], row["status"])
             charge = " (شارژ کیف پول)" if row["is_charge"] else ""
             text += (
-                f"#{row['id']} | {row['first_name'] or '-'} | {user_label} | ID: {row['user_id']}{charge}\n"
+                f"#{row['id']} | {row['first_name'] or '-'}{charge}\n"
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
-                f"{labels.get(row['status'], row['status'])}\n🕐 {row['created_at']}\n\n"
+                f"{status}\n🕐 {row['created_at']}\n\n"
             )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+    ]))
+
+
+async def show_admin_trial(query):
+    lang = get_user_language(query.from_user.id) or "fa"
+    stock = get_free_trial_stock()
     keyboard = [
-        [InlineKeyboardButton("⏳ در انتظار تأیید", callback_data="admin_orders_pending")],
-        [InlineKeyboardButton("✅ تأیید شده", callback_data="admin_orders_approved")],
-        [InlineKeyboardButton("❌ رد شده", callback_data="admin_orders_rejected")],
-        [InlineKeyboardButton("🧾 همه سفارش‌ها", callback_data="admin_orders_all")],
+        [InlineKeyboardButton(t(lang, "admin_trial_add"), callback_data="admin_trial_add")],
+        [InlineKeyboardButton(t(lang, "admin_trial_delete"), callback_data="admin_trial_delete")],
+        [InlineKeyboardButton(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
         [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")],
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(
+        f"🎁 مدیریت تست رایگان\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n📊 موجودی: {stock}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_admin_trial_delete(query):
+    lang = get_user_language(query.from_user.id) or "fa"
+    rows = get_free_trial_list()
+    if not rows:
+        await query.edit_message_text(
+            "🗑 حذف تست\n\n❌ لینک تستی وجود ندارد.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
+        )
+        return
+    keyboard = [[InlineKeyboardButton(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
+    keyboard.append([InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")])
+    await query.edit_message_text("🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def show_delete_menu(query):
+    lang = get_user_language(query.from_user.id) or "fa"
+    rows = get_subscription_list()
+    if not rows:
+        await query.edit_message_text(
+            "🗑 حذف لینک\n\n❌ لینک استفاده‌نشده‌ای وجود ندارد.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]])
+        )
+        return
+    keyboard = [[InlineKeyboardButton(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
+    keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
+    await query.edit_message_text("🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -1566,6 +1634,31 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_buy_services(query)
         return
 
+    if data == "unlimited":
+        clear_user_states(context)
+        await show_unlimited_services(query)
+        return
+
+    if data.startswith("unlimited_plan_"):
+        plan_number = data.split("_")[-1]
+        volume = f"UNLIMITED_{plan_number}"
+        plan = UNLIMITED_PLANS.get(volume)
+        if not plan:
+            await query.answer("پلن نامعتبر است.", show_alert=True)
+            return
+        coupon_code = context.user_data.get("coupon_code")
+        price = plan["price"]
+        original_price = plan["price"]
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, price)
+            if result["status"] == "success":
+                price = result["price"]
+            else:
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+        await show_payment(query, volume, price, original_price, coupon_code)
+        return
+
     if data.startswith("plan_"):
         volume = data.split("_")[1]
         base_price = PLANS.get(volume)
@@ -1590,7 +1683,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if volume == "custom":
             volume = context.user_data.get("custom_volume")
         original_price = None
-        if volume in PLANS:
+        if is_unlimited_volume(volume):
+            original_price = UNLIMITED_PLANS[volume]["price"]
+        elif volume in PLANS:
             original_price = PLANS[volume]
         else:
             original_price = context.user_data.get("custom_price")
@@ -1615,7 +1710,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data.startswith("paymentback_"):
         volume = data.split("_", 1)[1]
-        original_price = PLANS.get(volume) or context.user_data.get("custom_price")
+        original_price = (UNLIMITED_PLANS[volume]["price"] if is_unlimited_volume(volume) else (PLANS.get(volume) or context.user_data.get("custom_price")))
         if not original_price:
             await show_buy_menu(query)
             return
@@ -1637,7 +1732,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("داده نامعتبر", show_alert=True)
             return
 
-        volume = parts[1]
+        volume = data[len("paid_"):]
+        if not is_unlimited_volume(volume):
+            volume = parts[1]
 
         # ---------- حالت شارژ کیف پول ----------
         if volume == "CHARGE":
@@ -1654,7 +1751,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         # ---------- حالت خرید سرویس ----------
-        if volume in PLANS:
+        if is_unlimited_volume(volume):
+            base_price = UNLIMITED_PLANS[volume]["price"]
+        elif volume in PLANS:
             base_price = PLANS[volume]
         else:
             # حجم دلخواه
@@ -1693,9 +1792,18 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.pop("pending_payment_original_price", None)
         context.user_data["last_order_id"] = order_id
 
-        await query.edit_message_text(
-            t(lang, "order_created", order=order_id, volume=volume, price=price)
-        )
+        if is_unlimited_volume(volume):
+            title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
+            receipt = (
+                "📸 Send the receipt." if lang == "en"
+                else ("📸 وێنەی پسوڵە بنێرە." if lang == "ku" else "📸 لطفاً تصویر رسید را ارسال کنید.")
+            )
+            amount_label = "Toman" if lang == "en" else "تومان"
+            await query.edit_message_text(f"{title}\n\n🧾 #{order_id}\n👤 {unlimited_display(volume, lang).replace('♾️ ', '')}\n💰 {price:,} {amount_label}\n\n{receipt}")
+        else:
+            await query.edit_message_text(
+                t(lang, "order_created", order=order_id, volume=volume, price=price)
+            )
         return
         if len(parts) < 2:
             return
@@ -1731,13 +1839,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # پرداخت از کیف پول
     if data.startswith("walletpay_"):
-        parts = data.split("_")
-        if len(parts) < 3:
-            return
-        volume = parts[1]
+        payload = data[len("walletpay_"):]
         try:
-            price = int(parts[2])
-        except ValueError:
+            volume, price_text = payload.rsplit("_", 1)
+            price = int(price_text)
+        except (ValueError, TypeError):
             return
 
         balance = get_balance(user_id)
@@ -1756,15 +1862,23 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         result = approve_order(order_id)
 
         if result["status"] == "approved":
-            await query.edit_message_text(
-                t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
-                "\n\n" +
-                t(lang, "payment_confirmed",
-                  volume=volume,
-                  expires=result["expires_at"],
-                  order=order_id,
-                  link=result["link"])
-            )
+            if is_unlimited_volume(volume):
+                title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
+                plan_text = unlimited_display(volume, lang).replace("♾️ ", "")
+                await query.edit_message_text(
+                    t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                    f"\n\n{title}\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
+                )
+            else:
+                await query.edit_message_text(
+                    t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                    "\n\n" +
+                    t(lang, "payment_confirmed",
+                      volume=volume,
+                      expires=result["expires_at"],
+                      order=order_id,
+                      link=result["link"])
+                )
         elif result["status"] == "no_stock":
             # برگشت پول
             change_balance(user_id, price, "refund", f"برگشت وجه به دلیل نبود موجودی - سفارش #{order_id}")
@@ -1808,8 +1922,17 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             text = t(lang, "services_title")
             for row in rows:
-                text += t(lang, "service_item", id=row["id"], volume=row["volume"],
-                          expires=row["expires_at"] or "-", link=row["link"] or "-")
+                if is_unlimited_volume(row["volume"]):
+                    plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
+                    if lang == "en":
+                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                    elif lang == "ku":
+                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                    else:
+                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
+                else:
+                    text += t(lang, "service_item", id=row["id"], volume=row["volume"],
+                              expires=row["expires_at"] or "-", link=row["link"] or "-")
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(t(lang, "renew"), callback_data="renew")],
             [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
@@ -1987,6 +2110,75 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # ==================== ادمین ====================
+    # تایید / رد رسید پرداخت توسط ادمین
+    if data.startswith("approve_") or data.startswith("reject_"):
+        if user_id != ADMIN_ID:
+            return
+        try:
+            order_id = int(data.split("_", 1)[1])
+        except (ValueError, IndexError):
+            await query.answer("❌ سفارش نامعتبر است.", show_alert=True)
+            return
+
+        if data.startswith("approve_"):
+            try:
+                result = approve_order(order_id)
+            except Exception as e:
+                print(f"Approve order error: {type(e).__name__}: {e}")
+                await query.answer("❌ خطا در تأیید سفارش.", show_alert=True)
+                return
+
+            if result.get("status") == "approved":
+                order = result.get("order")
+                link = result.get("link") or "-"
+                expires = result.get("expires_at") or "-"
+                recipient_lang = get_user_language(order["user_id"]) or "fa"
+                await query.edit_message_reply_markup(reply_markup=None)
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=t(recipient_lang, "payment_confirmed",
+                          volume=order["volume"], expires=expires, order=order_id, link=link)
+                )
+                await query.answer("✅ پرداخت تأیید شد.")
+                return
+
+            if result.get("status") == "charge_approved":
+                order = result.get("order")
+                recipient_lang = get_user_language(order["user_id"]) or "fa"
+                await query.edit_message_reply_markup(reply_markup=None)
+                await context.bot.send_message(
+                    chat_id=order["user_id"],
+                    text=t(recipient_lang, "charge_success", amount=order["price"], balance=get_balance(order["user_id"]))
+                )
+                await query.answer("✅ شارژ کیف پول تأیید شد.")
+                return
+
+            if result.get("status") == "no_stock":
+                await query.answer("❌ برای این سفارش لینک دستی موجود نیست.", show_alert=True)
+                return
+
+            await query.answer("⚠️ این سفارش قبلاً پردازش شده است.", show_alert=True)
+            return
+
+        # رد سفارش
+        try:
+            ok, order = reject_order(order_id)
+        except Exception as e:
+            print(f"Reject order error: {type(e).__name__}: {e}")
+            await query.answer("❌ خطا در رد سفارش.", show_alert=True)
+            return
+        if not ok:
+            await query.answer("⚠️ این سفارش قبلاً پردازش شده است.", show_alert=True)
+            return
+        await query.edit_message_reply_markup(reply_markup=None)
+        recipient_lang = get_user_language(order["user_id"]) or "fa"
+        await context.bot.send_message(
+            chat_id=order["user_id"],
+            text=t(recipient_lang, "payment_rejected", order=order_id)
+        )
+        await query.answer("❌ پرداخت رد شد.")
+        return
+
     if data == "admin":
         if user_id != ADMIN_ID:
             return
@@ -2005,15 +2197,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin_stats(query)
         return
 
-    if data in ("admin_orders", "admin_orders_all", "admin_orders_pending", "admin_orders_approved", "admin_orders_rejected"):
+    if data == "admin_orders":
         if user_id != ADMIN_ID:
             return
-        status_filter = {
-            "admin_orders_pending": "pending",
-            "admin_orders_approved": "approved",
-            "admin_orders_rejected": "rejected",
-        }.get(data)
-        await show_admin_orders(query, status_filter)
+        await show_admin_orders(query)
         return
 
     if data == "admin_backup":
@@ -2026,7 +2213,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_volume"] = True
-        await query.edit_message_text("➕ افزودن لینک سرویس\n\nحجم را به گیگ وارد کن:\n\nمثال: 10")
+        await query.edit_message_text("➕ افزودن لینک سرویس\n\nحجم را وارد کن:\n\nمثال: 10\nبرای نامحدود: UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3")
         return
 
     if data == "admin_delete":
@@ -2200,6 +2387,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if result["status"] == "no_stock":
             await query.answer("برای این حجم لینک موجود نیست.", show_alert=True)
             return
+        if result["status"] == "pg_error":
+            await query.answer("❌ ساخت سرویس نامحدود در پنل ناموفق بود. سفارش هنوز در انتظار تأیید است.", show_alert=True)
+            return
 
         order = result["order"]
         recipient_lang = get_user_language(order["user_id"]) or "fa"
@@ -2216,17 +2406,24 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 await query.edit_message_text(f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             return
 
-        await context.bot.send_message(
-            chat_id=order["user_id"],
-            text=t(recipient_lang, "payment_confirmed",
+        if is_unlimited_volume(order["volume"]):
+            plan_text = unlimited_display(order["volume"], recipient_lang).replace("♾️ ", "")
+            if recipient_lang == "en":
+                confirmation_text = f"✅ Payment approved.\n\n♾️ Unlimited Service\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
+            elif recipient_lang == "ku":
+                confirmation_text = f"✅ پارەدان پشتڕاستکرایەوە.\n\n♾️ خزمەتگوزاری بێ سنوور\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
+            else:
+                confirmation_text = f"✅ پرداخت تأیید شد.\n\n♾️ سرویس نامحدود\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
+        else:
+            confirmation_text = t(recipient_lang, "payment_confirmed",
                    volume=order["volume"],
                    expires=result["expires_at"],
                    order=order_id,
                    link=result["link"])
-        )
+        await context.bot.send_message(chat_id=order["user_id"], text=confirmation_text)
         try:
             await query.edit_message_caption(
-                caption=f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}"
+                caption=(f"✅ سفارش #{order_id} تأیید شد.\n♾️ {unlimited_display(order['volume'], recipient_lang).replace('♾️ ', '')}\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}" if is_unlimited_volume(order['volume']) else f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}")
             )
         except Exception:
             await query.edit_message_text(
@@ -2628,17 +2825,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # حجم لینک ادمین
     if user.id == ADMIN_ID and context.user_data.get("admin_waiting_volume"):
-        try:
-            volume = int(text)
-            if volume <= 0 or volume > 1000:
-                raise ValueError
-        except ValueError:
-            await update.message.reply_text("❌ حجم نامعتبر است.")
-            return
+        raw_volume = text.strip().upper().replace(" ", "")
+        if raw_volume in UNLIMITED_PLANS:
+            volume = raw_volume
+            label = unlimited_display(volume, "fa")
+        else:
+            try:
+                volume_num = int(float(raw_volume))
+                if volume_num <= 0 or volume_num > 1000:
+                    raise ValueError
+                volume = str(volume_num)
+                label = f"{volume_num} گیگ"
+            except ValueError:
+                await update.message.reply_text("❌ حجم نامعتبر است.\n\nبرای نامحدود از UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3 استفاده کن.")
+                return
         context.user_data["admin_waiting_volume"] = False
-        context.user_data["admin_add_volume"] = str(volume)
+        context.user_data["admin_add_volume"] = volume
         context.user_data["admin_waiting_link"] = True
-        await update.message.reply_text(f"✅ حجم {volume} گیگ ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
+        await update.message.reply_text(f"✅ {label} ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
         return
 
     # لینک سرویس ادمین
@@ -2650,7 +2854,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_subscription(volume, text)
         context.user_data.pop("admin_waiting_link", None)
         context.user_data.pop("admin_add_volume", None)
-        await update.message.reply_text(f"✅ لینک اضافه شد.\n\n📦 حجم: {volume} گیگ")
+        label = unlimited_display(volume, "fa") if is_unlimited_volume(volume) else f"📦 {volume} گیگ"
+        await update.message.reply_text(f"✅ لینک اضافه شد.\n\n{label}")
         return
 
 
@@ -2729,13 +2934,13 @@ async def expiration_checker(application):
                 exists = conn.execute("SELECT id FROM reminders WHERE order_id = ? AND reminder_type = ?",
                                       (row["id"], reminder_type)).fetchone()
                 if not exists:
+                    conn.execute("INSERT INTO reminders (order_id, user_id, reminder_type, sent_at) VALUES (?, ?, ?, ?)",
+                                 (row["id"], row["user_id"], reminder_type, now_text()))
+                    conn.commit()
                     try:
                         await application.bot.send_message(chat_id=row["user_id"], text=message)
-                        conn.execute("INSERT OR IGNORE INTO reminders (order_id, user_id, reminder_type, sent_at) VALUES (?, ?, ?, ?)",
-                                     (row["id"], row["user_id"], reminder_type, now_text()))
-                        conn.commit()
-                    except Exception as send_error:
-                        print(f"Reminder send error for order #{row['id']}: {type(send_error).__name__}: {send_error}")
+                    except Exception:
+                        pass
                 conn.close()
         except Exception as e:
             print("Expiration checker error:", e)
@@ -2791,7 +2996,8 @@ def _api_purchase_wallet(user, volume, price):
     # خرید کیف پول کاملاً اتمیک است: یا همه مراحل انجام می‌شوند یا هیچ‌کدام.
     # volume به شکل عددی نرمال می‌شود تا موجودی‌هایی مثل «10»، «10GB» یا «10 گیگ»
     # هم قابل تطبیق باشند.
-    normalized_volume = _normalize_volume(volume)
+    raw_volume = str(volume).strip()
+    normalized_volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
     if not normalized_volume:
         return {"status":"invalid_volume"}
 
@@ -2809,10 +3015,7 @@ def _api_purchase_wallet(user, volume, price):
                 return {"status":"insufficient_balance", "balance":balance}
 
             # تطبیق عددی حجم، مستقل از فرمت ذخیره‌شده در subscriptions.volume
-            sub = conn.execute(
-                "SELECT id, link FROM subscriptions WHERE CAST(TRIM(REPLACE(REPLACE(LOWER(volume), 'gb', ''), 'گیگ', '')) AS INTEGER) = ? AND used = 0 ORDER BY id LIMIT 1",
-                (int(normalized_volume),)
-            ).fetchone()
+            sub = stock_subscription_query(conn, normalized_volume)
             if not sub:
                 conn.rollback()
                 return {"status":"no_stock", "balance":balance, "volume":normalized_volume}
@@ -2831,7 +3034,7 @@ def _api_purchase_wallet(user, volume, price):
 
             tx = conn.execute(
                 "INSERT INTO wallet_transactions (user_id, amount, type, description, order_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-                (user.id, -price, "purchase", f"خرید سرویس {normalized_volume} گیگ", now_text())
+                (user.id, -price, "purchase", f"خرید سرویس {unlimited_display(normalized_volume, 'fa') if is_unlimited_volume(normalized_volume) else normalized_volume + ' گیگ'}", now_text())
             )
             order_id = conn.execute(
                 "INSERT INTO orders (user_id, username, first_name, volume, price, status, created_at, is_charge, subscription_id, approved_at, expires_at) VALUES (?, ?, ?, ?, ?, 'approved', ?, 0, ?, ?, ?)",
@@ -2841,7 +3044,6 @@ def _api_purchase_wallet(user, volume, price):
             used = conn.execute("UPDATE subscriptions SET used = 1 WHERE id = ? AND used = 0", (sub["id"],))
             if used.rowcount != 1:
                 raise RuntimeError("subscription_race")
-            reward_referral_commission(conn, user.id, order_id, price)
 
             conn.commit()
             return {
@@ -2912,7 +3114,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return self._send(200,{"ok":True,"balance":get_balance(u.id)})
         if self.path.startswith("/api/bootstrap"):
             rows=get_user_services(u.id)
-            plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()]
+            plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()] + [
+                {"volume":k,"price":int(v["price"]),"available":bool(get_stock().get(k,0)),"kind":"unlimited","label_fa":v["label_fa"],"label_en":v["label_en"],"label_ku":v["label_ku"]}
+                for k,v in UNLIMITED_PLANS.items()
+            ]
             conn=get_db()
             try:
                 tx=conn.execute("SELECT amount, type, description, created_at FROM wallet_transactions WHERE user_id=? ORDER BY id DESC LIMIT 20", (u.id,)).fetchall()
@@ -2923,13 +3128,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=self._user()
         if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-            if content_length > 12 * 1024 * 1024:
-                return self._send(413, {"ok":False,"error":"payload_too_large"})
-            payload=json.loads(self.rfile.read(content_length) or b"{}")
-        except Exception:
-            return self._send(400,{"ok":False,"error":"bad_json"})
+        try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))) or b"{}")
+        except Exception: return self._send(400,{"ok":False,"error":"bad_json"})
         path=self.path.split("?",1)[0]
         if path in ("/api/buy","/api/renew"):
             if path=="/api/renew":
@@ -2938,17 +3138,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     conn.execute("BEGIN IMMEDIATE")
                     order=conn.execute("SELECT id, volume, price, expires_at FROM orders WHERE id=? AND user_id=? AND status='approved' AND is_charge=0",(oid,u.id)).fetchone()
                     if not order: conn.rollback(); return self._send(404,{"ok":False,"error":"service_not_found"})
-                    price=int(float(order["volume"]))*PRICE_PER_GB; bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
+                    price=plan_price(order["volume"]); bal=conn.execute("SELECT balance FROM users WHERE user_id=?",(u.id,)).fetchone()[0] or 0
                     if bal<price: conn.rollback(); return self._send(200,{"ok":False,"error":"insufficient_balance","balance":bal,"price":price})
                     old=datetime.strptime(order["expires_at"],"%Y-%m-%d %H:%M:%S") if order["expires_at"] else datetime.now(); base=max(old,datetime.now()); newexp=base+timedelta(days=SERVICE_DAYS)
                     conn.execute("UPDATE users SET balance=balance-? WHERE user_id=?",(price,u.id)); conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",(u.id,-price,"renew",f"تمدید سرویس #{oid}",oid,now_text())); conn.execute("UPDATE orders SET expires_at=? WHERE id=?",(newexp.strftime("%Y-%m-%d %H:%M:%S"),oid)); conn.commit(); return self._send(200,{"ok":True,"order_id":oid,"price":price,"balance":bal-price,"expires_at":newexp.strftime("%Y-%m-%d %H:%M:%S")})
                 except Exception as e:
                     conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
                 finally: conn.close()
-            volume = _normalize_volume(payload.get("volume"))
+            raw_volume = str(payload.get("volume", "")).strip()
+            volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
             if not volume:
                 return self._send(400,{"ok":False,"error":"invalid_volume"})
-            price = TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)
+            price = plan_price(volume)
             # خرید واقعی فقط در تراکنش اتمیک انجام می‌شود؛ موجودی/موجودی سرویس
             # بین pre-check و خرید دیگر نمی‌تواند باعث race condition شود.
             r=_api_purchase_wallet(u,volume,price)
@@ -2987,7 +3188,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             tg=_telegram_send_photo_base64(u.id,"شارژ کیف پول",real_amount,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         if path=="/api/buy-receipt":
-            volume=_normalize_volume(payload.get("volume")); price=(TARIFF_PLANS.get(volume) or (int(volume) * PRICE_PER_GB)) if volume else 0; img=payload.get("image","")
+            raw_volume=str(payload.get("volume", "")).strip()
+            volume=raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
+            price=plan_price(volume) if volume else 0
+            img=payload.get("image","")
             if not volume or price <= 0 or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})
             oid=create_order(u,volume,price); tg=_telegram_send_photo_base64(u.id,volume,price,img,oid)
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
@@ -2995,14 +3199,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
 
 def start_miniapp_api():
-    try:
-        server = ThreadingHTTPServer((API_HOST, API_PORT), MiniAppHandler)
-    except OSError as e:
-        print(f"Mini App API disabled: {type(e).__name__}: {e}")
-        return None
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
+    threading.Thread(target=server.serve_forever,daemon=True).start()
     print(f"Mini App API listening on {API_HOST}:{API_PORT}")
-    return server
 
 
 # =========================================================
@@ -3015,7 +3214,7 @@ async def post_init(application):
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text="🛒 HanzuVPN",
-                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20260928-v6"),
+                web_app=WebAppInfo(url=MINI_APP_URL + "?v=20261002-manual-unlimited"),
             )
         )
     except Exception as e:

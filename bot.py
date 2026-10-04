@@ -694,6 +694,226 @@ def now_text():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# =========================================================
+# Telegram Rich Messages (Bot API 10.1+)
+# =========================================================
+#
+# Rich Messages are sent directly through Bot API because older/newer
+# python-telegram-bot installations may not expose the new methods yet.
+# If Telegram rejects a rich request, we transparently fall back to the
+# normal python-telegram-bot message API so the bot remains usable.
+RICH_MESSAGES_ENABLED = os.getenv("RICH_MESSAGES_ENABLED", "true").lower() not in {
+    "0", "false", "no", "off"
+}
+RICH_API_TIMEOUT = float(os.getenv("RICH_API_TIMEOUT", "20"))
+
+
+def _rich_button_html(button):
+    """Convert an InlineKeyboardButton into Telegram Rich HTML."""
+    import html
+
+    label = html.escape(getattr(button, "text", "") or "Button")
+    custom_emoji_id = getattr(button, "icon_custom_emoji_id", None)
+    if custom_emoji_id:
+        label = f'<tg-emoji emoji-id="{html.escape(str(custom_emoji_id))}">🔘</tg-emoji> {label}'
+
+    style = getattr(button, "style", None)
+    style_attr = f' style="{html.escape(style)}"' if style in {
+        "danger", "success", "primary", "link"
+    } else ""
+
+    # URL button
+    url = getattr(button, "url", None)
+    if url:
+        return f'<tg-button type="url"{style_attr} url="{html.escape(url, quote=True)}">{label}</tg-button>'
+
+    # Web App button
+    web_app = getattr(button, "web_app", None)
+    if web_app and getattr(web_app, "url", None):
+        return f'<tg-button type="web_app"{style_attr} url="{html.escape(web_app.url, quote=True)}">{label}</tg-button>'
+
+    # Copy-text button
+    copy_text = getattr(button, "copy_text", None)
+    if copy_text and getattr(copy_text, "text", None) is not None:
+        return f'<tg-button type="copy_text"{style_attr} text="{html.escape(copy_text.text, quote=True)}">{label}</tg-button>'
+
+    # Callback button
+    callback_data = getattr(button, "callback_data", None)
+    if callback_data is not None:
+        return f'<tg-button type="callback_data"{style_attr} data="{html.escape(str(callback_data), quote=True)}">{label}</tg-button>'
+
+    # Login URL / switch-query buttons if present in the installed PTB version.
+    login_url = getattr(button, "login_url", None)
+    if login_url and getattr(login_url, "url", None):
+        return f'<tg-button type="login_url"{style_attr} url="{html.escape(login_url.url, quote=True)}">{label}</tg-button>'
+
+    switch_inline = getattr(button, "switch_inline_query", None)
+    if switch_inline is not None:
+        return f'<tg-button type="switch_inline_query"{style_attr} query="{html.escape(str(switch_inline), quote=True)}">{label}</tg-button>'
+
+    switch_current = getattr(button, "switch_inline_query_current_chat", None)
+    if switch_current is not None:
+        return f'<tg-button type="switch_inline_query_current_chat"{style_attr} query="{html.escape(str(switch_current), quote=True)}">{label}</tg-button>'
+
+    return None
+
+
+def _rich_markup_html(reply_markup):
+    """Turn an InlineKeyboardMarkup into Rich Message button rows.
+    ReplyKeyboardMarkup is intentionally left to Telegram as normal markup.
+    """
+    if not isinstance(reply_markup, InlineKeyboardMarkup):
+        return None
+
+    rows = []
+    for row in (reply_markup.inline_keyboard or []):
+        buttons = []
+        for button in row:
+            rendered = _rich_button_html(button)
+            if rendered:
+                buttons.append(rendered)
+        if buttons:
+            rows.append("<tg-button-row>" + "".join(buttons) + "</tg-button-row>")
+    return "\n".join(rows) if rows else None
+
+
+def _rich_content(text, parse_mode=None, reply_markup=None):
+    """Build InputRichMessage payload using Telegram's HTML rich syntax."""
+    import html
+
+    text = "" if text is None else str(text)
+    mode = str(parse_mode or "").upper()
+    if mode == "HTML":
+        content = text
+    elif mode in {"MARKDOWN", "MARKDOWNV2"}:
+        # Rich Markdown accepts the existing Telegram Markdown plus HTML tags.
+        content = text
+    else:
+        # Plain text is escaped so user-provided content cannot become Rich HTML.
+        content = html.escape(text)
+
+    button_html = _rich_markup_html(reply_markup)
+    if button_html:
+        content += "\n\n" + button_html
+
+    return {"html": content}
+
+
+def _telegram_api_call(method, payload):
+    """Synchronous low-level Bot API call used by the Rich Message bridge."""
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urlrequest.Request(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    with urlrequest.urlopen(req, timeout=RICH_API_TIMEOUT) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    if not result.get("ok"):
+        raise RuntimeError(result.get("description", f"Telegram {method} failed"))
+    return result.get("result")
+
+
+async def send_rich_message(bot, chat_id, text, reply_markup=None,
+                            parse_mode=None, **kwargs):
+    """Send a persistent Telegram Rich Message, with automatic fallback."""
+    if not RICH_MESSAGES_ENABLED:
+        return await bot.send_message(
+            chat_id=chat_id, text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
+        )
+
+    payload = {
+        "chat_id": chat_id,
+        "rich_message": _rich_content(text, parse_mode, reply_markup),
+    }
+    for key in (
+        "disable_notification", "protect_content", "message_thread_id",
+        "business_connection_id", "direct_messages_topic_id",
+        "message_effect_id", "allow_paid_broadcast",
+    ):
+        if key in kwargs and kwargs[key] is not None:
+            payload[key] = kwargs[key]
+
+    # Reply keyboards are not Rich buttons and can be supplied normally.
+    if reply_markup is not None and not isinstance(reply_markup, InlineKeyboardMarkup):
+        if hasattr(reply_markup, "to_json"):
+            payload["reply_markup"] = json.loads(reply_markup.to_json())
+
+    try:
+        result = await asyncio.to_thread(_telegram_api_call, "sendRichMessage", payload)
+        return result
+    except Exception as rich_error:
+        print(f"Rich send fallback: {type(rich_error).__name__}: {rich_error}")
+        return await bot.send_message(
+            chat_id=chat_id, text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
+        )
+
+
+async def rich_reply(message, text, reply_markup=None, parse_mode=None, **kwargs):
+    return await send_rich_message(
+        message.get_bot(), message.chat_id, text,
+        reply_markup=reply_markup, parse_mode=parse_mode, **kwargs
+    )
+
+
+async def rich_edit(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    """Edit an existing bot message as a Rich Message, with fallback."""
+    if not RICH_MESSAGES_ENABLED:
+        return await query.message.edit_text(
+            text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
+        )
+
+    message = query.message
+    if not message:
+        return await query.answer("پیام قابل ویرایش نیست.", show_alert=True)
+
+    payload = {
+        "chat_id": message.chat_id,
+        "message_id": message.message_id,
+        "rich_message": _rich_content(text, parse_mode, reply_markup),
+    }
+    if message.business_connection_id:
+        payload["business_connection_id"] = message.business_connection_id
+
+    try:
+        result = await asyncio.to_thread(_telegram_api_call, "editMessageText", payload)
+        return result
+    except Exception as rich_error:
+        print(f"Rich edit fallback: {type(rich_error).__name__}: {rich_error}")
+        return await message.edit_text(
+            text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
+        )
+
+
+async def rich_reply_text(message, text, reply_markup=None, parse_mode=None, **kwargs):
+    """Drop-in replacement for Message.reply_text for textual bot replies."""
+    return await rich_reply(
+        message, text, reply_markup=reply_markup,
+        parse_mode=parse_mode, **kwargs
+    )
+
+
+async def rich_draft(bot, chat_id, draft_id, html, can_stop=True, keep_on_stop=False):
+    """Stream a temporary Rich Message draft (useful for AI-generated replies)."""
+    payload = {
+        "chat_id": chat_id,
+        "draft_id": int(draft_id) or 1,
+        "rich_message": {"html": html},
+        "can_stop": bool(can_stop),
+        "keep_on_stop": bool(keep_on_stop),
+    }
+    return await asyncio.to_thread(
+        _telegram_api_call, "sendRichMessageDraft", payload
+    )
+
+
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -743,7 +963,7 @@ def language_keyboard():
 
 
 async def show_language_selector_message(message):
-    await message.reply_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+    await rich_reply_text(message, TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
 
 
 def clear_user_states(context):
@@ -1016,12 +1236,12 @@ def home_keyboard(user_id):
 
 async def show_home(query, user_id):
     lang = get_user_language(user_id) or "fa"
-    await query.edit_message_text(t(lang, "welcome"), reply_markup=home_keyboard(user_id))
+    await rich_edit(query, t(lang, "welcome"), reply_markup=home_keyboard(user_id))
 
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "welcome"), reply_markup=bottom_keyboard(user_id))
+    await rich_reply_text(message, t(lang, "welcome"), reply_markup=bottom_keyboard(user_id))
 
 
 def dashboard_text(user, lang):
@@ -1046,12 +1266,12 @@ def dashboard_keyboard(user_id):
 
 async def send_dashboard(message, user):
     lang = get_user_language(user.id) or "fa"
-    await message.reply_text(dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
+    await rich_reply_text(message, dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
 
 
 async def show_dashboard(query, user):
     lang = get_user_language(user.id) or "fa"
-    await query.edit_message_text(dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
+    await rich_edit(query, dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
 
 
 async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1124,12 +1344,12 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     result = claim_trial(user)
     if result["status"] == "already":
-        await update.message.reply_text(t(lang, "trial_already"))
+        await rich_reply_text(update.message, t(lang, "trial_already"))
         return
     if result["status"] == "empty":
-        await update.message.reply_text(t(lang, "trial_empty"))
+        await rich_reply_text(update.message, t(lang, "trial_empty"))
         return
-    await update.message.reply_text(t(lang, "trial_success", link=result["link"]))
+    await rich_reply_text(update.message, t(lang, "trial_success", link=result["link"]))
 
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1140,7 +1360,7 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    await update.message.reply_text(
+    await rich_reply_text(update.message, 
         t(lang, "support_title"),
         reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "create_ticket"), callback_data="new_ticket")],
@@ -1149,6 +1369,25 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+
+async def rich_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only Rich Message smoke test."""
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    html = (
+        "<p><b>✨ Rich Message فعال است</b></p>"
+        "<p><b>HanzuVPN</b> اکنون از پیام‌های غنی تلگرام استفاده می‌کند.</p>"
+        "<ul><li>متن ساختاریافته</li><li>دکمه داخل خود پیام</li><li>Copy Text</li><li>پشتیبانی از Draft/Streaming</li></ul>"
+        "<details><summary>جزئیات فنی</summary>"
+        "Bot API 10.1+ · sendRichMessage · sendRichMessageDraft · editMessageText.rich_message"
+        "</details>"
+        '<tg-button-row>'
+        '<tg-button type="callback_data" style="success" data="home">🏠 منوی اصلی</tg-button>'
+        '<tg-button type="copy_text" text="HanzuVPN Rich Message">📋 کپی</tg-button>'
+        "</tg-button-row>"
+    )
+    await rich_reply(update.message, html, parse_mode="HTML")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     ensure_user(user)
@@ -1156,7 +1395,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    await update.message.reply_text(t(lang, "help"))
+    await rich_reply_text(update.message, t(lang, "help"))
 
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1286,17 +1525,17 @@ def buy_keyboard(user_id):
 async def send_buy_message(message):
     user_id = message.from_user.id
     lang = get_user_language(user_id) or "fa"
-    await message.reply_text(t(lang, "buy_title"), reply_markup=buy_period_keyboard(user_id))
+    await rich_reply_text(message, t(lang, "buy_title"), reply_markup=buy_period_keyboard(user_id))
 
 
 async def show_buy_menu(query):
     lang = get_user_language(query.from_user.id) or "fa"
-    await query.edit_message_text(t(lang, "buy_title"), reply_markup=buy_period_keyboard(query.from_user.id))
+    await rich_edit(query, t(lang, "buy_title"), reply_markup=buy_period_keyboard(query.from_user.id))
 
 
 async def show_buy_services(query):
     lang = get_user_language(query.from_user.id) or "fa"
-    await query.edit_message_text(t(lang, "buy_title"), reply_markup=buy_keyboard(query.from_user.id))
+    await rich_edit(query, t(lang, "buy_title"), reply_markup=buy_keyboard(query.from_user.id))
 
 
 async def show_unlimited_services(query):
@@ -1312,7 +1551,7 @@ async def show_unlimited_services(query):
         title = "♾️ سرویس نامحدود\n\nپلن موردنظر را انتخاب کنید:"
     keyboard = [[styled_inline_button(text, callback_data=cb)] for text, cb in buttons]
     keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy_monthly")])
-    await query.edit_message_text(title, reply_markup=InlineKeyboardMarkup(keyboard))
+    await rich_edit(query, title, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -1341,7 +1580,7 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
         [styled_inline_button(t(lang, "pay"), callback_data=f"pay_{volume}")],
     ]
     keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy")])
-    await query.edit_message_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
+    await rich_edit(query, caption, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def show_card_payment(query, volume, original_price, coupon_code=None, final_price=None):
@@ -1378,7 +1617,7 @@ async def show_card_payment(query, volume, original_price, coupon_code=None, fin
     if balance >= price:
         keyboard.insert(0, [styled_inline_button(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
     keyboard.append([styled_inline_button(t(lang, "back"), callback_data=f"paymentback_{volume}")])
-    await query.edit_message_text(caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await rich_edit(query, caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -1610,7 +1849,7 @@ async def send_services_message(message, user_id):
                     text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
             else:
                 text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
-    await message.reply_text(text, reply_markup=InlineKeyboardMarkup([
+    await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "renew"), callback_data="renew")],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
     ]))
@@ -1754,7 +1993,7 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_document(chat_id=user.id, document=InputFile(f, filename=filename), caption="💾 بکاپ کامل دیتابیس HanzuVPN")
     except Exception as e:
         print(f"Backup error: {type(e).__name__}: {e}")
-        if update.message: await update.message.reply_text("❌ دریافت بکاپ ناموفق بود.")
+        if update.message: await rich_reply_text(update.message, "❌ دریافت بکاپ ناموفق بود.")
     finally:
         if path:
             try: os.remove(path)
@@ -1773,7 +2012,7 @@ async def show_button_style_panel(query):
         [styled_inline_button("🎯 تنظیم رنگ تک‌تک دکمه‌ها", callback_data="admin_button_colors")],
         [styled_inline_button("↩️ بازگشت به پنل مدیریت", callback_data="admin")],
     ]
-    await query.edit_message_text(
+    await rich_edit(query, 
         f"🎨 تنظیم استایل دکمه‌ها\n\n"
         f"استایل سراسری فعلی: {BUTTON_STYLE_OPTIONS[current]}\n\n"
         "اگر برای یک دکمه رنگ اختصاصی تعیین کنی، همان رنگ روی آن دکمه اعمال می‌شود و "
@@ -1801,7 +2040,7 @@ async def show_button_color_list(query):
     keyboard.append([styled_inline_button("⚡ دکمه‌های پویا (pay_* و ...)", callback_data="button_color_dynamic")])
     keyboard.append([styled_inline_button("↩️ بازگشت", callback_data="admin_button_style")])
 
-    await query.edit_message_text(
+    await rich_edit(query, 
         "🎯 تنظیم رنگ تک‌تک دکمه‌ها\n\n"
         "روی هر دکمه بزن و رنگ دلخواهش را انتخاب کن.\n"
         "⚪ یعنی بدون رنگ اختصاصی و استفاده از تنظیم سراسری/خودکار.",
@@ -1841,7 +2080,7 @@ async def show_button_color_picker(query, key, label=None):
         [styled_inline_button("↩️ لیست دکمه‌ها", callback_data="admin_button_colors")],
     ]
 
-    await query.edit_message_text(
+    await rich_edit(query, 
         f"🎨 انتخاب رنگ\n\nدکمه: {label}\n"
         f"رنگ فعلی: {BUTTON_STYLE_OPTIONS.get(current, BUTTON_STYLE_OPTIONS['default'])}\n\n"
         "رنگ موردنظر را انتخاب کن:",
@@ -1860,7 +2099,7 @@ async def show_dynamic_button_color_picker(query):
             )
         ])
     keyboard.append([styled_inline_button("↩️ لیست دکمه‌ها", callback_data="admin_button_colors")])
-    await query.edit_message_text(
+    await rich_edit(query, 
         "⚡ تنظیم رنگ دکمه‌های پویا\n\n"
         "این گزینه‌ها روی همه callbackهایی که با همان پیشوند شروع شوند اعمال می‌شوند.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1878,7 +2117,7 @@ async def show_dynamic_color_picker(query, pattern):
         [styled_inline_button(f"{'✅ ' if current == 'primary' else ''}🔵 آبی", callback_data=f"button_color_dynamic_set_primary_{encoded}")],
         [styled_inline_button("↩️ دکمه‌های پویا", callback_data="button_color_dynamic")],
     ]
-    await query.edit_message_text(
+    await rich_edit(query, 
         f"🎨 رنگ دکمه‌های پویا\n\n{label}  ({pattern})\n"
         f"رنگ فعلی: {BUTTON_STYLE_OPTIONS.get(current, BUTTON_STYLE_OPTIONS['default'])}",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1906,7 +2145,7 @@ async def show_admin(query):
         [styled_inline_button("🎨 استایل دکمه‌ها", callback_data="admin_button_style")],
         [styled_inline_button(t(lang, "back"), callback_data="home")],
     ]
-    await query.edit_message_text(
+    await rich_edit(query, 
         "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1924,7 +2163,7 @@ async def show_admin_stock(query):
     else:
         text += "❌ سرویس فروشی موجود نیست.\n"
     text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+    await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
@@ -1944,7 +2183,7 @@ async def show_admin_stats(query):
         f"👥 دعوت‌ها: {s['referrals']}\n"
         f"🎫 تیکت‌های باز: {s['tickets']}"
     )
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+    await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
@@ -1971,7 +2210,7 @@ async def show_admin_orders(query):
                 f"📦 {row['volume']} | {row['price']:,} تومان\n"
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+    await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
@@ -1985,7 +2224,7 @@ async def show_admin_trial(query):
         [styled_inline_button(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
     ]
-    await query.edit_message_text(
+    await rich_edit(query, 
         f"🎁 مدیریت تست رایگان\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n📊 موجودی: {stock}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1995,28 +2234,28 @@ async def show_admin_trial_delete(query):
     lang = get_user_language(query.from_user.id) or "fa"
     rows = get_free_trial_list()
     if not rows:
-        await query.edit_message_text(
+        await rich_edit(query, 
             "🗑 حذف تست\n\n❌ لینک تستی وجود ندارد.",
             reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
         return
     keyboard = [[styled_inline_button(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
     keyboard.append([styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")])
-    await query.edit_message_text("🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await rich_edit(query, "🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def show_delete_menu(query):
     lang = get_user_language(query.from_user.id) or "fa"
     rows = get_subscription_list()
     if not rows:
-        await query.edit_message_text(
+        await rich_edit(query, 
             "🗑 حذف لینک\n\n❌ لینک استفاده‌نشده‌ای وجود ندارد.",
             reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]])
         )
         return
     keyboard = [[styled_inline_button(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
     keyboard.append([styled_inline_button(t(lang, "admin_panel"), callback_data="admin")])
-    await query.edit_message_text("🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
+    await rich_edit(query, "🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # =========================================================
@@ -2108,7 +2347,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # زبان
     if data == "language":
-        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+        await rich_edit(query, TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
 
     if data.startswith("language_"):
@@ -2118,21 +2357,21 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         set_user_language(user_id, language)
         clear_user_states(context)
-        await query.edit_message_text(
+        await rich_edit(query, 
             t(language, "language_changed") + "\n\n" + t(language, "welcome"),
             reply_markup=home_keyboard(user_id)
         )
         # ReplyKeyboardMarkup مستقل از InlineKeyboardMarkup است؛ بعد از تغییر زبان
         # باید کیبورد پایینی را هم دوباره ارسال کنیم تا متن تمام دکمه‌ها به‌روز شود.
         try:
-            await query.message.reply_text(t(language, "language_changed"), reply_markup=bottom_keyboard(user_id))
+            await rich_reply_text(query.message, t(language, "language_changed"), reply_markup=bottom_keyboard(user_id))
         except Exception as e:
             print("Language reply keyboard update error:", e)
         return
 
     lang = get_user_language(user_id)
     if not lang and user_id != ADMIN_ID:
-        await query.edit_message_text(TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
+        await rich_edit(query, TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
         return
     # خانه
     if data == "home":
@@ -2149,7 +2388,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     # کیف پول کاربر
     if data == "wallet":
         balance = get_balance(user_id)
-        await query.edit_message_text(
+        await rich_edit(query, 
             t(lang, "wallet_title", balance=balance),
             reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "charge_wallet"), callback_data="charge_wallet")],
@@ -2161,7 +2400,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data == "charge_wallet":
         context.user_data["waiting_charge_amount"] = True
-        await query.edit_message_text(t(lang, "charge_prompt", min=MIN_CHARGE))
+        await rich_edit(query, t(lang, "charge_prompt", min=MIN_CHARGE))
         return
 
     if data == "wallet_history":
@@ -2177,7 +2416,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                           amount=abs(row["amount"]),
                           desc=row["description"] or row["type"],
                           date=row["created_at"])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "back"), callback_data="wallet")]
         ]))
         return
@@ -2304,7 +2543,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 await query.answer("سفارش شارژ پیدا نشد. دوباره تلاش کنید.", show_alert=True)
                 return
 
-            await query.edit_message_text(
+            await rich_edit(query, 
                 t(lang, "charge_created", order=order_id, amount=amount)
             )
             return
@@ -2358,9 +2597,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 else ("📸 وێنەی پسوڵە بنێرە." if lang == "ku" else "📸 لطفاً تصویر رسید را ارسال کنید.")
             )
             amount_label = "Toman" if lang == "en" else "تومان"
-            await query.edit_message_text(f"{title}\n\n🧾 #{order_id}\n👤 {unlimited_display(volume, lang).replace('♾️ ', '')}\n💰 {price:,} {amount_label}\n\n{receipt}")
+            await rich_edit(query, f"{title}\n\n🧾 #{order_id}\n👤 {unlimited_display(volume, lang).replace('♾️ ', '')}\n💰 {price:,} {amount_label}\n\n{receipt}")
         else:
-            await query.edit_message_text(
+            await rich_edit(query, 
                 t(lang, "order_created", order=order_id, volume=volume, price=price)
             )
         return
@@ -2393,7 +2632,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.pop("custom_price", None)
         context.user_data["last_order_id"] = order_id
 
-        await query.edit_message_text(t(lang, "order_created", order=order_id, volume=volume, price=price))
+        await rich_edit(query, t(lang, "order_created", order=order_id, volume=volume, price=price))
         return
 
     # پرداخت از کیف پول
@@ -2424,12 +2663,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             if is_unlimited_volume(volume):
                 title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
                 plan_text = unlimited_display(volume, lang).replace("♾️ ", "")
-                await query.edit_message_text(
+                await rich_edit(query, 
                     t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
                     f"\n\n{title}\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
                 )
             else:
-                await query.edit_message_text(
+                await rich_edit(query, 
                     t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
                     "\n\n" +
                     t(lang, "payment_confirmed",
@@ -2441,33 +2680,33 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         elif result["status"] == "no_stock":
             # برگشت پول
             change_balance(user_id, price, "refund", f"برگشت وجه به دلیل نبود موجودی - سفارش #{order_id}")
-            await query.edit_message_text("❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
+            await rich_edit(query, "❌ موجودی سرویس کافی نیست. مبلغ به کیف پول برگردانده شد.")
         else:
             change_balance(user_id, price, "refund", f"برگشت وجه - سفارش #{order_id}")
-            await query.edit_message_text("❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
+            await rich_edit(query, "❌ خطا در تحویل سرویس. مبلغ به کیف پول برگردانده شد.")
         return
 
     # حجم دلخواه
     if data == "custom":
         context.user_data["waiting_custom_volume"] = True
-        await query.edit_message_text(t(lang, "custom_prompt"))
+        await rich_edit(query, t(lang, "custom_prompt"))
         return
 
     # تست
     if data == "trial":
         result = claim_trial(user)
         if result["status"] == "already":
-            await query.edit_message_text(t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
+            await rich_edit(query, t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "buy"), callback_data="buy")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]))
             return
         if result["status"] == "empty":
-            await query.edit_message_text(t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([
+            await rich_edit(query, t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "back"), callback_data="home")]
             ]))
             return
-        await query.edit_message_text(t(lang, "trial_success", link=result["link"]), reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, t(lang, "trial_success", link=result["link"]), reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "buy"), callback_data="buy")],
             [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
         ]))
@@ -2492,7 +2731,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 else:
                     text += t(lang, "service_item", id=row["id"], volume=row["volume"],
                               expires=row["expires_at"] or "-", link=row["link"] or "-")
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "renew"), callback_data="renew")],
             [styled_inline_button(t(lang, "back"), callback_data="home")],
         ]))
@@ -2502,7 +2741,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "renew":
         rows = get_user_services(user_id)
         if not rows:
-            await query.edit_message_text(t(lang, "renew_no_services"), reply_markup=InlineKeyboardMarkup([
+            await rich_edit(query, t(lang, "renew_no_services"), reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "buy"), callback_data="buy")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]))
@@ -2512,7 +2751,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
             keyboard.append([styled_inline_button(label, callback_data=f"renew_{row['id']}")])
         keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
-        await query.edit_message_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
+        await rich_edit(query, t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data.startswith("renew_") and not data.startswith("renewpay_") and not data.startswith("renewpaid_"):
@@ -2533,7 +2772,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["renew_price"] = 5 * PRICE_PER_GB
         volume = 5
         price = 5 * PRICE_PER_GB
-        await query.edit_message_text(
+        await rich_edit(query, 
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -2567,7 +2806,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         price = volume * PRICE_PER_GB
         context.user_data["renew_volume"] = volume
         context.user_data["renew_price"] = price
-        await query.edit_message_text(
+        await rich_edit(query, 
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -2596,7 +2835,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["pending_payment_volume"] = str(volume)
         context.user_data["pending_payment_original_price"] = int(stored_price)
         context.user_data["coupon_return_payment"] = False
-        await query.edit_message_text(
+        await rich_edit(query, 
             t(lang, "renew_paid", volume=volume, price=stored_price, card=CARD_NUMBER),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
@@ -2629,12 +2868,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.pop("pending_payment_volume", None)
         context.user_data.pop("pending_payment_original_price", None)
         context.user_data.pop("coupon_code", None)
-        await query.edit_message_text(t(lang, "renew_created", order=order_id, volume=volume, price=price))
+        await rich_edit(query, t(lang, "renew_created", order=order_id, volume=volume, price=price))
         return
 
     # پشتیبانی
     if data == "support":
-        await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "create_ticket"), callback_data="new_ticket")],
             [styled_inline_button(t(lang, "back"), callback_data="home")],
         ]))
@@ -2644,7 +2883,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         ticket_id = create_ticket(user_id)
         context.user_data["ticket_id"] = ticket_id
         context.user_data["waiting_ticket_message"] = True
-        await query.edit_message_text(t(lang, "ticket_prompt", id=ticket_id))
+        await rich_edit(query, t(lang, "ticket_prompt", id=ticket_id))
         return
 
     # دعوت
@@ -2653,19 +2892,19 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             bot = await context.bot.get_me()
             link = referral_link(bot.username, user_id)
             count = referral_count(user_id)
-            await query.edit_message_text(
+            await rich_edit(query, 
                 t(lang, "referral_title", count=count, link=link),
                 reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]])
             )
         except Exception:
-            await query.edit_message_text(t(lang, "referral_error"))
+            await rich_edit(query, t(lang, "referral_error"))
         return
 
     # کد تخفیف — فقط در مرحله‌ای که شماره کارت نمایش داده شده
     if data == "coupon":
         context.user_data["waiting_coupon"] = True
         context.user_data["coupon_return_payment"] = True
-        await query.edit_message_text(t(lang, "coupon_prompt"))
+        await rich_edit(query, t(lang, "coupon_prompt"))
         return
 
     # ==================== ادمین ====================
@@ -2772,7 +3011,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_volume"] = True
-        await query.edit_message_text("➕ افزودن لینک سرویس\n\nحجم را وارد کن:\n\nمثال: 10\nبرای نامحدود: UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3")
+        await rich_edit(query, "➕ افزودن لینک سرویس\n\nحجم را وارد کن:\n\nمثال: 10\nبرای نامحدود: UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3")
         return
 
     if data == "admin_delete":
@@ -2789,7 +3028,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         except ValueError:
             return
         delete_subscription(subscription_id)
-        await query.edit_message_text("✅ لینک حذف شد.", reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, "✅ لینک حذف شد.", reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
@@ -2804,7 +3043,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_trial_link"] = True
-        await query.edit_message_text("➕ افزودن لینک تست\n\nلینک Subscription تست را ارسال کن.")
+        await rich_edit(query, "➕ افزودن لینک تست\n\nلینک Subscription تست را ارسال کن.")
         return
 
     if data == "admin_trial_delete":
@@ -2821,7 +3060,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         except ValueError:
             return
         delete_free_trial(trial_id)
-        await query.edit_message_text("✅ لینک تست حذف شد.", reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, "✅ لینک تست حذف شد.", reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]
         ]))
         return
@@ -2830,7 +3069,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         stock = get_free_trial_stock()
-        await query.edit_message_text(
+        await rich_edit(query, 
             f"🎁 موجودی تست\n\n📦 100 مگابایت\n⏳ 1 روز\n🔢 موجودی: {stock}",
             reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
@@ -2840,14 +3079,14 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_coupon"] = True
-        await query.edit_message_text("🎟 ساخت کد تخفیف\n\nفرمت:\nCODE درصد تعداد\n\nمثال:\nHANZU20 20 100")
+        await rich_edit(query, "🎟 ساخت کد تخفیف\n\nفرمت:\nCODE درصد تعداد\n\nمثال:\nHANZU20 20 100")
         return
 
     if data == "admin_broadcast":
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_broadcast"] = True
-        await query.edit_message_text("📢 پیام همگانی\n\nمتن پیام را بفرست.")
+        await rich_edit(query, "📢 پیام همگانی\n\nمتن پیام را بفرست.")
         return
 
     # مدیریت موجودی کاربر توسط ادمین
@@ -2855,7 +3094,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         context.user_data["admin_waiting_balance_user"] = True
-        await query.edit_message_text("💰 مدیریت موجودی\n\nآی‌دی عددی کاربر را ارسال کن:")
+        await rich_edit(query, "💰 مدیریت موجودی\n\nآی‌دی عددی کاربر را ارسال کن:")
         return
 
     if data == "admin_tickets":
@@ -2874,7 +3113,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 text += f"#{row['id']} | User: {row['user_id']}\n"
                 keyboard.append([styled_inline_button(t(lang, "ticket_item", id=row['id']), callback_data=f"ticket_{row['id']}")])
             keyboard.append([styled_inline_button(t(lang, "admin_panel"), callback_data="admin")])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await rich_edit(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data.startswith("ticket_"):
@@ -2896,7 +3135,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             text += f"{sender}:\n{msg['message']}\n\n"
         context.user_data["admin_ticket_id"] = ticket_id
         context.user_data["admin_waiting_ticket_reply"] = True
-        await query.edit_message_text(
+        await rich_edit(query, 
             text + "\n✏️ پاسخ خود را ارسال کنید.",
             reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "admin_close_ticket"), callback_data=f"close_ticket_{ticket_id}")],
@@ -2923,7 +3162,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 await context.bot.send_message(chat_id=ticket["user_id"], text=t(recipient_lang, "ticket_closed", id=ticket_id))
             except Exception:
                 pass
-        await query.edit_message_text("✅ تیکت بسته شد.", reply_markup=InlineKeyboardMarkup([
+        await rich_edit(query, "✅ تیکت بسته شد.", reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
@@ -2962,7 +3201,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             try:
                 await query.edit_message_caption(caption=f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             except Exception:
-                await query.edit_message_text(f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
+                await rich_edit(query, f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             return
 
         if is_unlimited_volume(order["volume"]):
@@ -2985,7 +3224,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 caption=(f"✅ سفارش #{order_id} تأیید شد.\n♾️ {unlimited_display(order['volume'], recipient_lang).replace('♾️ ', '')}\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}" if is_unlimited_volume(order['volume']) else f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}")
             )
         except Exception:
-            await query.edit_message_text(
+            await rich_edit(query, 
                 f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}"
             )
         return
@@ -3012,7 +3251,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             await query.edit_message_caption(caption=f"❌ سفارش #{order_id} رد شد.\n📦 {order['volume']}\n💰 {order['price']:,} تومان")
         except Exception:
-            await query.edit_message_text(f"❌ سفارش #{order_id} رد شد.\n📦 {order['volume']}\n💰 {order['price']:,} تومان")
+            await rich_edit(query, f"❌ سفارش #{order_id} رد شد.\n📦 {order['volume']}\n💰 {order['price']:,} تومان")
         return
 
 
@@ -3082,7 +3321,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await language_command(update, context)
             return
         if action == "wallet":
-            await update.message.reply_text(
+            await rich_reply_text(update.message, 
                 t(lang, "wallet_title", balance=get_balance(user.id)),
                 reply_markup=InlineKeyboardMarkup([
                     [styled_inline_button(t(lang, "charge_wallet"), callback_data="charge_wallet")],
@@ -3096,24 +3335,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bot = await context.bot.get_me()
                 link = referral_link(bot.username, user.id)
                 count = referral_count(user.id)
-                await update.message.reply_text(
+                await rich_reply_text(update.message, 
                     t(lang, "referral_title", count=count, link=link),
                     reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]])
                 )
             except Exception:
-                await update.message.reply_text(t(lang, "referral_error"))
+                await rich_reply_text(update.message, t(lang, "referral_error"))
             return
         if action == "renew":
             rows = get_user_services(user.id)
             if not rows:
-                await update.message.reply_text(
+                await rich_reply_text(update.message, 
                     t(lang, "renew_no_services"),
                     reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "buy"), callback_data="buy")], [styled_inline_button(t(lang, "back"), callback_data="home")]])
                 )
                 return
             keyboard = [[styled_inline_button(f"{t(lang, 'renew')} #{row['id']} | {row['volume']} {t(lang, 'volume_label', volume='').strip()}", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
             keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
-            await update.message.reply_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
+            await rich_reply_text(update.message, t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
             return
         if action == "admin" and user.id == ADMIN_ID:
             # پنل مدیریت را با همان منوی اصلی ادمین نمایش می‌دهیم.
@@ -3127,7 +3366,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [styled_inline_button(t(lang, "admin_tickets"), callback_data="admin_tickets")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]
-            await update.message.reply_text("⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
+            await rich_reply_text(update.message, "⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
     # شارژ کیف پول - دریافت مبلغ
@@ -3138,14 +3377,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if amount < MIN_CHARGE:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text(t(lang, "invalid_charge", min=MIN_CHARGE))
+            await rich_reply_text(update.message, t(lang, "invalid_charge", min=MIN_CHARGE))
             return
 
         context.user_data["charge_amount"] = amount
         order_id = create_order(user, "CHARGE", amount, is_charge=1)
         context.user_data["last_order_id"] = order_id
 
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             t(lang, "charge_payment", amount=amount, card=CARD_NUMBER),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
@@ -3169,7 +3408,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [styled_inline_button(t(lang, "admin_ticket_view"), callback_data=f"ticket_{ticket_id}")]
             ])
         )
-        await update.message.reply_text(t(lang, "ticket_created", id=ticket_id))
+        await rich_reply_text(update.message, t(lang, "ticket_created", id=ticket_id))
         return
 
     # پاسخ ادمین به تیکت
@@ -3186,7 +3425,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=ticket["user_id"],
             text=f"💬 پاسخ پشتیبانی\n\n🎫 تیکت #{ticket_id}\n\n{text}"
         )
-        await update.message.reply_text("✅ پاسخ برای کاربر ارسال شد.")
+        await rich_reply_text(update.message, "✅ پاسخ برای کاربر ارسال شد.")
         context.user_data["admin_waiting_ticket_reply"] = False
         return
 
@@ -3204,14 +3443,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(0.05)
             except Exception:
                 failed += 1
-        await update.message.reply_text(f"📢 ارسال همگانی تمام شد.\n\n✅ موفق: {sent}\n❌ ناموفق: {failed}")
+        await rich_reply_text(update.message, f"📢 ارسال همگانی تمام شد.\n\n✅ موفق: {sent}\n❌ ناموفق: {failed}")
         return
 
     # ساخت کوپن
     if user.id == ADMIN_ID and context.user_data.get("admin_waiting_coupon"):
         parts = text.split()
         if len(parts) != 3:
-            await update.message.reply_text("❌ فرمت اشتباه است.\n\nمثال:\nHANZU20 20 100")
+            await rich_reply_text(update.message, "❌ فرمت اشتباه است.\n\nمثال:\nHANZU20 20 100")
             return
         code = parts[0].upper()
         try:
@@ -3220,24 +3459,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if percent <= 0 or percent > 100 or max_uses < 0:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text("❌ درصد یا تعداد نامعتبر است.")
+            await rich_reply_text(update.message, "❌ درصد یا تعداد نامعتبر است.")
             return
         success = create_coupon(code, percent, max_uses)
         if success:
-            await update.message.reply_text(f"✅ کد تخفیف ساخته شد.\n\n🎟 {code}\n💰 {percent}%\n🔢 {'نامحدود' if max_uses == 0 else max_uses}")
+            await rich_reply_text(update.message, f"✅ کد تخفیف ساخته شد.\n\n🎟 {code}\n💰 {percent}%\n🔢 {'نامحدود' if max_uses == 0 else max_uses}")
         else:
-            await update.message.reply_text("❌ این کد قبلاً وجود دارد.")
+            await rich_reply_text(update.message, "❌ این کد قبلاً وجود دارد.")
         context.user_data["admin_waiting_coupon"] = False
         return
 
     # افزودن تست
     if user.id == ADMIN_ID and context.user_data.get("admin_waiting_trial_link"):
         if not (text.startswith("http://") or text.startswith("https://")):
-            await update.message.reply_text("❌ لینک معتبر نیست.")
+            await rich_reply_text(update.message, "❌ لینک معتبر نیست.")
             return
         add_free_trial(text)
         context.user_data["admin_waiting_trial_link"] = False
-        await update.message.reply_text("✅ لینک تست اضافه شد.")
+        await rich_reply_text(update.message, "✅ لینک تست اضافه شد.")
         return
 
     # مدیریت موجودی توسط ادمین - دریافت آی‌دی کاربر
@@ -3245,13 +3484,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             target_id = int(text)
         except ValueError:
-            await update.message.reply_text("❌ آی‌دی باید عدد باشد.")
+            await rich_reply_text(update.message, "❌ آی‌دی باید عدد باشد.")
             return
         context.user_data["admin_waiting_balance_user"] = False
         context.user_data["admin_balance_user_id"] = target_id
         context.user_data["admin_waiting_balance_amount"] = True
         balance = get_balance(target_id)
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             f"کاربر: {target_id}\nموجودی فعلی: {balance:,} تومان\n\n"
             "مبلغ را وارد کن (مثبت برای افزایش، منفی برای کاهش):\n\nمثال:\n50000\nیا\n-20000"
         )
@@ -3262,14 +3501,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             amount = int(text.replace(",", "").replace("،", ""))
         except ValueError:
-            await update.message.reply_text("❌ مبلغ نامعتبر است.")
+            await rich_reply_text(update.message, "❌ مبلغ نامعتبر است.")
             return
         target_id = context.user_data.get("admin_balance_user_id")
         context.user_data["admin_waiting_balance_amount"] = False
         context.user_data.pop("admin_balance_user_id", None)
 
         if amount == 0:
-            await update.message.reply_text("❌ مبلغ صفر مجاز نیست.")
+            await rich_reply_text(update.message, "❌ مبلغ صفر مجاز نیست.")
             return
 
         type_ = "admin_add" if amount > 0 else "admin_remove"
@@ -3277,7 +3516,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success = change_balance(target_id, amount, type_, desc)
         if success:
             new_balance = get_balance(target_id)
-            await update.message.reply_text(f"✅ انجام شد.\n\nکاربر: {target_id}\nتغییر: {amount:,}\nموجودی جدید: {new_balance:,}")
+            await rich_reply_text(update.message, f"✅ انجام شد.\n\nکاربر: {target_id}\nتغییر: {amount:,}\nموجودی جدید: {new_balance:,}")
             try:
                 await context.bot.send_message(
                     chat_id=target_id,
@@ -3286,7 +3525,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
         else:
-            await update.message.reply_text("❌ خطا در تغییر موجودی.")
+            await rich_reply_text(update.message, "❌ خطا در تغییر موجودی.")
         return
 
     # حجم دلخواه
@@ -3297,7 +3536,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if volume <= 0 or volume > 1000:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text(t(lang, "invalid_volume"))
+            await rich_reply_text(update.message, t(lang, "invalid_volume"))
             return
 
         price = volume * PRICE_PER_GB
@@ -3326,7 +3565,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [styled_inline_button(t(lang, "pay"), callback_data=f"pay_{volume}")],
             [styled_inline_button(t(lang, "back"), callback_data="buy")],
         ]
-        await update.message.reply_text(payment_text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await rich_reply_text(update.message, payment_text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     # کوپن کاربر
@@ -3334,13 +3573,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_coupon"] = False
         coupon = get_coupon(text.upper())
         if not coupon:
-            await update.message.reply_text(t(lang, "coupon_invalid"))
+            await rich_reply_text(update.message, t(lang, "coupon_invalid"))
             return
         if user_used_coupon(coupon["id"], user.id):
-            await update.message.reply_text(t(lang, "coupon_used"))
+            await rich_reply_text(update.message, t(lang, "coupon_used"))
             return
         if coupon["max_uses"] > 0 and coupon["used_count"] >= coupon["max_uses"]:
-            await update.message.reply_text(t(lang, "coupon_invalid"))
+            await rich_reply_text(update.message, t(lang, "coupon_invalid"))
             return
         context.user_data["coupon_code"] = coupon["code"]
         # اگر کاربر کد تخفیف را از مرحله شماره کارت وارد کرده، همان پرداخت را با قیمت جدید باز کن.
@@ -3352,7 +3591,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     price = int(original_price)
                     result = apply_coupon(coupon["code"], user.id, price)
                     if result["status"] == "success": price = result["price"]
-                    await update.message.reply_text(
+                    await rich_reply_text(update.message, 
                         t(lang, "renew_paid", volume=volume, price=price, card=CARD_NUMBER),
                         parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup([
@@ -3364,14 +3603,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     result = apply_coupon(coupon["code"], user.id, int(original_price))
                     if result["status"] != "success":
-                        await update.message.reply_text(t(lang, "coupon_invalid"))
+                        await rich_reply_text(update.message, t(lang, "coupon_invalid"))
                         return
                     final_price = int(result["price"])
                     context.user_data["pending_payment_price"] = final_price
                     context.user_data["pending_payment_volume"] = str(volume)
                     context.user_data["pending_payment_original_price"] = int(original_price)
                     context.user_data["pending_payment_coupon"] = coupon["code"]
-                    await update.message.reply_text(
+                    await rich_reply_text(update.message, 
                         t(lang, "payment", volume=volume, price=final_price)
                         + t(lang, "original_price", original=int(original_price), coupon=coupon["code"])
                         + t(lang, "card", card=CARD_NUMBER),
@@ -3383,7 +3622,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ])
                     )
                 return
-        await update.message.reply_text(t(lang, "coupon_valid", code=coupon["code"], percent=coupon["percent"]))
+        await rich_reply_text(update.message, t(lang, "coupon_valid", code=coupon["code"], percent=coupon["percent"]))
         return
 
     # حجم لینک ادمین
@@ -3400,25 +3639,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 volume = str(volume_num)
                 label = f"{volume_num} گیگ"
             except ValueError:
-                await update.message.reply_text("❌ حجم نامعتبر است.\n\nبرای نامحدود از UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3 استفاده کن.")
+                await rich_reply_text(update.message, "❌ حجم نامعتبر است.\n\nبرای نامحدود از UNLIMITED_1 یا UNLIMITED_2 یا UNLIMITED_3 استفاده کن.")
                 return
         context.user_data["admin_waiting_volume"] = False
         context.user_data["admin_add_volume"] = volume
         context.user_data["admin_waiting_link"] = True
-        await update.message.reply_text(f"✅ {label} ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
+        await rich_reply_text(update.message, f"✅ {label} ثبت شد.\n\nحالا لینک Subscription را ارسال کن.")
         return
 
     # لینک سرویس ادمین
     if user.id == ADMIN_ID and context.user_data.get("admin_waiting_link"):
         if not (text.startswith("http://") or text.startswith("https://")):
-            await update.message.reply_text("❌ لینک معتبر نیست.")
+            await rich_reply_text(update.message, "❌ لینک معتبر نیست.")
             return
         volume = context.user_data.get("admin_add_volume")
         add_subscription(volume, text)
         context.user_data.pop("admin_waiting_link", None)
         context.user_data.pop("admin_add_volume", None)
         label = unlimited_display(volume, "fa") if is_unlimited_volume(volume) else f"📦 {volume} گیگ"
-        await update.message.reply_text(f"✅ لینک اضافه شد.\n\n{label}")
+        await rich_reply_text(update.message, f"✅ لینک اضافه شد.\n\n{label}")
         return
 
 
@@ -3434,7 +3673,7 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     order = get_latest_pending_order(user.id)
     if not order:
-        await update.message.reply_text(t(lang, "no_pending"))
+        await rich_reply_text(update.message, t(lang, "no_pending"))
         return
 
     charge_text = " (شارژ کیف پول)" if order["is_charge"] else ""
@@ -3461,7 +3700,7 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    await update.message.reply_text(t(lang, "receipt_received", order=order["id"]))
+    await rich_reply_text(update.message, t(lang, "receipt_received", order=order["id"]))
 
 
 # =========================================================
@@ -3813,7 +4052,7 @@ async def emoji_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if pack_name:
         lines += ["", f"📦 پک: <code>{pack_name}</code>", f"برای فعال کردن روی همه دکمه‌ها: <code>/usepack {pack_name}</code>"]
     lines += ["", "برای گذاشتن روی دکمه، روی همین پیام ایموجی ریپلای کنید و بنویسید:", "<code>/seticon buy</code>"]
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await rich_reply_text(update.message, "\n".join(lines), parse_mode="HTML")
 
 
 async def seticon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3830,7 +4069,7 @@ async def seticon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "لیست: /icons    حذف: /delicon <key>"
     )
     if not args:
-        await update.message.reply_text(usage)
+        await rich_reply_text(update.message, usage)
         return
     key = args[0]
     emoji_id = args[1] if len(args) > 1 else None
@@ -3839,10 +4078,10 @@ async def seticon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if found:
             emoji_id = found[0].custom_emoji_id
     if not emoji_id or not str(emoji_id).isdigit():
-        await update.message.reply_text(usage)
+        await rich_reply_text(update.message, usage)
         return
     set_button_icon(key, emoji_id)
-    await update.message.reply_text(f"✅ آیکن دکمه «{key}» تنظیم شد.")
+    await rich_reply_text(update.message, f"✅ آیکن دکمه «{key}» تنظیم شد.")
 
 
 async def seticons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3852,7 +4091,7 @@ async def seticons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keys = context.args or []
     found = _custom_emoji_entities(update.message.reply_to_message)
     if not keys or not found:
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             "ریپلای روی پیامی که چند ایموجی پرمیوم دارد، بعد بنویسید:\n"
             "/seticons dash_first dash_balance dash_new\n\n"
             "ایموجی اول به کلید اول، دوم به کلید دوم و ... اختصاص داده می‌شود."
@@ -3862,13 +4101,13 @@ async def seticons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for key, entity in zip(keys, found):
         set_button_icon(key, entity.custom_emoji_id)
         count += 1
-    await update.message.reply_text(f"✅ آیکن {count} دکمه تنظیم شد.")
+    await rich_reply_text(update.message, f"✅ آیکن {count} دکمه تنظیم شد.")
 
 
 async def _icon_allowed(update, emoji_id):
     """یک پیام تست با همین آیکن می‌فرستد؛ اگر تلگرام نپذیرد، یعنی اکانت صاحب ربات پرمیوم نیست."""
     try:
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             "🧪 تست آیکن",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("تست آیکن", callback_data="home", icon_custom_emoji_id=str(emoji_id))
@@ -3898,7 +4137,7 @@ async def usepack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 name = ""
     if not name:
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             "استفاده:\n/usepack <نام پک>\n\n"
             "یا پیام رباتی که آیکن‌هایش را می‌خواهید را برای ربات خودتان فوروارد کنید، "
             "روی آن ریپلای کنید و بنویسید /usepack\n\n"
@@ -3908,18 +4147,18 @@ async def usepack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         sticker_set = await context.bot.get_sticker_set(name)
     except Exception:
-        await update.message.reply_text("❌ پکی با این نام پیدا نشد.")
+        await rich_reply_text(update.message, "❌ پکی با این نام پیدا نشد.")
         return
     mapping = {}
     for st in sticker_set.stickers:
         if getattr(st, "custom_emoji_id", None) and st.emoji:
             mapping.setdefault(_norm_emoji(st.emoji), st.custom_emoji_id)
     if not mapping:
-        await update.message.reply_text("❌ این پک، پک ایموجی پرمیوم (custom emoji) نیست.")
+        await rich_reply_text(update.message, "❌ این پک، پک ایموجی پرمیوم (custom emoji) نیست.")
         return
     ok, err = await _icon_allowed(update, next(iter(mapping.values())))
     if not ok:
-        await update.message.reply_text(
+        await rich_reply_text(update.message, 
             "❌ تلگرام آیکن روی دکمه را قبول نکرد، پک فعال نشد.\n"
             "آیکن دکمه فقط وقتی کار می‌کند که صاحب ربات تلگرام پرمیوم داشته باشد.\n\n" + err[:200]
         )
@@ -3936,24 +4175,24 @@ async def usepack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"✅ پک «{name}» فعال شد ({len(mapping)} ایموجی)."
     if missing:
         msg += "\n\nاین ایموجی‌ها در پک نبودند و همان ایموجی معمولی می‌مانند: " + " ".join(missing)
-    await update.message.reply_text(msg)
+    await rich_reply_text(update.message, msg)
 
 
 async def nopack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_ID:
         return
     clear_icon_pack()
-    await update.message.reply_text("🗑 پک ایموجی غیرفعال شد؛ دکمه‌ها به ایموجی معمولی برگشتند.")
+    await rich_reply_text(update.message, "🗑 پک ایموجی غیرفعال شد؛ دکمه‌ها به ایموجی معمولی برگشتند.")
 
 
 async def delicon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_ID:
         return
     if not context.args:
-        await update.message.reply_text("استفاده: /delicon <key>")
+        await rich_reply_text(update.message, "استفاده: /delicon <key>")
         return
     set_button_icon(context.args[0], None)
-    await update.message.reply_text(f"🗑 آیکن دکمه «{context.args[0]}» حذف شد.")
+    await rich_reply_text(update.message, f"🗑 آیکن دکمه «{context.args[0]}» حذف شد.")
 
 
 async def icons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3966,9 +4205,9 @@ async def icons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"📦 پک فعال: {pack['set']} ({len(pack['map'])} ایموجی)")
     lines += [f"{k} → {v}" for k, v in sorted(icons.items())]
     if not lines:
-        await update.message.reply_text("هنوز آیکنی تنظیم نشده.\n\nبا /usepack یک پک ایموجی پرمیوم فعال کنید.")
+        await rich_reply_text(update.message, "هنوز آیکنی تنظیم نشده.\n\nبا /usepack یک پک ایموجی پرمیوم فعال کنید.")
         return
-    await update.message.reply_text("🎨 آیکن دکمه‌ها:\n\n" + "\n".join(lines))
+    await rich_reply_text(update.message, "🎨 آیکن دکمه‌ها:\n\n" + "\n".join(lines))
 
 
 # =========================================================
@@ -4005,6 +4244,7 @@ def main():
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("rich_test", rich_test_command))
     app.add_handler(CommandHandler("seticon", seticon_command))
     app.add_handler(CommandHandler("seticons", seticons_command))
     app.add_handler(CommandHandler("usepack", usepack_command))

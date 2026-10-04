@@ -602,16 +602,74 @@ def strip_leading_emoji(text):
     return stripped or text
 
 
+BUTTON_PACK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "button_pack.json")
+_PACK_CACHE = {"mtime": None, "data": {"set": "", "map": {}}}
+
+
+def _norm_emoji(value):
+    return (value or "").replace("\ufe0f", "").strip()
+
+
+def get_icon_pack():
+    """پک ایموجی پرمیومِ فعال: {"set": نام پک, "map": {ایموجی معمولی: custom_emoji_id}}"""
+    empty = {"set": "", "map": {}}
+    try:
+        mtime = os.path.getmtime(BUTTON_PACK_FILE)
+    except OSError:
+        return empty
+    if _PACK_CACHE["mtime"] != mtime:
+        try:
+            with open(BUTTON_PACK_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or not isinstance(data.get("map"), dict):
+                data = empty
+        except Exception:
+            data = empty
+        _PACK_CACHE["mtime"] = mtime
+        _PACK_CACHE["data"] = data
+    return _PACK_CACHE["data"]
+
+
+def set_icon_pack(name, mapping):
+    with open(BUTTON_PACK_FILE, "w", encoding="utf-8") as f:
+        json.dump({"set": name, "map": mapping}, f, ensure_ascii=False)
+    _PACK_CACHE["mtime"] = None
+
+
+def clear_icon_pack():
+    try:
+        os.remove(BUTTON_PACK_FILE)
+    except OSError:
+        pass
+    _PACK_CACHE["mtime"] = None
+
+
+def resolve_button_icon(text, key=None):
+    """
+    آیکن دکمه را تعیین می‌کند و (متن جدید، آیدی ایموجی یا None) برمی‌گرداند.
+    اولویت: ۱) آیکنی که برای همین دکمه دستی تنظیم شده  ۲) ایموجیِ ابتدای متن، اگر در پک فعال باشد.
+    """
+    text = text or ""
+    icon = get_button_icon(key) if key else None
+    if icon:
+        return strip_leading_emoji(text), icon
+    head, sep, rest = text.partition(" ")
+    if sep and rest.strip():
+        icon = get_icon_pack()["map"].get(_norm_emoji(head))
+        if icon:
+            return rest.strip(), icon
+    return text, None
+
+
 def styled_copy_card_button():
     style = get_button_color("copy_card")
     kwargs = {"copy_text": CopyTextButton(CARD_NUMBER)}
     text = "📋 کپی شماره کارت"
     if style != "default":
         kwargs["style"] = style
-    icon = get_button_icon("copy_card")
+    text, icon = resolve_button_icon(text, "copy_card")
     if icon:
         kwargs["icon_custom_emoji_id"] = icon
-        text = strip_leading_emoji(text)
     return InlineKeyboardButton(text, **kwargs)
 
 def button_style_icon(style):
@@ -626,10 +684,10 @@ def styled_inline_button(text, callback_data=None, force_style=None, icon_key=No
     style = force_style or get_button_color(callback_data)
     if style != "default":
         kwargs["style"] = style
-    icon = get_button_icon(icon_key or callback_data)
-    if icon and "icon_custom_emoji_id" not in kwargs:
-        kwargs["icon_custom_emoji_id"] = icon
-        text = strip_leading_emoji(text)
+    if "icon_custom_emoji_id" not in kwargs:
+        text, icon = resolve_button_icon(text, icon_key or callback_data)
+        if icon:
+            kwargs["icon_custom_emoji_id"] = icon
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 def now_text():
@@ -3595,7 +3653,10 @@ def _telegram_send_photo_base64(user_id, volume, price, image_b64, order_id):
         first_name = (row["first_name"] if row else "") or "-"
         caption = (f"💳 رسید Mini App\n\n🧾 سفارش: #{order_id}\n👤 نام: {first_name}\n🔗 Username: @{username.lstrip('@') if username != '-' else '-'}\n🆔 Telegram ID: {user_id}\n📦 نوع: {volume}\n💰 مبلغ: {price:,} تومان\n🕐 زمان ارسال: {now_text()}")
         field("caption", caption)
-        field("reply_markup", json.dumps({"inline_keyboard":[[{"text":"✅ تأیید پرداخت","callback_data":f"approve_{order_id}"},{"text":"❌ رد پرداخت","callback_data":f"reject_{order_id}"}]]}, ensure_ascii=False))
+        field("reply_markup", InlineKeyboardMarkup([[
+            styled_inline_button("✅ تأیید پرداخت", callback_data=f"approve_{order_id}"),
+            styled_inline_button("❌ رد پرداخت", callback_data=f"reject_{order_id}"),
+        ]]).to_json())
         body.extend((f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"receipt.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").encode())
         body.extend(raw); body.extend(f"\r\n--{boundary}--\r\n".encode())
         req=urlrequest.Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data=bytes(body), headers={"Content-Type":f"multipart/form-data; boundary={boundary}"}, method="POST")
@@ -3741,8 +3802,16 @@ class _AdminOnlyCustomEmoji(filters.MessageFilter):
 
 async def emoji_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ids = [e.custom_emoji_id for e in _custom_emoji_entities(update.message)]
+    pack_name = ""
+    try:
+        stickers = await context.bot.get_custom_emoji_stickers(ids[:1])
+        pack_name = (stickers[0].set_name or "") if stickers else ""
+    except Exception:
+        pass
     lines = ["🆔 آیدی ایموجی‌ها:", ""]
     lines += [f"<code>{i}</code>" for i in ids]
+    if pack_name:
+        lines += ["", f"📦 پک: <code>{pack_name}</code>", f"برای فعال کردن روی همه دکمه‌ها: <code>/usepack {pack_name}</code>"]
     lines += ["", "برای گذاشتن روی دکمه، روی همین پیام ایموجی ریپلای کنید و بنویسید:", "<code>/seticon buy</code>"]
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
@@ -3796,6 +3865,87 @@ async def seticons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ آیکن {count} دکمه تنظیم شد.")
 
 
+async def _icon_allowed(update, emoji_id):
+    """یک پیام تست با همین آیکن می‌فرستد؛ اگر تلگرام نپذیرد، یعنی اکانت صاحب ربات پرمیوم نیست."""
+    try:
+        await update.message.reply_text(
+            "🧪 تست آیکن",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("تست آیکن", callback_data="home", icon_custom_emoji_id=str(emoji_id))
+            ]]),
+        )
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+async def usepack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    فعال‌سازی یک پک ایموجی پرمیوم برای همه دکمه‌ها: هر دکمه‌ای که ایموجی ابتدای متنش
+    در پک باشد، خودکار آیکن پرمیوم می‌گیرد.
+    /usepack <نام پک یا لینک addemoji>   یا ریپلای روی پیامی که ایموجی پرمیوم آن پک را دارد.
+    """
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    name = (context.args[0] if context.args else "").strip().rstrip("/").split("/")[-1]
+    reply = update.message.reply_to_message
+    if not name and reply:
+        found = _custom_emoji_entities(reply)
+        if found:
+            try:
+                stickers = await context.bot.get_custom_emoji_stickers([found[0].custom_emoji_id])
+                name = (stickers[0].set_name or "") if stickers else ""
+            except Exception:
+                name = ""
+    if not name:
+        await update.message.reply_text(
+            "استفاده:\n/usepack <نام پک>\n\n"
+            "یا پیام رباتی که آیکن‌هایش را می‌خواهید را برای ربات خودتان فوروارد کنید، "
+            "روی آن ریپلای کنید و بنویسید /usepack\n\n"
+            "غیرفعال کردن: /nopack"
+        )
+        return
+    try:
+        sticker_set = await context.bot.get_sticker_set(name)
+    except Exception:
+        await update.message.reply_text("❌ پکی با این نام پیدا نشد.")
+        return
+    mapping = {}
+    for st in sticker_set.stickers:
+        if getattr(st, "custom_emoji_id", None) and st.emoji:
+            mapping.setdefault(_norm_emoji(st.emoji), st.custom_emoji_id)
+    if not mapping:
+        await update.message.reply_text("❌ این پک، پک ایموجی پرمیوم (custom emoji) نیست.")
+        return
+    ok, err = await _icon_allowed(update, next(iter(mapping.values())))
+    if not ok:
+        await update.message.reply_text(
+            "❌ تلگرام آیکن روی دکمه را قبول نکرد، پک فعال نشد.\n"
+            "آیکن دکمه فقط وقتی کار می‌کند که صاحب ربات تلگرام پرمیوم داشته باشد.\n\n" + err[:200]
+        )
+        return
+    set_icon_pack(name, mapping)
+    keys = ["buy", "trial", "services", "renew", "coupon", "referral", "support", "wallet", "language",
+            "admin", "back", "main_menu", "custom", "charge_wallet", "wallet_history",
+            "dash_first_service", "dash_balance", "dash_new_service"]
+    missing = []
+    for key in keys:
+        head = t("fa", key).partition(" ")[0]
+        if head and not any(ch.isalnum() for ch in head) and _norm_emoji(head) not in mapping and head not in missing:
+            missing.append(head)
+    msg = f"✅ پک «{name}» فعال شد ({len(mapping)} ایموجی)."
+    if missing:
+        msg += "\n\nاین ایموجی‌ها در پک نبودند و همان ایموجی معمولی می‌مانند: " + " ".join(missing)
+    await update.message.reply_text(msg)
+
+
+async def nopack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    clear_icon_pack()
+    await update.message.reply_text("🗑 پک ایموجی غیرفعال شد؛ دکمه‌ها به ایموجی معمولی برگشتند.")
+
+
 async def delicon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_ID:
         return
@@ -3810,10 +3960,14 @@ async def icons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != ADMIN_ID:
         return
     icons = get_button_icon_map()
-    if not icons:
-        await update.message.reply_text("هنوز آیکنی تنظیم نشده.\n\nیک ایموجی پرمیوم برای ربات بفرستید تا آیدی‌اش را بگیرید.")
+    pack = get_icon_pack()
+    lines = []
+    if pack["set"]:
+        lines.append(f"📦 پک فعال: {pack['set']} ({len(pack['map'])} ایموجی)")
+    lines += [f"{k} → {v}" for k, v in sorted(icons.items())]
+    if not lines:
+        await update.message.reply_text("هنوز آیکنی تنظیم نشده.\n\nبا /usepack یک پک ایموجی پرمیوم فعال کنید.")
         return
-    lines = [f"{k} → {v}" for k, v in sorted(icons.items())]
     await update.message.reply_text("🎨 آیکن دکمه‌ها:\n\n" + "\n".join(lines))
 
 
@@ -3853,6 +4007,8 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("seticon", seticon_command))
     app.add_handler(CommandHandler("seticons", seticons_command))
+    app.add_handler(CommandHandler("usepack", usepack_command))
+    app.add_handler(CommandHandler("nopack", nopack_command))
     app.add_handler(CommandHandler("delicon", delicon_command))
     app.add_handler(CommandHandler("icons", icons_command))
     app.add_handler(CallbackQueryHandler(button_handler))

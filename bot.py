@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import asyncio
 import json
@@ -20,6 +21,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     KeyboardButton,
+    MessageEntity,
     BotCommand,
     MenuButtonWebApp,
     WebAppInfo,
@@ -376,6 +378,39 @@ TEXTS = {
 }
 
 
+# منوهای اصلی با طرح داشبورد: هر دکمه در یک ردیف و تمام‌عرض.
+# اگر دوباره دو دکمه در هر ردیف می‌خواهید، False کنید.
+MENU_ONE_PER_ROW = True
+
+TEXTS["fa"].update({
+    "panel": "پنل کاربری",
+    "panel_btn": "📊 پنل کاربری",
+    "dash_title": "📊 داشبورد کاربری\n\n👤 اطلاعات کاربر:\n• نام: {name}\n• موجودی: {balance:,} تومان\n• تعداد سرویس‌ها: {count}\n\n🎯 برای شروع، یکی از گزینه‌های زیر را انتخاب کنید:",
+    "dash_first_service": "➕ خرید اولین سرویس خود",
+    "dash_balance": "👛 موجودی: {balance:,} تومان",
+    "dash_new_service": "🛒 خرید سرویس جدید",
+    "dash_back": "بازگشت به منوی اصلی",
+})
+TEXTS["ku"].update({
+    "panel": "پانێلی بەکارهێنەر",
+    "panel_btn": "📊 پانێلی بەکارهێنەر",
+    "dash_title": "📊 داشبۆردی بەکارهێنەر\n\n👤 زانیاری بەکارهێنەر:\n• ناو: {name}\n• موجودی: {balance:,} تومان\n• ژمارەی خزمەتگوزارییەکان: {count}\n\n🎯 بۆ دەستپێکردن، یەکێک لە بژاردەکانی خوارەوە هەڵبژێرە:",
+    "dash_first_service": "➕ یەکەم خزمەتگوزاریت بکڕە",
+    "dash_balance": "👛 موجودی: {balance:,} تومان",
+    "dash_new_service": "🛒 کڕینی خزمەتگوزاری نوێ",
+    "dash_back": "گەڕانەوە بۆ لیستی سەرەکی",
+})
+TEXTS["en"].update({
+    "panel": "Dashboard",
+    "panel_btn": "📊 Dashboard",
+    "dash_title": "📊 User Dashboard\n\n👤 User info:\n• Name: {name}\n• Balance: {balance:,} Toman\n• Services: {count}\n\n🎯 To get started, choose one of the options below:",
+    "dash_first_service": "➕ Buy your first service",
+    "dash_balance": "👛 Balance: {balance:,} Toman",
+    "dash_new_service": "🛒 Buy a new service",
+    "dash_back": "Back to main menu",
+})
+
+
 def t(lang, key, **kwargs):
     if lang not in TEXTS:
         lang = "fa"
@@ -419,6 +454,7 @@ BUTTON_COLOR_TARGETS = {
     "coupon": "🎟️ کد تخفیف",
     "new_ticket": "🎫 تیکت جدید",
     "home": "🏠 بازگشت / منوی اصلی",
+    "dashboard": "📊 پنل کاربری",
     "admin_backup": "💾 بکاپ",
     "admin_add": "➕ افزودن سرویس",
     "admin_trial": "🎁 مدیریت تست",
@@ -509,12 +545,74 @@ def get_button_color(callback_data):
 
     return "default"
 
+BUTTON_ICON_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "button_icons.json")
+
+# آیکن (ایموجی پرمیوم) دکمه‌ها.
+# کلید = callback_data دکمه (مثل buy) یا الگو (مثل pay_*)، مقدار = custom_emoji_id.
+# از پنل ادمین/دستور /seticon هم می‌شود تنظیمش کرد؛ این دیکشنری فقط مقدار پیش‌فرض است.
+DEFAULT_BUTTON_ICONS = {
+    # "buy": "5368324170671202286",
+}
+
+
+def get_button_icon_map():
+    icons = dict(DEFAULT_BUTTON_ICONS)
+    try:
+        with open(BUTTON_ICON_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                icons.update({str(k): str(v) for k, v in data.items() if str(v).isdigit()})
+    except Exception:
+        pass
+    return icons
+
+
+def set_button_icon(key, emoji_id):
+    try:
+        with open(BUTTON_ICON_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if not isinstance(data, dict):
+                data = {}
+    except Exception:
+        data = {}
+    if emoji_id:
+        data[key] = str(emoji_id)
+    else:
+        data.pop(key, None)
+    with open(BUTTON_ICON_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_button_icon(callback_data):
+    data = str(callback_data or "")
+    if not data:
+        return None
+    icons = get_button_icon_map()
+    if data in icons:
+        return icons[data]
+    for key, emoji_id in icons.items():
+        if key.endswith("*") and data.startswith(key[:-1]):
+            return emoji_id
+    return None
+
+
+def strip_leading_emoji(text):
+    # وقتی آیکن پرمیوم روی دکمه هست، ایموجی معمولیِ ابتدای متن حذف می‌شود تا دوتا نشان داده نشود.
+    stripped = re.sub(r"^[^\w]+", "", text or "")
+    return stripped or text
+
+
 def styled_copy_card_button():
     style = get_button_color("copy_card")
     kwargs = {"copy_text": CopyTextButton(CARD_NUMBER)}
+    text = "📋 کپی شماره کارت"
     if style != "default":
         kwargs["style"] = style
-    return InlineKeyboardButton("📋 کپی شماره کارت", **kwargs)
+    icon = get_button_icon("copy_card")
+    if icon:
+        kwargs["icon_custom_emoji_id"] = icon
+        text = strip_leading_emoji(text)
+    return InlineKeyboardButton(text, **kwargs)
 
 def button_style_icon(style):
     return {
@@ -524,10 +622,14 @@ def button_style_icon(style):
         "primary": "🔵",
     }.get(style, "⚪")
 
-def styled_inline_button(text, callback_data=None, **kwargs):
-    style = get_button_color(callback_data)
+def styled_inline_button(text, callback_data=None, force_style=None, icon_key=None, **kwargs):
+    style = force_style or get_button_color(callback_data)
     if style != "default":
         kwargs["style"] = style
+    icon = get_button_icon(icon_key or callback_data)
+    if icon and "icon_custom_emoji_id" not in kwargs:
+        kwargs["icon_custom_emoji_id"] = icon
+        text = strip_leading_emoji(text)
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 def now_text():
@@ -815,6 +917,7 @@ def bottom_keyboard(user_id):
     """کیبورد پایینی اصلی؛ دو دکمه در هر ردیف و کاملاً وابسته به زبان کاربر."""
     lang = get_user_language(user_id) or "fa"
     rows = [
+        [KeyboardButton(t(lang, "panel"))],
         [KeyboardButton(t(lang, "buy")), KeyboardButton(t(lang, "trial"))],
         [KeyboardButton(t(lang, "services")), KeyboardButton(t(lang, "renew"))],
         [KeyboardButton(t(lang, "referral")), KeyboardButton(t(lang, "wallet"))],
@@ -828,6 +931,7 @@ def bottom_keyboard(user_id):
 def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
+        [styled_inline_button(t(lang, "panel_btn"), callback_data="dashboard")],
         [
             styled_inline_button(t(lang, "buy"), callback_data="buy"),
             styled_inline_button(t(lang, "trial"), callback_data="trial"),
@@ -847,6 +951,8 @@ def home_keyboard(user_id):
     ]
     if user_id == ADMIN_ID:
         keyboard.append([styled_inline_button(t(lang, "admin"), callback_data="admin")])
+    if MENU_ONE_PER_ROW:
+        keyboard = [[button] for row in keyboard for button in row]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -858,6 +964,46 @@ async def show_home(query, user_id):
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
     await message.reply_text(t(lang, "welcome"), reply_markup=bottom_keyboard(user_id))
+
+
+def dashboard_text(user, lang):
+    name = user.first_name or user.username or str(user.id)
+    return t(lang, "dash_title", name=name, balance=get_balance(user.id), count=len(get_user_services(user.id)))
+
+
+def dashboard_keyboard(user_id):
+    lang = get_user_language(user_id) or "fa"
+    balance = get_balance(user_id)
+    if get_user_services(user_id):
+        first = styled_inline_button(t(lang, "services"), callback_data="my_services", force_style="default", icon_key="dash_services")
+    else:
+        first = styled_inline_button(t(lang, "dash_first_service"), callback_data="buy", force_style="default", icon_key="dash_first")
+    return InlineKeyboardMarkup([
+        [first],
+        [styled_inline_button(t(lang, "dash_balance", balance=balance), callback_data="wallet", force_style="default", icon_key="dash_balance")],
+        [styled_inline_button(t(lang, "dash_new_service"), callback_data="buy", icon_key="dash_new")],
+        [styled_inline_button(t(lang, "dash_back"), callback_data="home", icon_key="dash_back")],
+    ])
+
+
+async def send_dashboard(message, user):
+    lang = get_user_language(user.id) or "fa"
+    await message.reply_text(dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
+
+
+async def show_dashboard(query, user):
+    lang = get_user_language(user.id) or "fa"
+    await query.edit_message_text(dashboard_text(user, lang), reply_markup=dashboard_keyboard(user.id))
+
+
+async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    ensure_user(user)
+    clear_user_states(context)
+    if not get_user_language(user.id):
+        await show_language_selector_message(update.message)
+        return
+    await send_dashboard(update.message, user)
 
 
 # =========================================================
@@ -964,6 +1110,7 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_bot_commands(application):
     commands = [
         BotCommand("start", "Start / شروع"),
+        BotCommand("panel", "Dashboard / پنل کاربری"),
         BotCommand("buy", "Buy Service / خرید سرویس"),
         BotCommand("services", "My Services / سرویس‌های من"),
         BotCommand("trial", "Free Trial / تست رایگان"),
@@ -1935,6 +2082,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_home(query, user_id)
         return
 
+    # داشبورد کاربری
+    if data == "dashboard":
+        clear_user_states(context)
+        await show_dashboard(query, query.from_user)
+        return
+
     # کیف پول کاربر
     if data == "wallet":
         balance = get_balance(user_id)
@@ -2822,6 +2975,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==================== کیبورد پایینی اصلی ====================
     # فقط وقتی کاربر در حال وارد کردن اطلاعات یک فرم نیست، دکمه‌های منو را پردازش می‌کنیم.
     menu_map = {
+        t(lang, "panel"): "panel",
         t(lang, "buy"): "buy",
         t(lang, "trial"): "trial",
         t(lang, "services"): "services",
@@ -2851,6 +3005,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
     if not waiting_state and text in menu_map:
         action = menu_map[text]
+        if action == "panel":
+            await panel_command(update, context)
+            return
         if action == "buy":
             await buy_command(update, context)
             return
@@ -3553,6 +3710,114 @@ def start_miniapp_api():
 
 
 # =========================================================
+# آیکن پرمیوم دکمه‌ها (فقط ادمین)
+# =========================================================
+
+def _custom_emoji_entities(message):
+    if not message:
+        return []
+    ents = list(message.entities or []) + list(message.caption_entities or [])
+    return [e for e in ents if e.type == MessageEntity.CUSTOM_EMOJI]
+
+
+class _AdminOnlyCustomEmoji(filters.MessageFilter):
+    """پیام ادمین که فقط شامل ایموجی‌های پرمیوم است (برای گرفتن آیدی ایموجی)."""
+
+    def filter(self, message):
+        if not ADMIN_ID or not message.from_user or message.from_user.id != ADMIN_ID:
+            return False
+        text = message.text or ""
+        ents = [e for e in (message.entities or []) if e.type == MessageEntity.CUSTOM_EMOJI]
+        if not ents:
+            return False
+        units = text.encode("utf-16-le")
+        covered = bytearray(len(units) // 2)
+        for e in ents:
+            for i in range(e.offset, min(e.offset + e.length, len(covered))):
+                covered[i] = 1
+        rest = "".join(units[2 * i:2 * i + 2].decode("utf-16-le", "ignore") for i in range(len(covered)) if not covered[i])
+        return rest.strip() == ""
+
+
+async def emoji_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ids = [e.custom_emoji_id for e in _custom_emoji_entities(update.message)]
+    lines = ["🆔 آیدی ایموجی‌ها:", ""]
+    lines += [f"<code>{i}</code>" for i in ids]
+    lines += ["", "برای گذاشتن روی دکمه، روی همین پیام ایموجی ریپلای کنید و بنویسید:", "<code>/seticon buy</code>"]
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def seticon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    args = context.args or []
+    usage = (
+        "استفاده:\n"
+        "/seticon <key> <emoji_id>\n"
+        "یا ریپلای روی پیامی که ایموجی پرمیوم دارد: /seticon <key>\n\n"
+        "کلیدهای داشبورد: dash_first ، dash_services ، dash_balance ، dash_new ، dash_back\n"
+        "کلیدهای منو: buy ، trial ، wallet ، home ، pay_* ، approve_* ...\n"
+        "چند آیکن یکجا: /seticons\n"
+        "لیست: /icons    حذف: /delicon <key>"
+    )
+    if not args:
+        await update.message.reply_text(usage)
+        return
+    key = args[0]
+    emoji_id = args[1] if len(args) > 1 else None
+    if not emoji_id and update.message.reply_to_message:
+        found = _custom_emoji_entities(update.message.reply_to_message)
+        if found:
+            emoji_id = found[0].custom_emoji_id
+    if not emoji_id or not str(emoji_id).isdigit():
+        await update.message.reply_text(usage)
+        return
+    set_button_icon(key, emoji_id)
+    await update.message.reply_text(f"✅ آیکن دکمه «{key}» تنظیم شد.")
+
+
+async def seticons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ریپلای روی پیامی که چند ایموجی پرمیوم دارد: /seticons dash_first dash_balance dash_new"""
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    keys = context.args or []
+    found = _custom_emoji_entities(update.message.reply_to_message)
+    if not keys or not found:
+        await update.message.reply_text(
+            "ریپلای روی پیامی که چند ایموجی پرمیوم دارد، بعد بنویسید:\n"
+            "/seticons dash_first dash_balance dash_new\n\n"
+            "ایموجی اول به کلید اول، دوم به کلید دوم و ... اختصاص داده می‌شود."
+        )
+        return
+    count = 0
+    for key, entity in zip(keys, found):
+        set_button_icon(key, entity.custom_emoji_id)
+        count += 1
+    await update.message.reply_text(f"✅ آیکن {count} دکمه تنظیم شد.")
+
+
+async def delicon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("استفاده: /delicon <key>")
+        return
+    set_button_icon(context.args[0], None)
+    await update.message.reply_text(f"🗑 آیکن دکمه «{context.args[0]}» حذف شد.")
+
+
+async def icons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or update.effective_user.id != ADMIN_ID:
+        return
+    icons = get_button_icon_map()
+    if not icons:
+        await update.message.reply_text("هنوز آیکنی تنظیم نشده.\n\nیک ایموجی پرمیوم برای ربات بفرستید تا آیدی‌اش را بگیرید.")
+        return
+    lines = [f"{k} → {v}" for k, v in sorted(icons.items())]
+    await update.message.reply_text("🎨 آیکن دکمه‌ها:\n\n" + "\n".join(lines))
+
+
+# =========================================================
 # اجرای ربات
 # =========================================================
 
@@ -3579,14 +3844,20 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("backup", backup_command))
+    app.add_handler(CommandHandler("panel", panel_command))
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("services", services_command))
     app.add_handler(CommandHandler("trial", trial_command))
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("seticon", seticon_command))
+    app.add_handler(CommandHandler("seticons", seticons_command))
+    app.add_handler(CommandHandler("delicon", delicon_command))
+    app.add_handler(CommandHandler("icons", icons_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, receipt_handler))
+    app.add_handler(MessageHandler(_AdminOnlyCustomEmoji(), emoji_id_handler))
     app.add_handler(MessageHandler(filters.TEXT, text_handler))
 
     print("HanzuVPN Bot is running...")

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sqlite3
 import asyncio
 import json
@@ -40,6 +41,36 @@ from telegram.ext import (
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
+BUTTON_STYLE_FILE = os.getenv("BUTTON_STYLE_FILE", "button_style.json")
+BUTTON_STYLE_OPTIONS = {
+    "default": "⚪ پیش‌فرض",
+    "success": "🟢 سبز",
+    "danger": "🔴 قرمز",
+    "primary": "🔵 آبی",
+}
+
+def get_button_style():
+    try:
+        p = Path(BUTTON_STYLE_FILE)
+        if p.exists():
+            value = json.loads(p.read_text(encoding="utf-8")).get("style", "default")
+            return value if value in BUTTON_STYLE_OPTIONS else "default"
+    except Exception:
+        pass
+    return "default"
+
+def set_button_style(style):
+    if style not in BUTTON_STYLE_OPTIONS:
+        style = "default"
+    try:
+        Path(BUTTON_STYLE_FILE).write_text(
+            json.dumps({"style": style}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    return style
+
 DB_PATH = os.getenv("DB_PATH", "hanzuvpn.db")
 
 PRICE_PER_GB = 3500
@@ -424,11 +455,30 @@ def set_user_language(user_id, language):
     conn.close()
 
 
+# =========================================================
+# Telegram native button style control
+# =========================================================
+def styled_inline_button(text, callback_data=None, **kwargs):
+    data = str(callback_data or "")
+    selected = get_button_style()
+    if selected != "default":
+        kwargs["style"] = selected
+    else:
+        if (
+            data in {"buy", "buy_monthly", "unlimited", "custom", "charge_wallet"}
+            or data.startswith(("pay_", "paid_", "renewpaid_", "walletpay_", "approve_"))
+        ):
+            kwargs.setdefault("style", "success")
+        elif data == "home" or data.startswith(("paymentback_", "reject_")):
+            kwargs.setdefault("style", "danger")
+    return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
+
+
 def language_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🇮🇷 فارسی", callback_data="language_fa")],
-        [InlineKeyboardButton("🟢 کوردی", callback_data="language_ku")],
-        [InlineKeyboardButton("🇬🇧 English", callback_data="language_en")],
+        [styled_inline_button("🇮🇷 فارسی", callback_data="language_fa")],
+        [styled_inline_button("🟢 کوردی", callback_data="language_ku")],
+        [styled_inline_button("🇬🇧 English", callback_data="language_en")],
     ])
 
 
@@ -679,24 +729,24 @@ def home_keyboard(user_id):
     lang = get_user_language(user_id) or "fa"
     keyboard = [
         [
-            InlineKeyboardButton(t(lang, "buy"), callback_data="buy"),
-            InlineKeyboardButton(t(lang, "trial"), callback_data="trial"),
+            styled_inline_button(t(lang, "buy"), callback_data="buy"),
+            styled_inline_button(t(lang, "trial"), callback_data="trial"),
         ],
         [
-            InlineKeyboardButton(t(lang, "services"), callback_data="my_services"),
-            InlineKeyboardButton(t(lang, "renew"), callback_data="renew"),
+            styled_inline_button(t(lang, "services"), callback_data="my_services"),
+            styled_inline_button(t(lang, "renew"), callback_data="renew"),
         ],
         [
-            InlineKeyboardButton(t(lang, "referral"), callback_data="referral"),
-            InlineKeyboardButton(t(lang, "wallet"), callback_data="wallet"),
+            styled_inline_button(t(lang, "referral"), callback_data="referral"),
+            styled_inline_button(t(lang, "wallet"), callback_data="wallet"),
         ],
         [
-            InlineKeyboardButton(t(lang, "support"), callback_data="support"),
-            InlineKeyboardButton(t(lang, "language"), callback_data="language"),
+            styled_inline_button(t(lang, "support"), callback_data="support"),
+            styled_inline_button(t(lang, "language"), callback_data="language"),
         ],
     ]
     if user_id == ADMIN_ID:
-        keyboard.append([InlineKeyboardButton(t(lang, "admin"), callback_data="admin")])
+        keyboard.append([styled_inline_button(t(lang, "admin"), callback_data="admin")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -789,8 +839,8 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         t(lang, "support_title"),
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "create_ticket"), callback_data="new_ticket")],
-            [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
+            [styled_inline_button(t(lang, "create_ticket"), callback_data="new_ticket")],
+            [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
         ])
     )
 
@@ -887,9 +937,9 @@ def buy_period_keyboard(user_id):
     else:
         unlimited_text = "♾️ نامحدود"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(period_text, callback_data="buy_monthly")],
-        [InlineKeyboardButton(unlimited_text, callback_data="unlimited")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+        [styled_inline_button(period_text, callback_data="buy_monthly")],
+        [styled_inline_button(unlimited_text, callback_data="unlimited")],
+        [styled_inline_button(t(lang, "back"), callback_data="home")],
     ])
 
 
@@ -913,16 +963,16 @@ def buy_keyboard(user_id):
             ("40 گیگ | 140,000 تومان", "plan_40"),
             ("50 گیگ | 175,000 تومان", "plan_50"),
         ]
-    keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
+    keyboard = [[styled_inline_button(text, callback_data=cb)] for text, cb in buttons]
     if lang == "en":
         unlimited_text = "♾️ Unlimited"
     elif lang == "ku":
         unlimited_text = "♾️ بێ سنوور"
     else:
         unlimited_text = "♾️ نامحدود"
-    keyboard.append([InlineKeyboardButton(unlimited_text, callback_data="unlimited")])
-    keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+    keyboard.append([styled_inline_button(unlimited_text, callback_data="unlimited")])
+    keyboard.append([styled_inline_button(t(lang, "custom"), callback_data="custom")])
+    keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -953,8 +1003,8 @@ async def show_unlimited_services(query):
     else:
         buttons = [("👤 تک کاربره | 150,000 تومان", "unlimited_plan_1"), ("👥 دو کاربره | 250,000 تومان", "unlimited_plan_2"), ("👥 سه کاربره | 350,000 تومان", "unlimited_plan_3")]
         title = "♾️ سرویس نامحدود\n\nپلن موردنظر را انتخاب کنید:"
-    keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy_monthly")])
+    keyboard = [[styled_inline_button(text, callback_data=cb)] for text, cb in buttons]
+    keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy_monthly")])
     await query.edit_message_text(title, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -981,9 +1031,9 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     if original_price != price and coupon_code:
         caption += t(lang, "original_price", original=original_price, coupon=coupon_code)
     keyboard = [
-        [InlineKeyboardButton(t(lang, "pay"), callback_data=f"pay_{volume}")],
+        [styled_inline_button(t(lang, "pay"), callback_data=f"pay_{volume}")],
     ]
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy")])
+    keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy")])
     await query.edit_message_text(caption, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1013,13 +1063,13 @@ async def show_card_payment(query, volume, original_price, coupon_code=None, fin
     caption += t(lang, "card", card=CARD_NUMBER)
 
     keyboard = [
-        [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
-        [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
+        [styled_inline_button(t(lang, "paid"), callback_data=f"paid_{volume}")],
+        [styled_inline_button(t(lang, "coupon"), callback_data="coupon")],
     ]
     balance = get_balance(user_id)
     if balance >= price:
-        keyboard.insert(0, [InlineKeyboardButton(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data=f"paymentback_{volume}")])
+        keyboard.insert(0, [styled_inline_button(t(lang, "pay_wallet"), callback_data=f"walletpay_{volume}_{price}")])
+    keyboard.append([styled_inline_button(t(lang, "back"), callback_data=f"paymentback_{volume}")])
     await query.edit_message_text(caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1253,8 +1303,8 @@ async def send_services_message(message, user_id):
             else:
                 text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "renew"), callback_data="renew")],
-        [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
+        [styled_inline_button(t(lang, "renew"), callback_data="renew")],
+        [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
     ]))
 
 
@@ -1405,25 +1455,44 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # پنل مدیریت + کیف پول ادمین
 # =========================================================
 
+async def show_button_style_panel(query):
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("دسترسی ندارید.", show_alert=True)
+        return
+    current = get_button_style()
+    keyboard = [
+        [styled_inline_button("⚪ پیش‌فرض", callback_data="button_style_default")],
+        [styled_inline_button("🟢 سبز", callback_data="button_style_success")],
+        [styled_inline_button("🔴 قرمز", callback_data="button_style_danger")],
+        [styled_inline_button("🔵 آبی", callback_data="button_style_primary")],
+        [styled_inline_button("🔙 بازگشت", callback_data="admin")],
+    ]
+    await query.edit_message_text(
+        f"🎨 تنظیم استایل دکمه‌ها\n\nاستایل فعلی: {BUTTON_STYLE_OPTIONS[current]}\n\nاستایل موردنظر را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
-        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
-        [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
-        [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
+        [styled_inline_button("💾 دریافت بکاپ", callback_data="admin_backup")],
+        [styled_inline_button(t(lang, "admin_add"), callback_data="admin_add")],
+        [styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")],
         [
-            InlineKeyboardButton(t(lang, "admin_stock"), callback_data="admin_stock"),
-            InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete")
+            styled_inline_button(t(lang, "admin_stock"), callback_data="admin_stock"),
+            styled_inline_button(t(lang, "admin_delete"), callback_data="admin_delete")
         ],
-        [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon")],
-        [InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
-        [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
+        [styled_inline_button(t(lang, "admin_coupon"), callback_data="admin_coupon")],
+        [styled_inline_button(t(lang, "admin_balance"), callback_data="admin_balance")],
+        [styled_inline_button(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
         [
-            InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
-            InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")
+            styled_inline_button(t(lang, "admin_stats"), callback_data="admin_stats"),
+            styled_inline_button(t(lang, "admin_orders"), callback_data="admin_orders")
         ],
-        [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+        [styled_inline_button(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+        [styled_inline_button("🎨 استایل دکمه‌ها", callback_data="admin_button_style")],
+        [styled_inline_button(t(lang, "back"), callback_data="home")],
     ]
     await query.edit_message_text(
         "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
@@ -1444,7 +1513,7 @@ async def show_admin_stock(query):
         text += "❌ سرویس فروشی موجود نیست.\n"
     text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+        [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
@@ -1464,7 +1533,7 @@ async def show_admin_stats(query):
         f"🎫 تیکت‌های باز: {s['tickets']}"
     )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+        [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
@@ -1491,7 +1560,7 @@ async def show_admin_orders(query):
                 f"{status}\n🕐 {row['created_at']}\n\n"
             )
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+        [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
 
 
@@ -1499,10 +1568,10 @@ async def show_admin_trial(query):
     lang = get_user_language(query.from_user.id) or "fa"
     stock = get_free_trial_stock()
     keyboard = [
-        [InlineKeyboardButton(t(lang, "admin_trial_add"), callback_data="admin_trial_add")],
-        [InlineKeyboardButton(t(lang, "admin_trial_delete"), callback_data="admin_trial_delete")],
-        [InlineKeyboardButton(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
-        [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")],
+        [styled_inline_button(t(lang, "admin_trial_add"), callback_data="admin_trial_add")],
+        [styled_inline_button(t(lang, "admin_trial_delete"), callback_data="admin_trial_delete")],
+        [styled_inline_button(t(lang, "admin_trial_stock"), callback_data="admin_trial_stock")],
+        [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
     ]
     await query.edit_message_text(
         f"🎁 مدیریت تست رایگان\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n📊 موجودی: {stock}",
@@ -1516,11 +1585,11 @@ async def show_admin_trial_delete(query):
     if not rows:
         await query.edit_message_text(
             "🗑 حذف تست\n\n❌ لینک تستی وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
+            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
         return
-    keyboard = [[InlineKeyboardButton(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")])
+    keyboard = [[styled_inline_button(t(lang, "trial_item", id=row['id']), callback_data=f"trial_delete_{row['id']}")] for row in rows]
+    keyboard.append([styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")])
     await query.edit_message_text("🗑 لینک تست موردنظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1530,11 +1599,11 @@ async def show_delete_menu(query):
     if not rows:
         await query.edit_message_text(
             "🗑 حذف لینک\n\n❌ لینک استفاده‌نشده‌ای وجود ندارد.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]])
+            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]])
         )
         return
-    keyboard = [[InlineKeyboardButton(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
-    keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
+    keyboard = [[styled_inline_button(t(lang, "delete_item", id=row['id'], volume=row['volume']), callback_data=f"delete_{row['id']}")] for row in rows]
+    keyboard.append([styled_inline_button(t(lang, "admin_panel"), callback_data="admin")])
     await query.edit_message_text("🗑 کدام لینک حذف شود؟", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1552,6 +1621,20 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = user.id
     ensure_user(user)
     data = query.data or ""
+
+    if data == "admin_button_style":
+        if user_id != ADMIN_ID:
+            return
+        await show_button_style_panel(query)
+        return
+
+    if data.startswith("button_style_"):
+        if user_id != ADMIN_ID:
+            return
+        selected = data.split("button_style_", 1)[1]
+        set_button_style(selected)
+        await show_button_style_panel(query)
+        return
 
     # زبان
     if data == "language":
@@ -1593,9 +1676,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             t(lang, "wallet_title", balance=balance),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
-                [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [styled_inline_button(t(lang, "charge_wallet"), callback_data="charge_wallet")],
+                [styled_inline_button(t(lang, "wallet_history"), callback_data="wallet_history")],
+                [styled_inline_button(t(lang, "back"), callback_data="home")],
             ])
         )
         return
@@ -1619,7 +1702,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                           desc=row["description"] or row["type"],
                           date=row["created_at"])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "back"), callback_data="wallet")]
+            [styled_inline_button(t(lang, "back"), callback_data="wallet")]
         ]))
         return
 
@@ -1899,18 +1982,18 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         result = claim_trial(user)
         if result["status"] == "already":
             await query.edit_message_text(t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+                [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]))
             return
         if result["status"] == "empty":
             await query.edit_message_text(t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")]
+                [styled_inline_button(t(lang, "back"), callback_data="home")]
             ]))
             return
         await query.edit_message_text(t(lang, "trial_success", link=result["link"]), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-            [InlineKeyboardButton(t(lang, "main_menu"), callback_data="home")],
+            [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+            [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
         ]))
         return
 
@@ -1934,8 +2017,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                     text += t(lang, "service_item", id=row["id"], volume=row["volume"],
                               expires=row["expires_at"] or "-", link=row["link"] or "-")
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "renew"), callback_data="renew")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+            [styled_inline_button(t(lang, "renew"), callback_data="renew")],
+            [styled_inline_button(t(lang, "back"), callback_data="home")],
         ]))
         return
 
@@ -1944,15 +2027,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         rows = get_user_services(user_id)
         if not rows:
             await query.edit_message_text(t(lang, "renew_no_services"), reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "buy"), callback_data="buy")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+                [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]))
             return
         keyboard = []
         for row in rows[:10]:
             label = f"🔄 تمدید #{row['id']} | {row['volume']} گیگ"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"renew_{row['id']}")])
-        keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+            keyboard.append([styled_inline_button(label, callback_data=f"renew_{row['id']}")])
+        keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
         await query.edit_message_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -1978,12 +2061,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
-                    InlineKeyboardButton(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
-                    InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
+                    styled_inline_button("➖", callback_data=f"renewminus_{order_id}"),
+                    styled_inline_button(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
+                    styled_inline_button("➕", callback_data=f"renewplus_{order_id}"),
                 ],
-                [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+                [styled_inline_button(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
+                [styled_inline_button(t(lang, "back"), callback_data="renew")],
             ])
         )
         return
@@ -2012,12 +2095,12 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(lang, "renew_payment", volume=volume, price=price),
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("➖", callback_data=f"renewminus_{order_id}"),
-                    InlineKeyboardButton(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
-                    InlineKeyboardButton("➕", callback_data=f"renewplus_{order_id}"),
+                    styled_inline_button("➖", callback_data=f"renewminus_{order_id}"),
+                    styled_inline_button(t(lang, "volume_label", volume=volume), callback_data="renew_noop"),
+                    styled_inline_button("➕", callback_data=f"renewplus_{order_id}"),
                 ],
-                [InlineKeyboardButton(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+                [styled_inline_button(t(lang, "pay"), callback_data=f"renewpay_{volume}")],
+                [styled_inline_button(t(lang, "back"), callback_data="renew")],
             ])
         )
         await query.answer()
@@ -2041,9 +2124,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(lang, "renew_paid", volume=volume, price=stored_price, card=CARD_NUMBER),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
-                [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+                [styled_inline_button(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
+                [styled_inline_button(t(lang, "coupon"), callback_data="coupon")],
+                [styled_inline_button(t(lang, "back"), callback_data="renew")],
             ])
         )
         return
@@ -2076,8 +2159,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     # پشتیبانی
     if data == "support":
         await query.edit_message_text(t(lang, "support_title"), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "create_ticket"), callback_data="new_ticket")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+            [styled_inline_button(t(lang, "create_ticket"), callback_data="new_ticket")],
+            [styled_inline_button(t(lang, "back"), callback_data="home")],
         ]))
         return
 
@@ -2096,7 +2179,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             count = referral_count(user_id)
             await query.edit_message_text(
                 t(lang, "referral_title", count=count, link=link),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]])
             )
         except Exception:
             await query.edit_message_text(t(lang, "referral_error"))
@@ -2231,7 +2314,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         delete_subscription(subscription_id)
         await query.edit_message_text("✅ لینک حذف شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
 
@@ -2263,7 +2346,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         delete_free_trial(trial_id)
         await query.edit_message_text("✅ لینک تست حذف شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]
+            [styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]
         ]))
         return
 
@@ -2273,7 +2356,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         stock = get_free_trial_stock()
         await query.edit_message_text(
             f"🎁 موجودی تست\n\n📦 100 مگابایت\n⏳ 1 روز\n🔢 موجودی: {stock}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")]])
+            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")]])
         )
         return
 
@@ -2307,14 +2390,14 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         conn.close()
         if not rows:
             text = "🎫 تیکت باز نداریم."
-            keyboard = [[InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]]
+            keyboard = [[styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]
         else:
             text = "🎫 تیکت‌های باز\n\n"
             keyboard = []
             for row in rows:
                 text += f"#{row['id']} | User: {row['user_id']}\n"
-                keyboard.append([InlineKeyboardButton(t(lang, "ticket_item", id=row['id']), callback_data=f"ticket_{row['id']}")])
-            keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
+                keyboard.append([styled_inline_button(t(lang, "ticket_item", id=row['id']), callback_data=f"ticket_{row['id']}")])
+            keyboard.append([styled_inline_button(t(lang, "admin_panel"), callback_data="admin")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -2340,8 +2423,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(
             text + "\n✏️ پاسخ خود را ارسال کنید.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "admin_close_ticket"), callback_data=f"close_ticket_{ticket_id}")],
-                [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+                [styled_inline_button(t(lang, "admin_close_ticket"), callback_data=f"close_ticket_{ticket_id}")],
+                [styled_inline_button(t(lang, "admin_tickets"), callback_data="admin_tickets")],
             ])
         )
         return
@@ -2365,7 +2448,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception:
                 pass
         await query.edit_message_text("✅ تیکت بسته شد.", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")]
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
         ]))
         return
 
@@ -2522,9 +2605,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 t(lang, "wallet_title", balance=get_balance(user.id)),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(t(lang, "charge_wallet"), callback_data="charge_wallet")],
-                    [InlineKeyboardButton(t(lang, "wallet_history"), callback_data="wallet_history")],
-                    [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                    [styled_inline_button(t(lang, "charge_wallet"), callback_data="charge_wallet")],
+                    [styled_inline_button(t(lang, "wallet_history"), callback_data="wallet_history")],
+                    [styled_inline_button(t(lang, "back"), callback_data="home")],
                 ])
             )
             return
@@ -2535,7 +2618,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 count = referral_count(user.id)
                 await update.message.reply_text(
                     t(lang, "referral_title", count=count, link=link),
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                    reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]])
                 )
             except Exception:
                 await update.message.reply_text(t(lang, "referral_error"))
@@ -2545,24 +2628,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not rows:
                 await update.message.reply_text(
                     t(lang, "renew_no_services"),
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t(lang, "buy"), callback_data="buy")], [InlineKeyboardButton(t(lang, "back"), callback_data="home")]])
+                    reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "buy"), callback_data="buy")], [styled_inline_button(t(lang, "back"), callback_data="home")]])
                 )
                 return
-            keyboard = [[InlineKeyboardButton(f"{t(lang, 'renew')} #{row['id']} | {row['volume']} {t(lang, 'volume_label', volume='').strip()}", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
-            keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+            keyboard = [[styled_inline_button(f"{t(lang, 'renew')} #{row['id']} | {row['volume']} {t(lang, 'volume_label', volume='').strip()}", callback_data=f"renew_{row['id']}")] for row in rows[:10]]
+            keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
             await update.message.reply_text(t(lang, "renew_choose"), reply_markup=InlineKeyboardMarkup(keyboard))
             return
         if action == "admin" and user.id == ADMIN_ID:
             # پنل مدیریت را با همان منوی اصلی ادمین نمایش می‌دهیم.
             keyboard = [
-                [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
-                [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
-                [InlineKeyboardButton(t(lang, "admin_stock"), callback_data="admin_stock"), InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete")],
-                [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon"), InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
-                [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
-                [InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"), InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")],
-                [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+                [styled_inline_button(t(lang, "admin_add"), callback_data="admin_add")],
+                [styled_inline_button(t(lang, "admin_trial"), callback_data="admin_trial")],
+                [styled_inline_button(t(lang, "admin_stock"), callback_data="admin_stock"), styled_inline_button(t(lang, "admin_delete"), callback_data="admin_delete")],
+                [styled_inline_button(t(lang, "admin_coupon"), callback_data="admin_coupon"), styled_inline_button(t(lang, "admin_balance"), callback_data="admin_balance")],
+                [styled_inline_button(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
+                [styled_inline_button(t(lang, "admin_stats"), callback_data="admin_stats"), styled_inline_button(t(lang, "admin_orders"), callback_data="admin_orders")],
+                [styled_inline_button(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+                [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]
             await update.message.reply_text("⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
             return
@@ -2586,8 +2669,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             t(lang, "charge_payment", amount=amount, card=CARD_NUMBER),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_CHARGE")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data="wallet")],
+                [styled_inline_button(t(lang, "paid"), callback_data=f"paid_CHARGE")],
+                [styled_inline_button(t(lang, "back"), callback_data="wallet")],
             ])
         )
         return
@@ -2603,7 +2686,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=ADMIN_ID,
             text=f"🎫 تیکت جدید #{ticket_id}\n\n👤 {user.first_name or '-'}\n🆔 {user.id}\n\n💬 {text}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "admin_ticket_view"), callback_data=f"ticket_{ticket_id}")]
+                [styled_inline_button(t(lang, "admin_ticket_view"), callback_data=f"ticket_{ticket_id}")]
             ])
         )
         await update.message.reply_text(t(lang, "ticket_created", id=ticket_id))
@@ -2760,8 +2843,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if original_price != final_price and coupon_code:
             payment_text += t(lang, "original_price", original=original_price, coupon=coupon_code)
         keyboard = [
-            [InlineKeyboardButton(t(lang, "pay"), callback_data=f"pay_{volume}")],
-            [InlineKeyboardButton(t(lang, "back"), callback_data="buy")],
+            [styled_inline_button(t(lang, "pay"), callback_data=f"pay_{volume}")],
+            [styled_inline_button(t(lang, "back"), callback_data="buy")],
         ]
         await update.message.reply_text(payment_text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
@@ -2793,9 +2876,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         t(lang, "renew_paid", volume=volume, price=price, card=CARD_NUMBER),
                         parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
-                            [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
-                            [InlineKeyboardButton(t(lang, "back"), callback_data="renew")],
+                            [styled_inline_button(t(lang, "paid"), callback_data=f"renewpaid_{volume}")],
+                            [styled_inline_button(t(lang, "coupon"), callback_data="coupon")],
+                            [styled_inline_button(t(lang, "back"), callback_data="renew")],
                         ])
                     )
                 else:
@@ -2814,9 +2897,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         + t(lang, "card", card=CARD_NUMBER),
                         parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton(t(lang, "paid"), callback_data=f"paid_{volume}")],
-                            [InlineKeyboardButton(t(lang, "coupon"), callback_data="coupon")],
-                            [InlineKeyboardButton(t(lang, "back"), callback_data=f"paymentback_{volume}")],
+                            [styled_inline_button(t(lang, "paid"), callback_data=f"paid_{volume}")],
+                            [styled_inline_button(t(lang, "coupon"), callback_data="coupon")],
+                            [styled_inline_button(t(lang, "back"), callback_data=f"paymentback_{volume}")],
                         ])
                     )
                 return
@@ -2887,8 +2970,8 @@ async def receipt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [[
-        InlineKeyboardButton(t(lang, "approve_payment"), callback_data=f"approve_{order['id']}"),
-        InlineKeyboardButton(t(lang, "reject_payment"), callback_data=f"reject_{order['id']}")
+        styled_inline_button(t(lang, "approve_payment"), callback_data=f"approve_{order['id']}"),
+        styled_inline_button(t(lang, "reject_payment"), callback_data=f"reject_{order['id']}")
     ]]
 
     await context.bot.send_photo(

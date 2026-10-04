@@ -63,34 +63,6 @@ MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
-BUTTON_STYLE_FILE = os.getenv("BUTTON_STYLE_FILE", "button_style.json")
-BUTTON_STYLE_OPTIONS = {
-    "default": "⚪ پیش‌فرض",
-    "success": "🟢 سبز",
-    "danger": "🔴 قرمز",
-    "primary": "🔵 آبی",
-}
-
-def get_button_style():
-    try:
-        p = Path(BUTTON_STYLE_FILE)
-        if p.exists():
-            value = json.loads(p.read_text(encoding="utf-8")).get("style", "default")
-            return value if value in BUTTON_STYLE_OPTIONS else "default"
-    except Exception:
-        pass
-    return "default"
-
-def set_button_style(style):
-    if style not in BUTTON_STYLE_OPTIONS:
-        style = "default"
-    Path(BUTTON_STYLE_FILE).write_text(
-        json.dumps({"style": style}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return style
-
-
 UNLIMITED_PLANS = {
     "UNLIMITED_1": {"label_fa": "تک کاربره", "label_en": "Single User", "label_ku": "یەک بەکارهێنەر", "price": 150000, "hwid": 1},
     "UNLIMITED_2": {"label_fa": "دو کاربره", "label_en": "Two Users", "label_ku": "دوو بەکارهێنەر", "price": 250000, "hwid": 2},
@@ -408,6 +380,36 @@ def t(lang, key, **kwargs):
 # ابزارهای عمومی
 # =========================================================
 
+BUTTON_STYLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "button_style.json")
+BUTTON_STYLE_OPTIONS = {
+    "default": "⚪ پیش‌فرض",
+    "success": "🟢 سبز",
+    "danger": "🔴 قرمز",
+    "primary": "🔵 آبی",
+}
+
+def get_button_style():
+    try:
+        with open(BUTTON_STYLE_FILE, "r", encoding="utf-8") as f:
+            value = json.load(f).get("style", "default")
+            return value if value in BUTTON_STYLE_OPTIONS else "default"
+    except Exception:
+        return "default"
+
+def set_button_style(style):
+    if style not in BUTTON_STYLE_OPTIONS:
+        style = "default"
+    with open(BUTTON_STYLE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"style": style}, f, ensure_ascii=False, indent=2)
+    return style
+
+def styled_inline_button(text, callback_data=None, **kwargs):
+    style = get_button_style()
+    if style != "default":
+        kwargs["style"] = style
+    return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
+
+
 def now_text():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -451,13 +453,6 @@ def set_user_language(user_id, language):
     conn.commit()
     conn.close()
 
-
-
-def styled_inline_button(text, callback_data=None, **kwargs):
-    selected = get_button_style()
-    if selected != "default":
-        kwargs["style"] = selected
-    return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 def language_keyboard():
     return InlineKeyboardMarkup([
@@ -1441,16 +1436,13 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def show_button_style_panel(query):
-    if query.from_user.id != ADMIN_ID:
-        await query.answer("دسترسی ندارید.", show_alert=True)
-        return
     current = get_button_style()
     keyboard = [
         [styled_inline_button("⚪ پیش‌فرض", callback_data="button_style_default")],
         [styled_inline_button("🟢 سبز", callback_data="button_style_success")],
         [styled_inline_button("🔴 قرمز", callback_data="button_style_danger")],
         [styled_inline_button("🔵 آبی", callback_data="button_style_primary")],
-        [styled_inline_button("🔙 بازگشت", callback_data="admin")],
+        [styled_inline_button("↩️ بازگشت به پنل مدیریت", callback_data="admin")],
     ]
     await query.edit_message_text(
         f"🎨 تنظیم استایل دکمه‌ها\n\nاستایل فعلی: {BUTTON_STYLE_OPTIONS[current]}\n\nاستایل موردنظر را انتخاب کن:",
@@ -1620,7 +1612,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         set_button_style(selected)
         await show_button_style_panel(query)
         return
-
 
     # زبان
     if data == "language":

@@ -680,14 +680,22 @@ async def show_home(query, user_id):
 
 
 async def send_home(message, user_id):
-    """نمایش منوی اصلی فقط با دکمه‌های داخل پیام (Inline Keyboard)."""
+    """نمایش منوی اصلی با دکمه‌های داخل خود پیام؛ بدون کیبورد پایین."""
     lang = get_user_language(user_id) or "fa"
-    # اگر کاربر از نسخه قدیمی ربات هنوز کیبورد پایینی دارد، آن را حذف می‌کنیم.
-    sent = await message.reply_text(
+
+    # اول کیبورد قدیمی پایین صفحه را جمع می‌کنیم.
+    # سپس پیام اصلی را مستقیماً با Inline Keyboard می‌فرستیم.
+    # قبلاً پیام با ReplyKeyboardRemove ارسال و بعد edit می‌شد که
+    # در بعضی نسخه‌های تلگرام باعث می‌شد دکمه‌های Inline نمایش داده نشوند.
+    try:
+        await message.reply_text("\u2063", reply_markup=ReplyKeyboardRemove())
+    except Exception:
+        pass
+
+    await message.reply_text(
         t(lang, "welcome"),
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=home_keyboard(user_id)
     )
-    await sent.edit_reply_markup(reply_markup=home_keyboard(user_id))
 
 
 # =========================================================
@@ -1358,21 +1366,27 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_admin(query):
     lang = get_user_language(query.from_user.id) or "fa"
     keyboard = [
-        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
-        [InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add")],
-        [InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial")],
+        [
+            InlineKeyboardButton(t(lang, "admin_add"), callback_data="admin_add"),
+            InlineKeyboardButton(t(lang, "admin_trial"), callback_data="admin_trial"),
+        ],
         [
             InlineKeyboardButton(t(lang, "admin_stock"), callback_data="admin_stock"),
-            InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete")
+            InlineKeyboardButton(t(lang, "admin_delete"), callback_data="admin_delete"),
         ],
-        [InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon")],
-        [InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance")],
-        [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
         [
-            InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
-            InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")
+            InlineKeyboardButton(t(lang, "admin_coupon"), callback_data="admin_coupon"),
+            InlineKeyboardButton(t(lang, "admin_balance"), callback_data="admin_balance"),
         ],
-        [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
+        [
+            InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast"),
+            InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"),
+        ],
+        [
+            InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders"),
+            InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets"),
+        ],
+        [InlineKeyboardButton("💾 دریافت بکاپ", callback_data="admin_backup")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ]
     await query.edit_message_text(

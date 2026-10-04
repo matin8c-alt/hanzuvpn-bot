@@ -23,7 +23,6 @@ from telegram import (
     MenuButtonWebApp,
     WebAppInfo,
     InputFile,
-    __version__ as PTB_VERSION,
 )
 from telegram.ext import (
     Application,
@@ -61,30 +60,6 @@ TRIAL_DAYS = 1
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
 TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
-
-# استایل دکمه‌های جدید Telegram Bot API / python-telegram-bot
-# style از PTB 22.7 به بعد پشتیبانی می‌شود.
-try:
-    _ptb_major, _ptb_minor = (int(x) for x in PTB_VERSION.split(".")[:2])
-except Exception:
-    _ptb_major, _ptb_minor = (0, 0)
-if (_ptb_major, _ptb_minor) < (22, 7):
-    raise RuntimeError(
-        f"python-telegram-bot 22.7+ is required for styled buttons; installed: {PTB_VERSION}. "
-        "Run: pip install -U 'python-telegram-bot>=22.7,<23'"
-    )
-
-BUTTON_STYLE_VALUES = {
-    "default": None,
-    "primary": "primary",  # آبی
-    "success": "success",  # سبز
-    "danger": "danger",    # قرمز
-}
-BUTTON_STYLE_KEYS = (
-    "buy", "trial", "services", "renew", "referral", "wallet", "support", "language", "admin"
-)
-BUTTON_STYLE_DEFAULTS = {key: "primary" for key in BUTTON_STYLE_KEYS}
-BUTTON_STYLE_DEFAULTS.update({"trial": "success", "admin": "danger"})
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
 
@@ -186,7 +161,6 @@ TEXTS = {
         'admin_stats': '📊 آمار',
         'admin_orders': '🧾 سفارش\u200cها',
         'admin_tickets': '🎫 تیکت\u200cها',
-        'admin_colors': '🎨 رنگ دکمه‌ها',
         'admin_panel': '🔙 پنل مدیریت',
         'admin_trial_add': '➕ افزودن لینک تست',
         'admin_trial_delete': '🗑 حذف لینک تست',
@@ -281,7 +255,6 @@ TEXTS = {
         'admin_stats': '📊 ئامار',
         'admin_orders': '🧾 داواکارییەکان',
         'admin_tickets': '🎫 تیکەتەکان',
-        'admin_colors': '🎨 ڕەنگی دوگمەکان',
         'admin_panel': '🔙 پانێڵی بەڕێوەبردن',
         'admin_trial_add': '➕ زیادکردنی بەستەری تاقیکردنەوە',
         'admin_trial_delete': '🗑 سڕینەوەی تاقیکردنەوە',
@@ -376,7 +349,6 @@ TEXTS = {
         'admin_stats': '📊 Statistics',
         'admin_orders': '🧾 Orders',
         'admin_tickets': '🎫 Tickets',
-        'admin_colors': '🎨 Button Colors',
         'admin_panel': '🔙 Admin Panel',
         'admin_trial_add': '➕ Add Trial Link',
         'admin_trial_delete': '🗑 Delete Trial Link',
@@ -612,19 +584,6 @@ def init_db():
         )
     """)
 
-    # تنظیمات رنگ دکمه‌های منوی اصلی؛ یک‌بار ذخیره می‌شوند و با ری‌استارت باقی می‌مانند.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS button_styles (
-            button_key TEXT PRIMARY KEY,
-            style TEXT
-        )
-    """)
-    for _key, _style in BUTTON_STYLE_DEFAULTS.items():
-        conn.execute(
-            "INSERT OR IGNORE INTO button_styles (button_key, style) VALUES (?, ?)",
-            (_key, _style)
-        )
-
     conn.commit()
 
     # سازگاری
@@ -699,135 +658,91 @@ def get_wallet_history(user_id, limit=15):
 
 
 # =========================================================
-# منوی اصلی + استایل دکمه‌ها
+# منوی اصلی
 # =========================================================
 
-def get_button_style(button_key):
-    """رنگ ذخیره‌شده یک دکمه را برمی‌گرداند."""
-    if button_key not in BUTTON_STYLE_KEYS:
-        return None
-    conn = get_db()
-    row = conn.execute("SELECT style FROM button_styles WHERE button_key = ?", (button_key,)).fetchone()
-    conn.close()
-    style = row["style"] if row else BUTTON_STYLE_DEFAULTS.get(button_key, "primary")
-    return style if style in BUTTON_STYLE_VALUES else "primary"
-
-
-def set_button_style(button_key, style):
-    if button_key not in BUTTON_STYLE_KEYS or style not in BUTTON_STYLE_VALUES:
-        return False
-    conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO button_styles (button_key, style) VALUES (?, ?)", (button_key, style))
-    conn.commit()
-    conn.close()
-    return True
-
-
-def styled_reply_button(text, button_key):
-    style = get_button_style(button_key)
-    kwargs = {"text": text}
-    if style:
-        kwargs["style"] = style
-    return KeyboardButton(**kwargs)
-
-
-def styled_inline_button(text, button_key, callback_data):
-    style = get_button_style(button_key)
-    kwargs = {"text": text, "callback_data": callback_data}
-    if style:
-        kwargs["style"] = style
-    return InlineKeyboardButton(**kwargs)
-
-
-def _home_stats(user_id):
-    conn = get_db()
-    row = conn.execute("SELECT first_name, balance FROM users WHERE user_id = ?", (user_id,)).fetchone()
-    count = conn.execute(
-        "SELECT COUNT(*) FROM orders WHERE user_id = ? AND status = 'approved' AND is_charge = 0",
-        (user_id,)
-    ).fetchone()[0]
-    conn.close()
-    name = (row["first_name"] if row else "") or "-"
-    balance = int((row["balance"] if row else 0) or 0)
-    return name, balance, int(count)
-
-
-def dashboard_text(user_id):
-    lang = get_user_language(user_id) or "fa"
-    name, balance, count = _home_stats(user_id)
-    if lang == "en":
-        return (
-            "📊 User Dashboard\n\n"
-            f"👤 User Information:\n• Name: {name}\n• Balance: {balance:,} Toman\n• Services: {count}\n\n"
-            "🎯 Choose one of the options below to continue:"
-        )
-    if lang == "ku":
-        return (
-            "📊 داشبۆردی بەکارهێنەر\n\n"
-            f"👤 زانیاری بەکارهێنەر:\n• ناو: {name}\n• باڵانس: {balance:,} تۆمان\n• ژمارەی خزمەتگوزاری: {count}\n\n"
-            "🎯 یەکێک لە هەڵبژاردەکانی خوارەوە هەڵبژێرە:"
-        )
-    return (
-        "📊 داشبورد کاربری\n\n"
-        f"👤 اطلاعات کاربر:\n• نام: {name}\n• موجودی: {balance:,} تومان\n• تعداد سرویس‌ها: {count}\n\n"
-        "🎯 برای شروع، یکی از گزینه‌های زیر را انتخاب کنید:"
-    )
-
-
-def home_labels(user_id, lang):
-    _, balance, count = _home_stats(user_id)
-    if lang == "en":
-        buy_label = "➕ Buy Your First Service" if count == 0 else "🛒 Buy New Service"
-        wallet_label = f"💳 Balance: {balance:,} Toman"
-    elif lang == "ku":
-        buy_label = "➕ یەکەم خزمەتگوزارییەکەت بکڕە" if count == 0 else "🛒 خزمەتگوزاری نوێ بکڕە"
-        wallet_label = f"💳 باڵانس: {balance:,} تۆمان"
-    else:
-        buy_label = "➕ خرید اولین سرویس خود" if count == 0 else "🛒 خرید سرویس جدید"
-        wallet_label = f"💳 موجودی: {balance:,} تومان"
-    return {
-        "buy": buy_label,
-        "trial": t(lang, "trial"),
-        "services": t(lang, "services"),
-        "renew": t(lang, "renew"),
-        "referral": t(lang, "referral"),
-        "wallet": wallet_label,
-        "support": t(lang, "support"),
-        "language": t(lang, "language"),
-        "admin": t(lang, "admin"),
-    }
-
-
 def bottom_keyboard(user_id):
-    """کیبورد اصلی تک‌ستونه و تمام‌عرض با استایل جدید Telegram."""
+    """کیبورد پایینی اصلی؛ دو دکمه در هر ردیف و کاملاً وابسته به زبان کاربر."""
     lang = get_user_language(user_id) or "fa"
-    labels = home_labels(user_id, lang)
-    keys = ["buy", "trial", "services", "renew", "referral", "wallet", "support", "language"]
-    rows = [[styled_reply_button(labels[key], key)] for key in keys]
+    rows = [
+        [KeyboardButton(t(lang, "buy")), KeyboardButton(t(lang, "trial"))],
+        [KeyboardButton(t(lang, "services")), KeyboardButton(t(lang, "renew"))],
+        [KeyboardButton(t(lang, "referral")), KeyboardButton(t(lang, "wallet"))],
+        [KeyboardButton(t(lang, "support")), KeyboardButton(t(lang, "language"))],
+    ]
     if user_id == ADMIN_ID:
-        rows.append([styled_reply_button(labels["admin"], "admin")])
+        rows.append([KeyboardButton(t(lang, "admin"))])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
 def home_keyboard(user_id):
+    """منوی اصلی به سبک داشبورد؛ دکمه‌ها تک‌ستونه و تمام‌عرض هستند."""
     lang = get_user_language(user_id) or "fa"
-    labels = home_labels(user_id, lang)
-    keys = [
-        ("buy", "buy"), ("trial", "trial"), ("services", "my_services"), ("renew", "renew"),
-        ("referral", "referral"), ("wallet", "wallet"), ("support", "support"), ("language", "language")
-    ]
-    keyboard = [[styled_inline_button(labels[key], key, callback)] for key, callback in keys]
+    rows = get_user_services(user_id)
+    balance = get_balance(user_id)
+
+    keyboard = []
+    # اگر کاربر سرویس ندارد، دکمه خرید اول را بالاتر و برجسته‌تر نشان می‌دهیم.
+    if not rows:
+        keyboard.append([InlineKeyboardButton("➕ خرید اولین سرویس خود", callback_data="buy")])
+    else:
+        keyboard.append([InlineKeyboardButton(t(lang, "buy") + " جدید 🛒", callback_data="buy")])
+
+    keyboard.append([InlineKeyboardButton(f"💰 موجودی: {balance:,} تومان", callback_data="wallet")])
+    keyboard.append([InlineKeyboardButton(t(lang, "services"), callback_data="my_services")])
+    keyboard.append([InlineKeyboardButton(t(lang, "renew"), callback_data="renew")])
+    keyboard.append([InlineKeyboardButton(t(lang, "trial"), callback_data="trial")])
+    keyboard.append([InlineKeyboardButton(t(lang, "referral"), callback_data="referral")])
+    keyboard.append([InlineKeyboardButton(t(lang, "support"), callback_data="support")])
+    keyboard.append([InlineKeyboardButton(t(lang, "language"), callback_data="language")])
     if user_id == ADMIN_ID:
-        keyboard.append([styled_inline_button(labels["admin"], "admin", "admin")])
+        keyboard.append([InlineKeyboardButton(t(lang, "admin"), callback_data="admin")])
     return InlineKeyboardMarkup(keyboard)
 
 
+def home_text(user_id):
+    """متن داشبورد کاربر مطابق سبک رابط نمونه."""
+    lang = get_user_language(user_id) or "fa"
+    balance = get_balance(user_id)
+    service_count = len(get_user_services(user_id))
+    user_name = "-"
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT first_name, username FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        if row:
+            user_name = row["first_name"] or ("@" + row["username"] if row["username"] else "-")
+    finally:
+        conn.close()
+
+    if lang == "en":
+        return (f"📊 User Dashboard\n\n"
+                f"👤 User Information:\n"
+                f"• Name: {user_name}\n"
+                f"• Balance: {balance:,} Toman\n"
+                f"• Services: {service_count}\n\n"
+                f"🎯 Choose one of the options below:")
+    if lang == "ku":
+        return (f"📊 داشبۆردی بەکارهێنەر\n\n"
+                f"👤 زانیاری بەکارهێنەر:\n"
+                f"• ناو: {user_name}\n"
+                f"• باڵانس: {balance:,} تومان\n"
+                f"• خزمەتگوزاری: {service_count}\n\n"
+                f"🎯 یەکێک لە هەڵبژاردەکانی خوارەوە هەڵبژێرە:")
+    return (f"📊 داشبورد کاربری\n\n"
+            f"👤 اطلاعات کاربر:\n"
+            f"• نام: {user_name}\n"
+            f"• موجودی: {balance:,} تومان\n"
+            f"• تعداد سرویس‌ها: {service_count}\n\n"
+            f"🎯 برای شروع، یکی از گزینه‌های زیر را انتخاب کنید:")
+
+
 async def show_home(query, user_id):
-    await query.edit_message_text(dashboard_text(user_id), reply_markup=home_keyboard(user_id))
+    await query.edit_message_text(home_text(user_id), reply_markup=home_keyboard(user_id))
 
 
 async def send_home(message, user_id):
-    await message.reply_text(dashboard_text(user_id), reply_markup=bottom_keyboard(user_id))
+    # منوی اصلی فقط به صورت Inline است تا ظاهر آن مثل نمونه تمیز و یک‌دست باشد.
+    await message.reply_text(home_text(user_id), reply_markup=home_keyboard(user_id))
 
 
 # =========================================================
@@ -993,29 +908,37 @@ def stock_subscription_query(conn, volume):
 # =========================================================
 
 def buy_period_keyboard(user_id):
+    """کیبورد داخل پیام خرید؛ تک‌ستونه با ظاهر نرم پیش‌فرض تلگرام."""
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
         period_text = "1 Month"
-    elif lang == "ku":
-        period_text = "١ مانگ"
-    else:
-        period_text = "یکماهه"
-    if lang == "en":
         unlimited_text = "♾️ Unlimited"
     elif lang == "ku":
+        period_text = "١ مانگ"
         unlimited_text = "♾️ بێ سنوور"
     else:
+        period_text = "یکماهه"
         unlimited_text = "♾️ نامحدود"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(period_text, callback_data="buy_monthly")],
         [InlineKeyboardButton(unlimited_text, callback_data="unlimited")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
+        [InlineKeyboardButton(t(lang, "back"), callback_data="home", style="danger")],
     ])
 
 
 def buy_keyboard(user_id):
+    """دکمه‌های خرید داخل پیام: تک‌ستونه و کشیده، شبیه سبک نمونه."""
     lang = get_user_language(user_id) or "fa"
     if lang == "en":
+        buttons = [
+            ("1 GB | 3,500 Toman", "plan_1"),
+            ("10 GB | 35,000 Toman", "plan_10"),
+            ("20 GB | 70,000 Toman", "plan_20"),
+            ("30 GB | 105,000 Toman", "plan_30"),
+            ("40 GB | 140,000 Toman", "plan_40"),
+            ("50 GB | 175,000 Toman", "plan_50"),
+        ]
+    elif lang == "ku":
         buttons = [
             ("1 GB | 3,500 Toman", "plan_1"),
             ("10 GB | 35,000 Toman", "plan_10"),
@@ -1034,15 +957,10 @@ def buy_keyboard(user_id):
             ("50 گیگ | 175,000 تومان", "plan_50"),
         ]
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
-    if lang == "en":
-        unlimited_text = "♾️ Unlimited"
-    elif lang == "ku":
-        unlimited_text = "♾️ بێ سنوور"
-    else:
-        unlimited_text = "♾️ نامحدود"
+    unlimited_text = "♾️ Unlimited" if lang == "en" else ("♾️ بێ سنوور" if lang == "ku" else "♾️ نامحدود")
     keyboard.append([InlineKeyboardButton(unlimited_text, callback_data="unlimited")])
     keyboard.append([InlineKeyboardButton(t(lang, "custom"), callback_data="custom")])
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home")])
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="home", style="danger")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -1074,7 +992,7 @@ async def show_unlimited_services(query):
         buttons = [("👤 تک کاربره | 150,000 تومان", "unlimited_plan_1"), ("👥 دو کاربره | 250,000 تومان", "unlimited_plan_2"), ("👥 سه کاربره | 350,000 تومان", "unlimited_plan_3")]
         title = "♾️ سرویس نامحدود\n\nپلن موردنظر را انتخاب کنید:"
     keyboard = [[InlineKeyboardButton(text, callback_data=cb)] for text, cb in buttons]
-    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy_monthly")])
+    keyboard.append([InlineKeyboardButton(t(lang, "back"), callback_data="buy_monthly", style="danger")])
     await query.edit_message_text(title, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1543,58 +1461,10 @@ async def show_admin(query):
             InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")
         ],
         [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
-        [InlineKeyboardButton(t(lang, "admin_colors"), callback_data="admin_colors")],
         [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
     ]
     await query.edit_message_text(
         "⚙️ پنل مدیریت HanzuVPN\n\nمدیریت کامل ربات:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-def _button_color_label(style, lang):
-    if lang == "en":
-        return {"default": "⚪ Default", "primary": "🔵 Blue", "success": "🟢 Green", "danger": "🔴 Red"}.get(style, "⚪ Default")
-    if lang == "ku":
-        return {"default": "⚪ بنەڕەت", "primary": "🔵 شین", "success": "🟢 سەوز", "danger": "🔴 سوور"}.get(style, "⚪ بنەڕەت")
-    return {"default": "⚪ پیش‌فرض", "primary": "🔵 آبی", "success": "🟢 سبز", "danger": "🔴 قرمز"}.get(style, "⚪ پیش‌فرض")
-
-
-def _button_name(button_key, lang):
-    return t(lang, button_key) if button_key != "admin" else t(lang, "admin")
-
-
-async def show_admin_colors(query):
-    lang = get_user_language(query.from_user.id) or "fa"
-    keyboard = []
-    for key in BUTTON_STYLE_KEYS:
-        current = get_button_style(key) or "default"
-        keyboard.append([InlineKeyboardButton(
-            f"{_button_name(key, lang)} — {_button_color_label(current, lang)}",
-            callback_data=f"admin_color_{key}"
-        )])
-    keyboard.append([InlineKeyboardButton(t(lang, "admin_panel"), callback_data="admin")])
-    await query.edit_message_text(
-        "🎨 تنظیم رنگ دکمه‌ها\n\nیک دکمه را انتخاب کن تا رنگش را تغییر بدهی.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def show_admin_color_picker(query, button_key):
-    lang = get_user_language(query.from_user.id) or "fa"
-    if button_key not in BUTTON_STYLE_KEYS:
-        return
-    current = get_button_style(button_key) or "default"
-    keyboard = []
-    for style in ("default", "primary", "success", "danger"):
-        mark = "✅ " if style == current else ""
-        keyboard.append([InlineKeyboardButton(
-            mark + _button_color_label(style, lang),
-            callback_data=f"set_admin_color_{button_key}_{style}"
-        )])
-    keyboard.append([InlineKeyboardButton("🔙 برگشت", callback_data="admin_colors")])
-    await query.edit_message_text(
-        f"🎨 رنگ «{_button_name(button_key, lang)}» را انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -1737,12 +1607,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             t(language, "language_changed") + "\n\n" + t(language, "welcome"),
             reply_markup=home_keyboard(user_id)
         )
-        # ReplyKeyboardMarkup مستقل از InlineKeyboardMarkup است؛ بعد از تغییر زبان
-        # باید کیبورد پایینی را هم دوباره ارسال کنیم تا متن تمام دکمه‌ها به‌روز شود.
-        try:
-            await query.message.reply_text(t(language, "language_changed"), reply_markup=bottom_keyboard(user_id))
-        except Exception as e:
-            print("Language reply keyboard update error:", e)
+        # منوی اصلی فقط Inline است؛ بنابراین کیبورد پایینی قدیمی را دوباره ارسال نمی‌کنیم.
         return
 
     lang = get_user_language(user_id)
@@ -2353,33 +2218,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_admin(query)
         return
 
-    if data == "admin_colors":
-        if user_id != ADMIN_ID:
-            return
-        await show_admin_colors(query)
-        return
-
-    if data.startswith("admin_color_"):
-        if user_id != ADMIN_ID:
-            return
-        button_key = data[len("admin_color_"): ]
-        await show_admin_color_picker(query, button_key)
-        return
-
-    if data.startswith("set_admin_color_"):
-        if user_id != ADMIN_ID:
-            return
-        parts = data.split("_")
-        if len(parts) != 5:
-            return
-        button_key, style = parts[3], parts[4]
-        if not set_button_style(button_key, style):
-            await query.answer("❌ رنگ نامعتبر است.", show_alert=True)
-            return
-        await query.answer("✅ رنگ ذخیره شد.")
-        await show_admin_colors(query)
-        return
-
     if data == "admin_stock":
         if user_id != ADMIN_ID:
             return
@@ -2668,18 +2506,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ==================== کیبورد پایینی اصلی ====================
     # فقط وقتی کاربر در حال وارد کردن اطلاعات یک فرم نیست، دکمه‌های منو را پردازش می‌کنیم.
-    labels = home_labels(user.id, lang)
     menu_map = {
-        labels["buy"]: "buy",
-        labels["trial"]: "trial",
-        labels["services"]: "services",
-        labels["renew"]: "renew",
-        labels["referral"]: "referral",
-        labels["wallet"]: "wallet",
-        labels["support"]: "support",
-        labels["language"]: "language",
-        # سازگاری با متن‌های قدیمی منو
-        t(lang, "buy"): "buy", t(lang, "wallet"): "wallet",
+        t(lang, "buy"): "buy",
+        t(lang, "trial"): "trial",
+        t(lang, "services"): "services",
+        t(lang, "renew"): "renew",
+        t(lang, "referral"): "referral",
+        t(lang, "wallet"): "wallet",
+        t(lang, "support"): "support",
+        t(lang, "language"): "language",
     }
     if user.id == ADMIN_ID:
         menu_map[t("fa", "admin")] = "admin"
@@ -2760,7 +2595,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
                 [InlineKeyboardButton(t(lang, "admin_stats"), callback_data="admin_stats"), InlineKeyboardButton(t(lang, "admin_orders"), callback_data="admin_orders")],
                 [InlineKeyboardButton(t(lang, "admin_tickets"), callback_data="admin_tickets")],
-                [InlineKeyboardButton(t(lang, "admin_colors"), callback_data="admin_colors")],
                 [InlineKeyboardButton(t(lang, "back"), callback_data="home")],
             ]
             await update.message.reply_text("⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))

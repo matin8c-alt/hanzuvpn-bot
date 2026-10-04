@@ -84,7 +84,7 @@ TEXTS = {
     "fa": {
         "language_title": "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
         "language_changed": "✅ زبان با موفقیت تغییر کرد.",
-        "welcome": "🌐 <b>HanzuVPN</b>\n\n❤️ به ربات خوش آمدید\n\n━━━━━━━━━━━━━━\n✨ لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+        "welcome": "🌐 <b>HanzuVPN</b>\n\n<b>خوش آمدید 👋</b>\n\nبه ربات رسمی HanzuVPN خوش آمدید.\nاز منوی زیر می‌توانید سرویس خود را مدیریت کنید.\n\n👇 <b>یک گزینه را انتخاب کنید</b>",
         "buy": "🛒 خرید سرویس",
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
@@ -106,7 +106,7 @@ TEXTS = {
         "back": "🔙 بازگشت",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
-        "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
+        "buy_title": "🛒 <b>خرید سرویس</b>\n\n⏳ اعتبار همه سرویس‌ها: <b>۳۰ روز</b>\n\n📦 حجم موردنظر خود را انتخاب کنید:",
         "custom": "✏️ حجم دلخواه",
         "trial_already": "⚠️ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\nهر کاربر فقط یک‌بار می‌تواند از تست رایگان استفاده کند.",
         "trial_empty": "😔 در حال حاضر تست رایگان موجود نیست.\n\nلطفاً بعداً دوباره امتحان کنید.",
@@ -120,8 +120,8 @@ TEXTS = {
         "order_created": "✅ درخواست شما ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "receipt_received": "✅ رسید شما دریافت شد.\n\n🧾 سفارش #{order}\n\nپس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
         "no_pending": "❌ سفارش در انتظار پرداختی پیدا نشد.",
-        "services_title": "📦 سرویس‌های شما\n\n",
-        "no_services": "📦 سرویس‌های شما\n\nهنوز سرویس فعالی ندارید.",
+        "services_title": "📦 <b>سرویس‌های من</b>\n\nسرویس‌های فعال شما در ادامه نمایش داده می‌شوند:",
+        "no_services": "📦 <b>سرویس‌های من</b>\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
         "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n━━━━━━━━━━━━\n\n",
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
         "renew_choose": "🔄 تمدید سرویس\n\nسرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
@@ -131,12 +131,12 @@ TEXTS = {
         "custom_prompt": "✏️ حجم دلخواه\n\nحجم موردنظر را به گیگ وارد کن.\n\nمثال:\n25",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
-        "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
+        "support_title": "🎫 <b>پشتیبانی HanzuVPN</b>\n\nاگر مشکلی دارید یا به راهنمایی نیاز دارید، از طریق تیکت با ما در ارتباط باشید.",
         "create_ticket": "🎫 ایجاد تیکت",
         "ticket_prompt": "🎫 تیکت #{id}\n\nپیام خود را ارسال کنید.",
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
-        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
+        "referral_title": "👥 <b>دعوت دوستان</b>\n\n👤 تعداد دعوت‌های شما: <b>{count}</b>\n\n🔗 لینک دعوت اختصاصی\n{link}\n\nلینک را برای دوستانتان ارسال کنید و از مزایای دعوت استفاده کنید.",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -147,7 +147,7 @@ TEXTS = {
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
         "reminder_1": "⏰ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 1 روز دیگر منقضی می‌شود.\n\nبرای تمدید سرویس اقدام کنید.",
-        "wallet_title": "💰 کیف پول شما\n\n💵 موجودی فعلی: {balance:,} تومان",
+        "wallet_title": "💰 <b>کیف پول</b>\n\n💵 موجودی فعلی\n<b>{balance:,} تومان</b>\n\nاز گزینه‌های زیر انتخاب کنید:",
         "charge_wallet": "➕ شارژ کیف پول",
         "wallet_history": "📜 تاریخچه تراکنش‌ها",
         "charge_prompt": "💰 شارژ کیف پول\n\nمبلغ مورد نظر را به تومان وارد کنید.\n\nحداقل مبلغ: {min:,} تومان\n\nمثال:\n50000",
@@ -382,7 +382,7 @@ MENU_ONE_PER_ROW = True
 TEXTS["fa"].update({
     "panel": "پنل کاربری",
     "panel_btn": "📊 پنل کاربری",
-    "dash_title": "📊 <b>داشبورد کاربری</b>\n\n👤 <b>اطلاعات حساب</b>\n━━━━━━━━━━━━━━\n• نام: {name}\n• موجودی: {balance:,} تومان\n• سرویس‌ها: {count} عدد\n\n━━━━━━━━━━━━━━\n🎯 یکی از گزینه‌ها را انتخاب کنید:",
+    "dash_title": "📊 <b>پنل کاربری</b>\n\n👋 سلام <b>{name}</b>\n\n💰 <b>موجودی کیف پول</b>\n{balance:,} تومان\n\n📦 <b>سرویس‌های فعال</b>\n{count} عدد\n\n👇 <b>از منوی زیر انتخاب کنید</b>",
     "dash_first_service": "➕ خرید اولین سرویس خود",
     "dash_balance": "👛 موجودی: {balance:,} تومان",
     "dash_new_service": "🛒 خرید سرویس جدید",
@@ -772,11 +772,40 @@ def _rich_markup_html(reply_markup):
     return "\n".join(rows) if rows else None
 
 
+def _polish_bot_text(text):
+    """Clean common legacy separators/spacing without changing message meaning."""
+    import re
+    text = "" if text is None else str(text)
+    # Long decorative separators look noisy on narrow mobile screens.
+    text = re.sub(r"(?m)^[ \t]*[━─—_]{6,}[ \t]*$", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _rich_html_from_mixed_text(text):
+    """Escape user text while preserving the bot's intentional simple HTML tags."""
+    import html
+    import re
+    placeholders = {}
+    allowed = re.compile(r"</?(?:b|strong|i|em|u|s|code|pre|blockquote|p|br|ul|ol|li|details|summary)(?:\s[^>]*)?>", re.I)
+
+    def hold(match):
+        key = f"\x00RICH_TAG_{len(placeholders)}\x00"
+        placeholders[key] = match.group(0)
+        return key
+
+    held = allowed.sub(hold, text)
+    escaped = html.escape(held, quote=False)
+    for key, tag in placeholders.items():
+        escaped = escaped.replace(html.escape(key, quote=False), tag)
+    return escaped
+
+
 def _rich_content(text, parse_mode=None, reply_markup=None):
     """Build InputRichMessage payload using Telegram's HTML rich syntax."""
     import html
 
-    text = "" if text is None else str(text)
+    text = _polish_bot_text(text)
     mode = str(parse_mode or "").upper()
     if mode == "HTML":
         content = text
@@ -784,8 +813,9 @@ def _rich_content(text, parse_mode=None, reply_markup=None):
         # Rich Markdown accepts the existing Telegram Markdown plus HTML tags.
         content = text
     else:
-        # Plain text is escaped so user-provided content cannot become Rich HTML.
-        content = html.escape(text)
+        # Preserve intentional simple HTML already present in bot templates,
+        # while escaping all other content safely.
+        content = _rich_html_from_mixed_text(text)
 
     button_html = _rich_markup_html(reply_markup)
     if button_html:

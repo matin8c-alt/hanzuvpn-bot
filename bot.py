@@ -381,11 +381,58 @@ def t(lang, key, **kwargs):
 # =========================================================
 
 BUTTON_STYLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "button_style.json")
+BUTTON_COLOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "button_colors.json")
+
 BUTTON_STYLE_OPTIONS = {
     "default": "⚪ پیش‌فرض",
     "success": "🟢 سبز",
     "danger": "🔴 قرمز",
     "primary": "🔵 آبی",
+}
+
+# دکمه‌های اصلی قابل تنظیم از پنل مدیریت.
+# مقدار callback_data همان چیزی است که خود ربات برای آن دکمه استفاده می‌کند.
+BUTTON_COLOR_TARGETS = {
+    "buy": "🛒 خرید سرویس",
+    "trial": "🎁 تست رایگان",
+    "my_services": "📦 سرویس‌های من",
+    "renew": "🔄 تمدید سرویس",
+    "referral": "👥 دعوت دوستان",
+    "wallet": "💰 کیف پول",
+    "support": "🎫 پشتیبانی",
+    "language": "🌐 تغییر زبان",
+    "charge_wallet": "💳 شارژ کیف پول",
+    "wallet_history": "📜 تاریخچه کیف پول",
+    "buy_monthly": "📅 خرید ماهانه",
+    "unlimited": "♾️ سرویس نامحدود",
+    "custom": "⚙️ سرویس سفارشی",
+    "coupon": "🎟️ کد تخفیف",
+    "new_ticket": "🎫 تیکت جدید",
+    "home": "🏠 بازگشت / منوی اصلی",
+    "admin_backup": "💾 بکاپ",
+    "admin_add": "➕ افزودن سرویس",
+    "admin_trial": "🎁 مدیریت تست",
+    "admin_stock": "📦 موجودی",
+    "admin_delete": "🗑 حذف سرویس",
+    "admin_coupon": "🎟️ مدیریت کوپن",
+    "admin_balance": "💰 موجودی کاربران",
+    "admin_broadcast": "📢 ارسال همگانی",
+    "admin_stats": "📊 آمار",
+    "admin_orders": "🧾 سفارش‌ها",
+    "admin_tickets": "🎫 تیکت‌ها",
+}
+
+# الگوهای دکمه‌های پویا؛ مثلاً paid_10 یا renewpaid_20.
+BUTTON_COLOR_PATTERNS = {
+    "pay_*": "💳 پرداخت",
+    "paid_*": "✅ پرداخت ثبت‌شده",
+    "renewpaid_*": "🔄 پرداخت تمدید",
+    "walletpay_*": "💰 پرداخت از کیف پول",
+    "approve_*": "✅ تأیید پرداخت",
+    "reject_*": "❌ رد پرداخت",
+    "paymentback_*": "↩️ بازگشت پرداخت",
+    "delete_*": "🗑 حذف مورد",
+    "renewminus_*": "➖ کاهش حجم تمدید",
 }
 
 def get_button_style():
@@ -403,12 +450,68 @@ def set_button_style(style):
         json.dump({"style": style}, f, ensure_ascii=False, indent=2)
     return style
 
+def get_button_color_map():
+    try:
+        with open(BUTTON_COLOR_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def set_button_color(callback_key, style):
+    colors = get_button_color_map()
+    if style == "default":
+        colors.pop(callback_key, None)
+    else:
+        colors[callback_key] = style
+    with open(BUTTON_COLOR_FILE, "w", encoding="utf-8") as f:
+        json.dump(colors, f, ensure_ascii=False, indent=2)
+    return style
+
+def get_button_color(callback_data):
+    data = str(callback_data or "")
+    colors = get_button_color_map()
+
+    # اولویت با تنظیم اختصاصی همان دکمه است.
+    if data in colors and colors[data] in BUTTON_STYLE_OPTIONS:
+        return colors[data]
+
+    # بعد الگوهای اختصاصی دکمه‌های پویا.
+    for pattern, _label in BUTTON_COLOR_PATTERNS.items():
+        prefix = pattern[:-1] if pattern.endswith("*") else pattern
+        if data.startswith(prefix) and pattern in colors and colors[pattern] in BUTTON_STYLE_OPTIONS:
+            return colors[pattern]
+
+    # اگر تنظیم اختصاصی نبود، استایل سراسری قبلی اعمال می‌شود.
+    selected = get_button_style()
+    if selected != "default":
+        return selected
+
+    # رفتار خودکار قبلی برای حالت پیش‌فرض.
+    success_prefixes = ("pay_", "paid_", "renewpaid_", "walletpay_", "approve_")
+    danger_prefixes = ("paymentback_", "reject_")
+    success_exact = {"buy", "buy_monthly", "unlimited", "custom", "charge_wallet"}
+
+    if data in success_exact or data.startswith(success_prefixes):
+        return "success"
+    if data == "home" or data.startswith(danger_prefixes):
+        return "danger"
+
+    return "default"
+
+def button_style_icon(style):
+    return {
+        "default": "⚪",
+        "success": "🟢",
+        "danger": "🔴",
+        "primary": "🔵",
+    }.get(style, "⚪")
+
 def styled_inline_button(text, callback_data=None, **kwargs):
-    style = get_button_style()
+    style = get_button_color(callback_data)
     if style != "default":
         kwargs["style"] = style
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
-
 
 def now_text():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1442,10 +1545,117 @@ async def show_button_style_panel(query):
         [styled_inline_button("🟢 سبز", callback_data="button_style_success")],
         [styled_inline_button("🔴 قرمز", callback_data="button_style_danger")],
         [styled_inline_button("🔵 آبی", callback_data="button_style_primary")],
+        [styled_inline_button("🎯 تنظیم رنگ تک‌تک دکمه‌ها", callback_data="admin_button_colors")],
         [styled_inline_button("↩️ بازگشت به پنل مدیریت", callback_data="admin")],
     ]
     await query.edit_message_text(
-        f"🎨 تنظیم استایل دکمه‌ها\n\nاستایل فعلی: {BUTTON_STYLE_OPTIONS[current]}\n\nاستایل موردنظر را انتخاب کن:",
+        f"🎨 تنظیم استایل دکمه‌ها\n\n"
+        f"استایل سراسری فعلی: {BUTTON_STYLE_OPTIONS[current]}\n\n"
+        "اگر برای یک دکمه رنگ اختصاصی تعیین کنی، همان رنگ روی آن دکمه اعمال می‌شود و "
+        "استایل سراسری روی آن نادیده گرفته می‌شود.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+async def show_button_color_list(query):
+    colors = get_button_color_map()
+    items = list(BUTTON_COLOR_TARGETS.items())
+    keyboard = []
+
+    for i in range(0, len(items), 2):
+        row = []
+        for key, label in items[i:i+2]:
+            style = colors.get(key, "default")
+            row.append(
+                styled_inline_button(
+                    f"{button_style_icon(style)} {label}",
+                    callback_data=f"button_color_target_{key}"
+                )
+            )
+        keyboard.append(row)
+
+    keyboard.append([styled_inline_button("⚡ دکمه‌های پویا (pay_* و ...)", callback_data="button_color_dynamic")])
+    keyboard.append([styled_inline_button("↩️ بازگشت", callback_data="admin_button_style")])
+
+    await query.edit_message_text(
+        "🎯 تنظیم رنگ تک‌تک دکمه‌ها\n\n"
+        "روی هر دکمه بزن و رنگ دلخواهش را انتخاب کن.\n"
+        "⚪ یعنی بدون رنگ اختصاصی و استفاده از تنظیم سراسری/خودکار.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+async def show_button_color_picker(query, key, label=None):
+    colors = get_button_color_map()
+    current = colors.get(key, "default")
+    label = label or BUTTON_COLOR_TARGETS.get(key, key)
+
+    keyboard = [
+        [
+            styled_inline_button(
+                f"{'✅ ' if current == 'default' else ''}⚪ پیش‌فرض",
+                callback_data=f"button_color_set_default_{key}"
+            )
+        ],
+        [
+            styled_inline_button(
+                f"{'✅ ' if current == 'success' else ''}🟢 سبز",
+                callback_data=f"button_color_set_success_{key}"
+            )
+        ],
+        [
+            styled_inline_button(
+                f"{'✅ ' if current == 'danger' else ''}🔴 قرمز",
+                callback_data=f"button_color_set_danger_{key}"
+            )
+        ],
+        [
+            styled_inline_button(
+                f"{'✅ ' if current == 'primary' else ''}🔵 آبی",
+                callback_data=f"button_color_set_primary_{key}"
+            )
+        ],
+        [styled_inline_button("↩️ لیست دکمه‌ها", callback_data="admin_button_colors")],
+    ]
+
+    await query.edit_message_text(
+        f"🎨 انتخاب رنگ\n\nدکمه: {label}\n"
+        f"رنگ فعلی: {BUTTON_STYLE_OPTIONS.get(current, BUTTON_STYLE_OPTIONS['default'])}\n\n"
+        "رنگ موردنظر را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+async def show_dynamic_button_color_picker(query):
+    colors = get_button_color_map()
+    keyboard = []
+    for pattern, label in BUTTON_COLOR_PATTERNS.items():
+        current = colors.get(pattern, "default")
+        keyboard.append([
+            styled_inline_button(
+                f"{button_style_icon(current)} {label}",
+                callback_data=f"button_color_dynamic_target_{pattern.replace('*', 'X')}"
+            )
+        ])
+    keyboard.append([styled_inline_button("↩️ لیست دکمه‌ها", callback_data="admin_button_colors")])
+    await query.edit_message_text(
+        "⚡ تنظیم رنگ دکمه‌های پویا\n\n"
+        "این گزینه‌ها روی همه callbackهایی که با همان پیشوند شروع شوند اعمال می‌شوند.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+async def show_dynamic_color_picker(query, pattern):
+    colors = get_button_color_map()
+    current = colors.get(pattern, "default")
+    label = BUTTON_COLOR_PATTERNS.get(pattern, pattern)
+    encoded = pattern.replace("*", "X")
+    keyboard = [
+        [styled_inline_button(f"{'✅ ' if current == 'default' else ''}⚪ پیش‌فرض", callback_data=f"button_color_dynamic_set_default_{encoded}")],
+        [styled_inline_button(f"{'✅ ' if current == 'success' else ''}🟢 سبز", callback_data=f"button_color_dynamic_set_success_{encoded}")],
+        [styled_inline_button(f"{'✅ ' if current == 'danger' else ''}🔴 قرمز", callback_data=f"button_color_dynamic_set_danger_{encoded}")],
+        [styled_inline_button(f"{'✅ ' if current == 'primary' else ''}🔵 آبی", callback_data=f"button_color_dynamic_set_primary_{encoded}")],
+        [styled_inline_button("↩️ دکمه‌های پویا", callback_data="button_color_dynamic")],
+    ]
+    await query.edit_message_text(
+        f"🎨 رنگ دکمه‌های پویا\n\n{label}  ({pattern})\n"
+        f"رنگ فعلی: {BUTTON_STYLE_OPTIONS.get(current, BUTTON_STYLE_OPTIONS['default'])}",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -1598,6 +1808,64 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = user.id
     ensure_user(user)
     data = query.data or ""
+
+    if data == "admin_button_colors":
+        if user_id != ADMIN_ID:
+            return
+        await show_button_color_list(query)
+        return
+
+    if data == "button_color_dynamic":
+        if user_id != ADMIN_ID:
+            return
+        await show_dynamic_button_color_picker(query)
+        return
+
+    if data.startswith("button_color_target_"):
+        if user_id != ADMIN_ID:
+            return
+        key = data.split("button_color_target_", 1)[1]
+        if key not in BUTTON_COLOR_TARGETS:
+            await query.answer("دکمه نامعتبر است.", show_alert=True)
+            return
+        await show_button_color_picker(query, key, BUTTON_COLOR_TARGETS[key])
+        return
+
+    if data.startswith("button_color_dynamic_target_"):
+        if user_id != ADMIN_ID:
+            return
+        encoded = data.split("button_color_dynamic_target_", 1)[1]
+        pattern = encoded[:-1] + "*" if encoded.endswith("X") else encoded
+        if pattern not in BUTTON_COLOR_PATTERNS:
+            await query.answer("دکمه پویا نامعتبر است.", show_alert=True)
+            return
+        await show_dynamic_color_picker(query, pattern)
+        return
+
+    if data.startswith("button_color_set_"):
+        if user_id != ADMIN_ID:
+            return
+        rest = data.split("button_color_set_", 1)[1]
+        style, key = rest.split("_", 1)
+        if style not in BUTTON_STYLE_OPTIONS or key not in BUTTON_COLOR_TARGETS:
+            await query.answer("تنظیم نامعتبر است.", show_alert=True)
+            return
+        set_button_color(key, style)
+        await show_button_color_picker(query, key, BUTTON_COLOR_TARGETS[key])
+        return
+
+    if data.startswith("button_color_dynamic_set_"):
+        if user_id != ADMIN_ID:
+            return
+        rest = data.split("button_color_dynamic_set_", 1)[1]
+        style, encoded = rest.split("_", 1)
+        pattern = encoded[:-1] + "*" if encoded.endswith("X") else encoded
+        if style not in BUTTON_STYLE_OPTIONS or pattern not in BUTTON_COLOR_PATTERNS:
+            await query.answer("تنظیم نامعتبر است.", show_alert=True)
+            return
+        set_button_color(pattern, style)
+        await show_dynamic_color_picker(query, pattern)
+        return
 
     if data == "admin_button_style":
         if user_id != ADMIN_ID:

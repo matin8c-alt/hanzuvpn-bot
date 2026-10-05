@@ -84,7 +84,7 @@ TEXTS = {
     "fa": {
         "language_title": "🌐 انتخاب زبان\n\nزبان موردنظر خود را انتخاب کنید:",
         "language_changed": "✅ زبان با موفقیت تغییر کرد.",
-        "welcome": "🌐 HanzuVPN\n\nخوش آمدید 👋\n\nاز منوی زیر یک گزینه را انتخاب کنید:",
+        "welcome": "🌐 <b>HanzuVPN</b>\n\n❤️ به ربات خوش آمدید\n\n━━━━━━━━━━━━━━\n✨ لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
         "buy": "🛒 خرید سرویس",
         "trial": "🎁 تست رایگان",
         "services": "📦 سرویس‌های من",
@@ -106,7 +106,7 @@ TEXTS = {
         "back": "🔙 بازگشت",
         "main_menu": "🔙 منوی اصلی",
         "wallet": "💰 کیف پول",
-        "buy_title": "🛒 <b>خرید سرویس</b>\n\n⏳ اعتبار همه سرویس‌ها: <b>۳۰ روز</b>\n\n📦 حجم موردنظر خود را انتخاب کنید:",
+        "buy_title": "🛒 انتخاب سرویس\n\n⏳ مدت تمام سرویس‌ها: 30 روز\n\nحجم موردنظر خود را انتخاب کنید:",
         "custom": "✏️ حجم دلخواه",
         "trial_already": "⚠️ شما قبلاً تست رایگان خود را دریافت کرده‌اید.\n\nهر کاربر فقط یک‌بار می‌تواند از تست رایگان استفاده کند.",
         "trial_empty": "😔 در حال حاضر تست رایگان موجود نیست.\n\nلطفاً بعداً دوباره امتحان کنید.",
@@ -120,9 +120,9 @@ TEXTS = {
         "order_created": "✅ درخواست شما ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "receipt_received": "✅ رسید شما دریافت شد.\n\n🧾 سفارش #{order}\n\nپس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
         "no_pending": "❌ سفارش در انتظار پرداختی پیدا نشد.",
-        "services_title": "📦 سرویس‌های من",
-        "no_services": "📦 سرویس‌های من\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
-        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n📅 انقضا: {expires}\n🔗 {link}\n\n",
+        "services_title": "📦 سرویس‌های شما\n\n",
+        "no_services": "📦 سرویس‌های شما\n\nهنوز سرویس فعالی ندارید.",
+        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n━━━━━━━━━━━━\n\n",
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
         "renew_choose": "🔄 تمدید سرویس\n\nسرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
@@ -131,12 +131,12 @@ TEXTS = {
         "custom_prompt": "✏️ حجم دلخواه\n\nحجم موردنظر را به گیگ وارد کن.\n\nمثال:\n25",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
         "custom_summary": "🛒 سرویس دلخواه\n\n📦 حجم: {volume} گیگ\n💰 قیمت: {price:,} تومان\n⏳ مدت: 30 روز",
-        "support_title": "🎫 <b>پشتیبانی HanzuVPN</b>\n\nاگر مشکلی دارید یا به راهنمایی نیاز دارید، از طریق تیکت با ما در ارتباط باشید.",
+        "support_title": "🎫 پشتیبانی HanzuVPN\n\nبرای ارسال پیام به پشتیبانی تیکت ایجاد کنید.",
         "create_ticket": "🎫 ایجاد تیکت",
         "ticket_prompt": "🎫 تیکت #{id}\n\nپیام خود را ارسال کنید.",
         "ticket_created": "✅ پیام شما در تیکت #{id} ثبت شد.\n\nپشتیبانی آن را بررسی می‌کند.",
         "ticket_closed": "🔒 تیکت #{id} بسته شد.\n\nدر صورت نیاز می‌توانید تیکت جدید ایجاد کنید.",
-        "referral_title": "👥 <b>دعوت دوستان</b>\n\n👤 تعداد دعوت‌های شما: <b>{count}</b>\n\n🔗 لینک دعوت اختصاصی\n{link}\n\nلینک را برای دوستانتان ارسال کنید و از مزایای دعوت استفاده کنید.",
+        "referral_title": "👥 دعوت دوستان\n\n👤 تعداد دعوت‌ها: {count}\n\nلینک اختصاصی شما:\n{link}\n\nلینک را برای دوستانت بفرست.",
         "referral_error": "❌ خطا در ساخت لینک دعوت.",
         "coupon_prompt": "🎟 کد تخفیف\n\nکد تخفیف خود را ارسال کنید.",
         "coupon_invalid": "❌ کد تخفیف نامعتبر است.",
@@ -147,7 +147,7 @@ TEXTS = {
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
         "reminder_1": "⏰ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 1 روز دیگر منقضی می‌شود.\n\nبرای تمدید سرویس اقدام کنید.",
-        "wallet_title": "💰 کیف پول\n\n💵 موجودی\n{balance:,} تومان",
+        "wallet_title": "💰 کیف پول شما\n\n💵 موجودی فعلی: {balance:,} تومان",
         "charge_wallet": "➕ شارژ کیف پول",
         "wallet_history": "📜 تاریخچه تراکنش‌ها",
         "charge_prompt": "💰 شارژ کیف پول\n\nمبلغ مورد نظر را به تومان وارد کنید.\n\nحداقل مبلغ: {min:,} تومان\n\nمثال:\n50000",
@@ -158,8 +158,8 @@ TEXTS = {
         "not_enough_balance": "❌ موجودی کیف پول شما کافی نیست.",
         "paid_from_wallet": "✅ پرداخت از کیف پول با موفقیت انجام شد.\n\n💰 مبلغ کسر شده: {price:,} تومان\n💵 موجودی باقی‌مانده: {balance:,} تومان",
         "no_history": "📜 تاریخچه تراکنش‌ها\n\nهنوز تراکنشی ثبت نشده است.",
-        "history_title": "📜 تراکنش‌های اخیر\n\n",
-        "history_item": "{emoji} {amount:,} تومان\n{desc}\n🕐 {date}\n\n",
+        "history_title": "📜 آخرین تراکنش‌های شما\n\n",
+        "history_item": "{emoji} {amount:,} تومان\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ افزودن لینک سرویس',
         'admin_trial': '🎁 مدیریت تست',
         'admin_stock': '📦 موجودی',
@@ -187,7 +187,7 @@ TEXTS = {
     "ku": {
         "language_title": "🌐 هەڵبژاردنی زمان\n\nتکایە زمانی خۆت هەڵبژێرە:",
         "language_changed": "✅ زمان بە سەرکەوتوویی گۆڕدرا.",
-        "welcome": "🌐 HanzuVPN\n\nبەخێربێیت 👋\n\nلە خوارەوە یەک هەڵبژاردە هەڵبژێرە:",
+        "welcome": "🌐 HanzuVPN\n\nبەخێربێیت بۆ HanzuVPN ❤️\n\nلە خوارەوە هەڵبژاردەیەک هەڵبژێرە:",
         "buy": "🛒 کڕینی خزمەتگوزاری",
         "trial": "🎁 تاقیکردنەوەی بەخۆڕایی",
         "services": "📦 خزمەتگوزارییەکانم",
@@ -214,9 +214,9 @@ TEXTS = {
         "order_created": "✅ داواکاری تۆمار کرا.\n\n🧾 #{order}\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n📸 وێنەی پسوڵە بنێرە.",
         "receipt_received": "✅ پسوڵە وەرگیرا.\n\n🧾 #{order}",
         "no_pending": "❌ هیچ داواکارییەکی چاوەڕوان نەدۆزرایەوە.",
-        "services_title": "📦 خزمەتگوزارییەکانت",
+        "services_title": "📦 خزمەتگوزارییەکانت\n\n",
         "no_services": "📦 هیچ خزمەتگوزارییەکی چالاکت نییە.",
-        "service_item": "🧾 داواکاری #{id}\n📦 {volume} گیگ\n📅 {expires}\n🔗 {link}\n\n",
+        "service_item": "🧾 #{id}\n📦 {volume} گیگ\n⏳ {expires}\n\n🔗 {link}\n\n━━━━━━━━━━━━\n\n",
         "renew_no_services": "🔄 هیچ خزمەتگوزارییەکی چالاکت نییە.",
         "renew_choose": "🔄 خزمەتگوزارییەک هەڵبژێرە بۆ نوێکردنەوە:",
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
@@ -241,7 +241,7 @@ TEXTS = {
         "payment_rejected": "❌ پارەدان ڕەتکرایەوە.\n\n🧾 #{order}",
         "reminder_3": "⚠️ خزمەتگوزاری #{order} نزیکەی 3 ڕۆژی تر بەسەر دەچێت.",
         "reminder_1": "⏰ خزمەتگوزاری #{order} نزیکەی 1 ڕۆژی تر بەسەر دەچێت.",
-        "wallet_title": "💰 جزدان\n\n💵 موجودی\n{balance:,} تومان",
+        "wallet_title": "💰 جزدان\n\n💵 موجودی: {balance:,} تومان",
         "charge_wallet": "➕ شارژکردنی جزدان",
         "wallet_history": "📜 مێژووی مامەڵەکان",
         "charge_prompt": "💰 شارژ\n\nبڕ بنووسە (کەمترین: {min:,})",
@@ -251,7 +251,7 @@ TEXTS = {
         "charge_success": "✅ شارژ سەرکەوتوو بوو.\n\n💰 {amount:,}\n💵 موجودی نوێ: {balance:,}",
         "not_enough_balance": "❌ موجودی بەس نییە.",
         "paid_from_wallet": "✅ پارەدان لە جزدان سەرکەوتوو بوو.\n\n💰 {price:,}\n💵 ماوە: {balance:,}",
-        "no_history": "📜 مێژووی مامەڵەکان\n\nهیچ مامەڵەیەک نییە.",
+        "no_history": "📜 هیچ مامەڵەیەک نییە.",
         "history_title": "📜 دوایین مامەڵەکان\n\n",
         "history_item": "{emoji} {amount:,}\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ زیادکردنی بەستەر',
@@ -281,7 +281,7 @@ TEXTS = {
     "en": {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
         "language_changed": "✅ Language changed successfully.",
-        "welcome": "🌐 HanzuVPN\n\nWelcome 👋\n\nChoose an option below:",
+        "welcome": "🌐 HanzuVPN\n\nWelcome to HanzuVPN ❤️\n\nChoose an option below:",
         "buy": "🛒 Buy Service",
         "trial": "🎁 Free Trial",
         "services": "📦 My Services",
@@ -308,9 +308,9 @@ TEXTS = {
         "order_created": "✅ Request registered.\n\n🧾 Order: #{order}\n📦 {volume} GB\n💰 {price:,} Toman\n\n📸 Send the receipt.",
         "receipt_received": "✅ Receipt received.\n\n🧾 Order #{order}",
         "no_pending": "❌ No pending order found.",
-        "services_title": "📦 Your Services",
+        "services_title": "📦 Your Services\n\n",
         "no_services": "📦 You don't have any active services.",
-        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n📅 {expires}\n🔗 {link}\n\n",
+        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n⏳ {expires}\n\n🔗 {link}\n\n━━━━━━━━━━━━\n\n",
         "renew_no_services": "🔄 You don't have any active services.",
         "renew_choose": "🔄 Choose the service to renew:",
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
@@ -335,7 +335,7 @@ TEXTS = {
         "payment_rejected": "❌ Payment rejected.\n\n🧾 #{order}",
         "reminder_3": "⚠️ Service #{order} expires in about 3 days.",
         "reminder_1": "⏰ Service #{order} expires in about 1 day.",
-        "wallet_title": "💰 Your Wallet\n\n💵 Balance\n{balance:,} Toman",
+        "wallet_title": "💰 Your Wallet\n\n💵 Balance: {balance:,} Toman",
         "charge_wallet": "➕ Charge Wallet",
         "wallet_history": "📜 Transaction History",
         "charge_prompt": "💰 Charge Wallet\n\nEnter amount in Toman.\n\nMinimum: {min:,}",
@@ -345,7 +345,7 @@ TEXTS = {
         "charge_success": "✅ Wallet charged successfully.\n\n💰 {amount:,} Toman\n💵 New balance: {balance:,}",
         "not_enough_balance": "❌ Insufficient wallet balance.",
         "paid_from_wallet": "✅ Paid from wallet successfully.\n\n💰 Deducted: {price:,}\n💵 Remaining: {balance:,}",
-        "no_history": "📜 Transaction History\n\nNo transactions yet.",
+        "no_history": "📜 No transactions yet.",
         "history_title": "📜 Your recent transactions\n\n",
         "history_item": "{emoji} {amount:,} Toman\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ Add Service Link',
@@ -375,13 +375,14 @@ TEXTS = {
 }
 
 
-# منوی اصلی جمع‌وجور و مناسب موبایل؛ دو دکمه در هر ردیف.
-MENU_ONE_PER_ROW = False
+# منوهای اصلی با طرح داشبورد: هر دکمه در یک ردیف و تمام‌عرض.
+# اگر دوباره دو دکمه در هر ردیف می‌خواهید، False کنید.
+MENU_ONE_PER_ROW = True
 
 TEXTS["fa"].update({
     "panel": "پنل کاربری",
     "panel_btn": "📊 پنل کاربری",
-    "dash_title": "📊 پنل کاربری\n\n👋 سلام {name}\n\n💰 موجودی: {balance:,} تومان\n📦 سرویس‌های فعال: {count} عدد\n\nیک گزینه را انتخاب کنید:",
+    "dash_title": "📊 <b>داشبورد کاربری</b>\n\n👤 <b>اطلاعات حساب</b>\n━━━━━━━━━━━━━━\n• نام: {name}\n• موجودی: {balance:,} تومان\n• سرویس‌ها: {count} عدد\n\n━━━━━━━━━━━━━━\n🎯 یکی از گزینه‌ها را انتخاب کنید:",
     "dash_first_service": "➕ خرید اولین سرویس خود",
     "dash_balance": "👛 موجودی: {balance:,} تومان",
     "dash_new_service": "🛒 خرید سرویس جدید",
@@ -390,7 +391,7 @@ TEXTS["fa"].update({
 TEXTS["ku"].update({
     "panel": "پانێلی بەکارهێنەر",
     "panel_btn": "📊 پانێلی بەکارهێنەر",
-    "dash_title": "📊 پانێلی بەکارهێنەر\n\n👋 بەخێربێیت {name}\n\n💰 موجودی: {balance:,} تومان\n📦 خزمەتگوزارییە چالاکەکان: {count}\n\nیەکێک لە هەڵبژاردەکان هەڵبژێرە:",
+    "dash_title": "📊 داشبۆردی بەکارهێنەر\n\n👤 زانیاری بەکارهێنەر:\n• ناو: {name}\n• موجودی: {balance:,} تومان\n• ژمارەی خزمەتگوزارییەکان: {count}\n\n🎯 بۆ دەستپێکردن، یەکێک لە بژاردەکانی خوارەوە هەڵبژێرە:",
     "dash_first_service": "➕ یەکەم خزمەتگوزاریت بکڕە",
     "dash_balance": "👛 موجودی: {balance:,} تومان",
     "dash_new_service": "🛒 کڕینی خزمەتگوزاری نوێ",
@@ -399,7 +400,7 @@ TEXTS["ku"].update({
 TEXTS["en"].update({
     "panel": "Dashboard",
     "panel_btn": "📊 Dashboard",
-    "dash_title": "📊 User Dashboard\n\n👋 Hello {name}\n\n💰 Balance: {balance:,} Toman\n📦 Active services: {count}\n\nChoose an option below:",
+    "dash_title": "📊 User Dashboard\n\n👤 User info:\n• Name: {name}\n• Balance: {balance:,} Toman\n• Services: {count}\n\n🎯 To get started, choose one of the options below:",
     "dash_first_service": "➕ Buy your first service",
     "dash_balance": "👛 Balance: {balance:,} Toman",
     "dash_new_service": "🛒 Buy a new service",
@@ -771,64 +772,26 @@ def _rich_markup_html(reply_markup):
     return "\n".join(rows) if rows else None
 
 
-def _polish_bot_text(text):
-    """Make bot text clean and mobile-friendly: no decorative separator lines or raw formatting tags."""
-    import re
-    text = "" if text is None else str(text)
-    # Remove decorative separator-only lines (━, ─, —, _, -, =, etc.).
-    text = re.sub(r"(?m)^[ \t]*(?:[━─—_\-=]){3,}[ \t]*$", "", text)
-    # Never let legacy Telegram formatting tags leak as visible text.
-    text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)>", "", text, flags=re.I)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-def _rich_html_from_mixed_text(text):
-    """Escape user text while preserving the bot's intentional simple HTML tags."""
-    import html
-    import re
-    placeholders = {}
-    allowed = re.compile(r"</?(?:b|strong|i|em|u|s|code|pre|blockquote|p|br|ul|ol|li|details|summary)(?:\s[^>]*)?>", re.I)
-
-    def hold(match):
-        key = f"\x00RICH_TAG_{len(placeholders)}\x00"
-        placeholders[key] = match.group(0)
-        return key
-
-    held = allowed.sub(hold, text)
-    escaped = html.escape(held, quote=False)
-    for key, tag in placeholders.items():
-        escaped = escaped.replace(html.escape(key, quote=False), tag)
-    return escaped
-
-
-def _is_rtl_text(text):
-    import re
-    return bool(re.search(r"[\u0600-\u06ff]", text or ""))
-
-
 def _rich_content(text, parse_mode=None, reply_markup=None):
-    """Build clean Telegram Rich Message content with correct RTL handling."""
+    """Build InputRichMessage payload using Telegram's HTML rich syntax."""
     import html
 
-    text = _polish_bot_text(text)
+    text = "" if text is None else str(text)
     mode = str(parse_mode or "").upper()
-
-    if mode in {"MARKDOWN", "MARKDOWNV2"}:
+    if mode == "HTML":
         content = text
-        field = "markdown"
-    elif mode == "HTML":
+    elif mode in {"MARKDOWN", "MARKDOWNV2"}:
+        # Rich Markdown accepts the existing Telegram Markdown plus HTML tags.
         content = text
-        field = "html"
     else:
-        content = _rich_html_from_mixed_text(text)
-        field = "html"
+        # Plain text is escaped so user-provided content cannot become Rich HTML.
+        content = html.escape(text)
 
     button_html = _rich_markup_html(reply_markup)
     if button_html:
         content += "\n\n" + button_html
 
-    return {field: content, "is_rtl": _is_rtl_text(text)}
+    return {"html": content}
 
 
 def _telegram_api_call(method, payload):
@@ -881,14 +844,9 @@ async def send_rich_message(bot, chat_id, text, reply_markup=None,
         return result
     except Exception as rich_error:
         print(f"Rich send fallback: {type(rich_error).__name__}: {rich_error}")
-        fallback_text = _polish_bot_text(text)
-        fallback_mode = parse_mode
-        if str(fallback_mode or "").upper() == "HTML":
-            fallback_text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)(?:\s[^>]*)?>", "", fallback_text, flags=re.I)
-            fallback_mode = None
         return await bot.send_message(
-            chat_id=chat_id, text=fallback_text, reply_markup=reply_markup,
-            parse_mode=fallback_mode, **kwargs
+            chat_id=chat_id, text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
         )
 
 
@@ -924,14 +882,9 @@ async def rich_edit(query, text, reply_markup=None, parse_mode=None, **kwargs):
         return result
     except Exception as rich_error:
         print(f"Rich edit fallback: {type(rich_error).__name__}: {rich_error}")
-        fallback_text = _polish_bot_text(text)
-        fallback_mode = parse_mode
-        if str(fallback_mode or "").upper() == "HTML":
-            fallback_text = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del)(?:\s[^>]*)?>", "", fallback_text, flags=re.I)
-            fallback_mode = None
         return await message.edit_text(
-            text=fallback_text, reply_markup=reply_markup,
-            parse_mode=fallback_mode, **kwargs
+            text=text, reply_markup=reply_markup,
+            parse_mode=parse_mode, **kwargs
         )
 
 
@@ -1870,11 +1823,11 @@ async def send_services_message(message, user_id):
             if is_unlimited_volume(row["volume"]):
                 plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                 if lang == "en":
-                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
                 elif lang == "ku":
-                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
                 else:
-                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
             else:
                 text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
     await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
@@ -2183,27 +2136,14 @@ async def show_admin_stock(query):
     lang = get_user_language(query.from_user.id) or "fa"
     stock = get_stock()
     trial_stock = get_free_trial_stock()
-
-    # موجودی سرویس‌ها همیشه مرتب و از بالا به پایین نمایش داده شود.
-    def stock_sort_key(item):
-        volume = str(item[0])
-        if is_unlimited_volume(volume):
-            return (1, volume)
-        try:
-            return (0, float(volume))
-        except (TypeError, ValueError):
-            return (0, float("inf"))
-
-    text = "📦 موجودی سرویس‌ها\n\n"
+    text = "📦 موجودی HanzuVPN\n\n"
     if stock:
-        for volume, count in sorted(stock.items(), key=stock_sort_key):
+        for volume, count in stock.items():
             label = unlimited_display(volume, lang) if is_unlimited_volume(volume) else f"{volume} گیگ"
-            text += f"📦 {label}\n   موجودی: {count} عدد\n\n"
+            text += f"🔹 {label}: {count} عدد\n"
     else:
-        text += "❌ سرویس فروشی موجود نیست.\n\n"
-
-    text += f"🎁 تست رایگان\n   موجودی: {trial_stock} عدد"
-
+        text += "❌ سرویس فروشی موجود نیست.\n"
+    text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
     await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
@@ -2762,11 +2702,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 if is_unlimited_volume(row["volume"]):
                     plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                     if lang == "en":
-                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
                     elif lang == "ku":
-                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
                     else:
-                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n━━━━━━━━━━━━\n\n"
                 else:
                     text += t(lang, "service_item", id=row["id"], volume=row["volume"],
                               expires=row["expires_at"] or "-", link=row["link"] or "-")

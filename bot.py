@@ -1269,7 +1269,12 @@ async def show_home(query, user_id):
 
 async def send_home(message, user_id):
     lang = get_user_language(user_id) or "fa"
-    await rich_reply_text(message, t(lang, "welcome"))
+    # نمایش منوی اصلی با همان دکمه‌های Rich/Inline برای همه کاربران
+    await rich_reply_text(
+        message,
+        t(lang, "welcome"),
+        reply_markup=home_keyboard(user_id),
+    )
 
 
 def dashboard_text(user, lang):

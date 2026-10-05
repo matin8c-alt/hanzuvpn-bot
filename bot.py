@@ -120,9 +120,9 @@ TEXTS = {
         "order_created": "✅ درخواست شما ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "receipt_received": "✅ رسید شما دریافت شد.\n\n🧾 سفارش #{order}\n\nپس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
         "no_pending": "❌ سفارش در انتظار پرداختی پیدا نشد.",
-        "services_title": "📦 سرویس‌های من",
-        "no_services": "📦 سرویس‌های من\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
-        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n📅 انقضا: {expires}\n🔗 {link}\n\n",
+        "services_title": "📦 <b>سرویس‌های من</b>\n\nسرویس‌های فعال شما در ادامه نمایش داده می‌شوند:",
+        "no_services": "📦 <b>سرویس‌های من</b>\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
+        "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n",
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
         "renew_choose": "🔄 تمدید سرویس\n\nسرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
@@ -147,7 +147,7 @@ TEXTS = {
         "payment_rejected": "❌ پرداخت سفارش شما تأیید نشد.\n\n🧾 سفارش: #{order}\n\nدر صورت اشتباه با پشتیبانی تماس بگیرید.",
         "reminder_3": "⚠️ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 3 روز دیگر منقضی می‌شود.\n\nبرای تمدید از بخش «🔄 تمدید» استفاده کنید.",
         "reminder_1": "⏰ یادآوری HanzuVPN\n\nسرویس #{order} شما حدود 1 روز دیگر منقضی می‌شود.\n\nبرای تمدید سرویس اقدام کنید.",
-        "wallet_title": "💰 کیف پول\n\n💵 موجودی\n{balance:,} تومان",
+        "wallet_title": "💰 <b>کیف پول</b>\n\n💵 موجودی فعلی\n<b>{balance:,} تومان</b>\n\nاز گزینه‌های زیر انتخاب کنید:",
         "charge_wallet": "➕ شارژ کیف پول",
         "wallet_history": "📜 تاریخچه تراکنش‌ها",
         "charge_prompt": "💰 شارژ کیف پول\n\nمبلغ مورد نظر را به تومان وارد کنید.\n\nحداقل مبلغ: {min:,} تومان\n\nمثال:\n50000",
@@ -158,8 +158,8 @@ TEXTS = {
         "not_enough_balance": "❌ موجودی کیف پول شما کافی نیست.",
         "paid_from_wallet": "✅ پرداخت از کیف پول با موفقیت انجام شد.\n\n💰 مبلغ کسر شده: {price:,} تومان\n💵 موجودی باقی‌مانده: {balance:,} تومان",
         "no_history": "📜 تاریخچه تراکنش‌ها\n\nهنوز تراکنشی ثبت نشده است.",
-        "history_title": "📜 تراکنش‌های اخیر\n\n",
-        "history_item": "{emoji} {amount:,} تومان\n{desc}\n🕐 {date}\n\n",
+        "history_title": "📜 آخرین تراکنش‌های شما\n\n",
+        "history_item": "{emoji} {amount:,} تومان\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ افزودن لینک سرویس',
         'admin_trial': '🎁 مدیریت تست',
         'admin_stock': '📦 موجودی',
@@ -214,9 +214,9 @@ TEXTS = {
         "order_created": "✅ داواکاری تۆمار کرا.\n\n🧾 #{order}\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n📸 وێنەی پسوڵە بنێرە.",
         "receipt_received": "✅ پسوڵە وەرگیرا.\n\n🧾 #{order}",
         "no_pending": "❌ هیچ داواکارییەکی چاوەڕوان نەدۆزرایەوە.",
-        "services_title": "📦 خزمەتگوزارییەکانت",
+        "services_title": "📦 خزمەتگوزارییەکانت\n\n",
         "no_services": "📦 هیچ خزمەتگوزارییەکی چالاکت نییە.",
-        "service_item": "🧾 داواکاری #{id}\n📦 {volume} گیگ\n📅 {expires}\n🔗 {link}\n\n",
+        "service_item": "🧾 #{id}\n📦 {volume} گیگ\n⏳ {expires}\n\n🔗 {link}\n\n",
         "renew_no_services": "🔄 هیچ خزمەتگوزارییەکی چالاکت نییە.",
         "renew_choose": "🔄 خزمەتگوزارییەک هەڵبژێرە بۆ نوێکردنەوە:",
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
@@ -241,7 +241,7 @@ TEXTS = {
         "payment_rejected": "❌ پارەدان ڕەتکرایەوە.\n\n🧾 #{order}",
         "reminder_3": "⚠️ خزمەتگوزاری #{order} نزیکەی 3 ڕۆژی تر بەسەر دەچێت.",
         "reminder_1": "⏰ خزمەتگوزاری #{order} نزیکەی 1 ڕۆژی تر بەسەر دەچێت.",
-        "wallet_title": "💰 جزدان\n\n💵 موجودی\n{balance:,} تومان",
+        "wallet_title": "💰 جزدان\n\n💵 موجودی: {balance:,} تومان",
         "charge_wallet": "➕ شارژکردنی جزدان",
         "wallet_history": "📜 مێژووی مامەڵەکان",
         "charge_prompt": "💰 شارژ\n\nبڕ بنووسە (کەمترین: {min:,})",
@@ -251,7 +251,7 @@ TEXTS = {
         "charge_success": "✅ شارژ سەرکەوتوو بوو.\n\n💰 {amount:,}\n💵 موجودی نوێ: {balance:,}",
         "not_enough_balance": "❌ موجودی بەس نییە.",
         "paid_from_wallet": "✅ پارەدان لە جزدان سەرکەوتوو بوو.\n\n💰 {price:,}\n💵 ماوە: {balance:,}",
-        "no_history": "📜 مێژووی مامەڵەکان\n\nهیچ مامەڵەیەک نییە.",
+        "no_history": "📜 هیچ مامەڵەیەک نییە.",
         "history_title": "📜 دوایین مامەڵەکان\n\n",
         "history_item": "{emoji} {amount:,}\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ زیادکردنی بەستەر',
@@ -308,9 +308,9 @@ TEXTS = {
         "order_created": "✅ Request registered.\n\n🧾 Order: #{order}\n📦 {volume} GB\n💰 {price:,} Toman\n\n📸 Send the receipt.",
         "receipt_received": "✅ Receipt received.\n\n🧾 Order #{order}",
         "no_pending": "❌ No pending order found.",
-        "services_title": "📦 Your Services",
+        "services_title": "📦 Your Services\n\n",
         "no_services": "📦 You don't have any active services.",
-        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n📅 {expires}\n🔗 {link}\n\n",
+        "service_item": "🧾 Order #{id}\n📦 {volume} GB\n⏳ {expires}\n\n🔗 {link}\n\n",
         "renew_no_services": "🔄 You don't have any active services.",
         "renew_choose": "🔄 Choose the service to renew:",
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
@@ -335,7 +335,7 @@ TEXTS = {
         "payment_rejected": "❌ Payment rejected.\n\n🧾 #{order}",
         "reminder_3": "⚠️ Service #{order} expires in about 3 days.",
         "reminder_1": "⏰ Service #{order} expires in about 1 day.",
-        "wallet_title": "💰 Your Wallet\n\n💵 Balance\n{balance:,} Toman",
+        "wallet_title": "💰 Your Wallet\n\n💵 Balance: {balance:,} Toman",
         "charge_wallet": "➕ Charge Wallet",
         "wallet_history": "📜 Transaction History",
         "charge_prompt": "💰 Charge Wallet\n\nEnter amount in Toman.\n\nMinimum: {min:,}",
@@ -345,7 +345,7 @@ TEXTS = {
         "charge_success": "✅ Wallet charged successfully.\n\n💰 {amount:,} Toman\n💵 New balance: {balance:,}",
         "not_enough_balance": "❌ Insufficient wallet balance.",
         "paid_from_wallet": "✅ Paid from wallet successfully.\n\n💰 Deducted: {price:,}\n💵 Remaining: {balance:,}",
-        "no_history": "📜 Transaction History\n\nNo transactions yet.",
+        "no_history": "📜 No transactions yet.",
         "history_title": "📜 Your recent transactions\n\n",
         "history_item": "{emoji} {amount:,} Toman\n📝 {desc}\n🕐 {date}\n\n",
         'admin_add': '➕ Add Service Link',
@@ -1870,11 +1870,11 @@ async def send_services_message(message, user_id):
             if is_unlimited_volume(row["volume"]):
                 plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                 if lang == "en":
-                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 elif lang == "ku":
-                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 else:
-                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
             else:
                 text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
     await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
@@ -2183,27 +2183,14 @@ async def show_admin_stock(query):
     lang = get_user_language(query.from_user.id) or "fa"
     stock = get_stock()
     trial_stock = get_free_trial_stock()
-
-    # موجودی سرویس‌ها همیشه مرتب و از بالا به پایین نمایش داده شود.
-    def stock_sort_key(item):
-        volume = str(item[0])
-        if is_unlimited_volume(volume):
-            return (1, volume)
-        try:
-            return (0, float(volume))
-        except (TypeError, ValueError):
-            return (0, float("inf"))
-
-    text = "📦 موجودی سرویس‌ها\n\n"
+    text = "📦 موجودی HanzuVPN\n\n"
     if stock:
-        for volume, count in sorted(stock.items(), key=stock_sort_key):
+        for volume, count in stock.items():
             label = unlimited_display(volume, lang) if is_unlimited_volume(volume) else f"{volume} گیگ"
-            text += f"📦 {label}\n   موجودی: {count} عدد\n\n"
+            text += f"🔹 {label}: {count} عدد\n"
     else:
-        text += "❌ سرویس فروشی موجود نیست.\n\n"
-
-    text += f"🎁 تست رایگان\n   موجودی: {trial_stock} عدد"
-
+        text += "❌ سرویس فروشی موجود نیست.\n"
+    text += f"\n🎁 تست رایگان:\n🔹 {trial_stock} عدد\n"
     await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
     ]))
@@ -2762,11 +2749,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 if is_unlimited_volume(row["volume"]):
                     plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                     if lang == "en":
-                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                     elif lang == "ku":
-                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                     else:
-                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n📅 {row['expires_at'] or '-'}\n🔗 {row['link'] or '-'}\n\n"
+                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
                 else:
                     text += t(lang, "service_item", id=row["id"], volume=row["volume"],
                               expires=row["expires_at"] or "-", link=row["link"] or "-")

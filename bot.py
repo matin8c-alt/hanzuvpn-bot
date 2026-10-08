@@ -1785,19 +1785,7 @@ def get_pasarguard_unlimited_config():
     return row
 
 
-def _normalize_pasarguard_base_url(base_url):
-    """Accept both HTTP and HTTPS PasarGuard panel URLs without forcing HTTPS."""
-    from urllib.parse import urlsplit
-    value = str(base_url or "").strip().rstrip("/")
-    parts = urlsplit(value)
-    scheme = (parts.scheme or "").lower()
-    if scheme not in ("http", "https") or not parts.netloc:
-        raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود و معتبر باشد.")
-    return f"{scheme}://{parts.netloc}{parts.path.rstrip('/')}" + (("?" + parts.query) if parts.query else "")
-
-
 def save_pasarguard_unlimited_config(base_url, username, password, enabled=True):
-    base_url = _normalize_pasarguard_base_url(base_url)
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_unlimited_config
@@ -1825,6 +1813,55 @@ def disable_pasarguard_unlimited():
         _PG2_TOKEN_CACHE.update(token=None, expires_at=0.0)
 
 
+class _PG2RedirectHandler(__import__("urllib").request.HTTPRedirectHandler):
+    """Keep POST/form requests as POST when the second panel redirects HTTP→HTTPS."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        method = getattr(req, "method", None) or ("POST" if req.data is not None else "GET")
+        data = req.data
+        new_headers = dict(req.headers)
+        # urllib may strip Content-Length on redirects; rebuilding the request
+        # with the original body keeps PasarGuard's token endpoint POST-compatible.
+        new_headers.pop("Content-length", None)
+        new_headers.pop("Host", None)
+        return urlrequest.Request(
+            newurl, data=data, headers=new_headers, method=method
+        )
+
+
+_PG2_OPENER = urlrequest.build_opener(_PG2RedirectHandler())
+
+
+def _pg2_http(method, url, headers=None, json_body=None, form=None, timeout=12):
+    """Second-panel HTTP client with POST-preserving redirects."""
+    data = None
+    req_headers = dict(headers or {})
+    if json_body is not None:
+        data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
+        req_headers["Content-Type"] = "application/json"
+    elif form is not None:
+        from urllib.parse import urlencode
+        data = urlencode(form).encode("utf-8")
+        req_headers["Content-Type"] = "application/x-www-form-urlencoded"
+    req = urlrequest.Request(url, data=data, headers=req_headers, method=method.upper())
+    try:
+        with _PG2_OPENER.open(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            try:
+                payload = json.loads(body) if body else {}
+            except Exception:
+                payload = {"raw": body}
+            return response.status, payload
+    except Exception as exc:
+        status = getattr(exc, "code", None)
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+            payload = json.loads(body) if body else {}
+        except Exception:
+            payload = {}
+        return int(status or 0), payload or {"detail": str(exc)}
+
+
 def _pg2_login_sync(force=False):
     cfg = get_pasarguard_unlimited_config()
     if not cfg or not cfg["enabled"]:
@@ -1844,7 +1881,7 @@ def _pg2_login_sync(force=False):
         password = _pg_decrypt_secret(cfg["password_enc"])
         if not password:
             raise RuntimeError("رمز اتصال پنل دوم قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
-        status, payload = _pg_http(
+        status, payload = _pg2_http(
             "POST", _pg_url(cfg["base_url"], "/api/admin/token"),
             form={"username": cfg["username"], "password": password, "grant_type": "password"},
             timeout=12,
@@ -1876,12 +1913,12 @@ def _pg2_request_sync(method, path, json_body=None, retry=True):
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل دوم PasarGuard نامحدود متصل نیست.")
     token = _pg2_login_sync(False)
-    status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
+    status, payload = _pg2_http(method, _pg_url(cfg["base_url"], path),
                                headers={"Authorization": f"Bearer {token}"},
                                json_body=json_body, timeout=15)
     if status == 401 and retry:
         token = _pg2_login_sync(True)
-        status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
+        status, payload = _pg2_http(method, _pg_url(cfg["base_url"], path),
                                    headers={"Authorization": f"Bearer {token}"},
                                    json_body=json_body, timeout=15)
     if status < 200 or status >= 300:
@@ -4892,10 +4929,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # اتصال پنل دوم PasarGuard - فقط برای سرویس‌های نامحدود
     if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_url"):
-        try:
-            base_url = _normalize_pasarguard_base_url(text)
-        except ValueError:
-            await rich_reply_text(update.message, "❌ آدرس پنل نامعتبر است.\n\nهم http:// و هم https:// پشتیبانی می‌شود.\nمثال: http://1.2.3.4:8000")
+        base_url = text.strip().rstrip("/")
+        if not base_url.startswith(("http://", "https://")):
+            await rich_reply_text(update.message, "❌ آدرس پنل باید با http:// یا https:// شروع شود.")
             return
         context.user_data["pg2_waiting_url"] = False
         context.user_data["pg2_waiting_username"] = True
@@ -4929,7 +4965,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as exc:
             print(f"PasarGuard unlimited connect error: {type(exc).__name__}: {exc}")
             disable_pasarguard_unlimited()
-            await rich_reply_text(update.message, f"❌ اتصال پنل دوم نامحدود ناموفق بود.\n\nجزئیات: {str(exc)[:250]}")
+            await rich_reply_text(update.message, "❌ اتصال پنل دوم نامحدود ناموفق بود.\n\nآدرس پنل، نام کاربری یا رمز را بررسی کن.")
         return
 
     # اتصال PasarGuard - مرحله ۱: آدرس پنل

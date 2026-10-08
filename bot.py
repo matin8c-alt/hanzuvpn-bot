@@ -1785,10 +1785,19 @@ def get_pasarguard_unlimited_config():
     return row
 
 
+def _normalize_pasarguard_base_url(base_url):
+    """Accept both HTTP and HTTPS PasarGuard panel URLs without forcing HTTPS."""
+    from urllib.parse import urlsplit
+    value = str(base_url or "").strip().rstrip("/")
+    parts = urlsplit(value)
+    scheme = (parts.scheme or "").lower()
+    if scheme not in ("http", "https") or not parts.netloc:
+        raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود و معتبر باشد.")
+    return f"{scheme}://{parts.netloc}{parts.path.rstrip('/')}" + (("?" + parts.query) if parts.query else "")
+
+
 def save_pasarguard_unlimited_config(base_url, username, password, enabled=True):
-    base_url = str(base_url or "").strip().rstrip("/")
-    if not base_url.startswith(("http://", "https://")):
-        raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود.")
+    base_url = _normalize_pasarguard_base_url(base_url)
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_unlimited_config
@@ -4883,9 +4892,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # اتصال پنل دوم PasarGuard - فقط برای سرویس‌های نامحدود
     if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_url"):
-        base_url = text.strip().rstrip("/")
-        if not base_url.startswith(("http://", "https://")):
-            await rich_reply_text(update.message, "❌ آدرس پنل باید با http:// یا https:// شروع شود.")
+        try:
+            base_url = _normalize_pasarguard_base_url(text)
+        except ValueError:
+            await rich_reply_text(update.message, "❌ آدرس پنل نامعتبر است.\n\nهم http:// و هم https:// پشتیبانی می‌شود.\nمثال: http://1.2.3.4:8000")
             return
         context.user_data["pg2_waiting_url"] = False
         context.user_data["pg2_waiting_username"] = True
@@ -4919,7 +4929,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as exc:
             print(f"PasarGuard unlimited connect error: {type(exc).__name__}: {exc}")
             disable_pasarguard_unlimited()
-            await rich_reply_text(update.message, "❌ اتصال پنل دوم نامحدود ناموفق بود.\n\nآدرس پنل، نام کاربری یا رمز را بررسی کن.")
+            await rich_reply_text(update.message, f"❌ اتصال پنل دوم نامحدود ناموفق بود.\n\nجزئیات: {str(exc)[:250]}")
         return
 
     # اتصال PasarGuard - مرحله ۱: آدرس پنل

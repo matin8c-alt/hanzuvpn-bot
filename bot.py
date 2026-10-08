@@ -1200,9 +1200,18 @@ def init_db():
             access_token TEXT,
             token_expires_at TEXT,
             enabled INTEGER DEFAULT 1,
+            group_id INTEGER,
+            group_name TEXT,
             updated_at TEXT NOT NULL
         )
     """)
+
+    # سازگاری دیتابیس‌های قبلی پنل دوم؛ گروه انتخابی را بدون حذف تنظیمات نگه می‌داریم.
+    for col, default in [("group_id", "INTEGER"), ("group_name", "TEXT")]:
+        try:
+            conn.execute(f"ALTER TABLE pasarguard_unlimited_config ADD COLUMN {col} {default}")
+        except sqlite3.OperationalError:
+            pass
 
     # Templateهای خودکار Hanzu برای پلن‌های مختلف؛ هر پلن فقط یک بار ساخته می‌شود.
     conn.execute("""
@@ -1818,6 +1827,13 @@ def save_pasarguard_unlimited_config(base_url, username, password, enabled=True)
         _PG2_TOKEN_CACHE.update(token=None, expires_at=0.0)
 
 
+def set_pasarguard_unlimited_group(group_id, group_name):
+    conn = get_db()
+    conn.execute("UPDATE pasarguard_unlimited_config SET group_id=?, group_name=?, updated_at=? WHERE id=1",
+                 (int(group_id), str(group_name), now_text()))
+    conn.commit(); conn.close()
+
+
 def disable_pasarguard_unlimited():
     conn = get_db()
     conn.execute("DELETE FROM pasarguard_unlimited_config WHERE id=1")
@@ -1891,6 +1907,31 @@ def _pg2_request_sync(method, path, json_body=None, retry=True):
     return payload
 
 
+def pg2_get_groups_sync():
+    """Fetch groups from the second PasarGuard panel for unlimited plans."""
+    try:
+        payload = _pg2_request_sync("GET", "/api/groups")
+    except Exception as first:
+        try:
+            payload = _pg2_request_sync("GET", "/api/groups/simple")
+        except Exception:
+            raise first
+    groups = _pg_extract_list(payload, "groups")
+    result = []
+    for group in groups:
+        if not isinstance(group, dict) or group.get("id") is None:
+            continue
+        if group.get("is_disabled") or group.get("disabled"):
+            continue
+        try:
+            group_id = int(group["id"])
+        except (TypeError, ValueError):
+            continue
+        name = str(group.get("name") or group.get("label") or f"Group {group_id}")
+        result.append({"id": group_id, "name": name})
+    return result
+
+
 def test_pasarguard_unlimited_sync():
     _pg2_login_sync(True)
     try:
@@ -1910,10 +1951,14 @@ def pg2_create_unlimited_user_sync(order):
     info = UNLIMITED_PLANS.get(volume)
     if not info:
         raise RuntimeError("پلن نامحدود نامعتبر است.")
+    group_id = cfg["group_id"] if "group_id" in cfg.keys() else None
+    if not group_id:
+        raise RuntimeError("برای پنل دوم، ابتدا از بخش «وضعیت پنل دوم» گروه ساخت سرویس را انتخاب کن.")
     username = f"hz_u_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
     expire = (datetime.now(timezone.utc) + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
     payload = {
         "username": username,
+        "group_ids": [int(group_id)],
         "proxy_settings": {},
         "expire": expire,
         "data_limit": 0,
@@ -1956,9 +2001,13 @@ def pasarguard_unlimited_status_text():
         state = "🟢 اتصال سالم"
     except Exception as exc:
         state = f"🔴 خطا: {str(exc)[:180]}"
+    group_name = cfg["group_name"] if "group_name" in cfg.keys() else None
+    group_id = cfg["group_id"] if "group_id" in cfg.keys() else None
+    group_text = f"{group_name} (ID {group_id})" if group_id else "❌ انتخاب نشده"
     return (f"📡 پنل دوم سرویس‌های نامحدود\n\n{state}\n"
             f"🌐 {cfg['base_url']}\n"
-            f"👤 {cfg['username']}\n\n"
+            f"👤 {cfg['username']}\n"
+            f"📦 گروه ساخت سرویس: {group_text}\n\n"
             "♾️ فقط پلن‌های نامحدود از این پنل ساخته می‌شوند.")
 
 
@@ -4505,11 +4554,46 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         text = await asyncio.to_thread(pasarguard_unlimited_status_text)
         kb = [
+            [styled_inline_button("📦 انتخاب گروه پنل دوم", callback_data="pg2_groups")],
             [styled_inline_button("🔌 اتصال / تغییر پنل دوم", callback_data="pg2_connect")],
             [styled_inline_button("🗑 قطع اتصال پنل دوم", callback_data="pg2_disconnect")],
             [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
         ]
         await rich_edit(query, text, reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if data == "pg2_groups":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            groups = await asyncio.to_thread(pg2_get_groups_sync)
+            if not groups:
+                raise RuntimeError("پنل دوم هیچ گروه قابل انتخابی برنگرداند؛ دسترسی کاربر پنل را بررسی کن.")
+            cfg = get_pasarguard_unlimited_config()
+            selected_group_id = cfg["group_id"] if cfg and "group_id" in cfg.keys() else None
+            keyboard = []
+            for group in groups[:50]:
+                mark = "✅ " if selected_group_id == group["id"] else ""
+                keyboard.append([styled_inline_button(f"{mark}{group['name']} | ID {group['id']}", callback_data=f"pg2_group_{group['id']}")])
+            keyboard.append([styled_inline_button("🔙 وضعیت پنل دوم", callback_data="pg2_status")])
+            await rich_edit(query, "📦 گروه‌های پنل دوم PasarGuard\n\nگروهی را انتخاب کن که سرویس‌های نامحدود در آن ساخته شوند:", reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
+        return
+
+    if data.startswith("pg2_group_"):
+        if user_id != ADMIN_ID:
+            return
+        try:
+            group_id = int(data.rsplit("_", 1)[1])
+            groups = await asyncio.to_thread(pg2_get_groups_sync)
+            group = next((g for g in groups if g["id"] == group_id), None)
+            if not group:
+                raise RuntimeError("گروه پیدا نشد یا دیگر در پنل وجود ندارد.")
+            set_pasarguard_unlimited_group(group_id, group["name"])
+            await rich_edit(query, f"✅ گروه پنل دوم انتخاب شد.\n\n📦 {group['name']}\n🆔 {group_id}\n\nاز این به بعد فقط سرویس‌های نامحدود در این گروه ساخته می‌شوند.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل دوم", callback_data="pg2_status")], [styled_inline_button("📦 تغییر گروه", callback_data="pg2_groups")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
         return
 
     if data == "pg2_disconnect":
@@ -4927,7 +5011,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
             await asyncio.to_thread(test_pasarguard_unlimited_sync)
-            await rich_reply_text(update.message, "✅ پنل دوم نامحدود با موفقیت متصل شد.\n\n♾️ از این به بعد فقط سرویس‌های نامحدود از این پنل ساخته می‌شوند.\n\nسرویس‌های حجمی همچنان از منطق پنل اول/دستی قبلی استفاده می‌کنند.", reply_markup=InlineKeyboardMarkup([
+            await rich_reply_text(update.message, "✅ پنل دوم نامحدود با موفقیت متصل شد.\n\n📦 حالا گروه ساخت سرویس را از دکمه «انتخاب گروه پنل دوم» انتخاب کن.\n\n♾️ فقط سرویس‌های نامحدود از این پنل ساخته می‌شوند؛ سرویس‌های حجمی و منطق پنل اول تغییر نمی‌کنند.", reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button("📦 انتخاب گروه پنل دوم", callback_data="pg2_groups")],
                 [styled_inline_button("📡 وضعیت پنل دوم", callback_data="pg2_status")],
                 [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
             ]))

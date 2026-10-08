@@ -11,7 +11,7 @@ import tempfile
 from urllib.parse import parse_qsl, unquote, urljoin, quote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from telegram import (
     Update,
@@ -1559,7 +1559,7 @@ def pg_create_user_sync(volume, username, group_id, note=""):
     if not cfg:
         raise RuntimeError("پنل PasarGuard متصل نیست.")
     data_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
-    expire = (datetime.now() + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
+    expire = (datetime.now(timezone.utc) + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
     payload = {
         "username": username,
         "proxy_settings": {},
@@ -1661,7 +1661,7 @@ def pg_update_user_limits_sync(username, payload, volume, group_id, note=""):
     creation. The selected template already supplies its groups.
     """
     data_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
-    expire = (datetime.now() + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
+    expire = (datetime.now(timezone.utc) + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
     update_payload = {
         "data_limit": data_limit,
         "data_limit_reset_strategy": "no_reset",
@@ -1738,7 +1738,22 @@ def _pg_subscription_from_created_user_sync(payload, username):
     return None
 
 
+def _pg_error_status(exc):
+    m = re.search(r"PasarGuard API\s+(\d{3})", str(exc or ""))
+    return int(m.group(1)) if m else 0
+
+
 def pg_create_order_service_sync(order):
+    """Create exactly one HanzuVPN service in PasarGuard.
+
+    Strategy:
+      1) Direct /api/user using a timezone-aware UTC expiration.
+      2) If the role requires templates / rejects direct creation, first use an
+         exact existing template for this plan.
+      3) If no exact template exists, create one automatically and create the
+         user from it. No post-create PUT is used, so the plan is applied in
+         one operation and RBAC group/update restrictions cannot corrupt it.
+    """
     cfg = get_pasarguard_config()
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل PasarGuard فعال نیست.")
@@ -1754,28 +1769,52 @@ def pg_create_order_service_sync(order):
     direct_error = None
     payload = None
 
-    # 1) مسیر مستقیم؛ برای ادمینی که require_template=false دارد.
+    # 1) Direct creation. Use UTC with timezone info; current PasarGuard
+    # examples use an aware ISO timestamp (e.g. +00:00).
     try:
         payload = pg_create_user_sync(volume, username, int(group_id), note)
     except Exception as exc:
         direct_error = exc
 
-    # 2) اگر نقش پنل ساخت مستقیم را ممنوع کرده، فقط Template دقیق همان پلن را استفاده کن.
-    # Template از ابتدا group + data_limit + expire_duration را اعمال می‌کند؛ هیچ PUT بعدی نداریم.
     if payload is None:
-        try:
-            template = pg_find_template_for_plan_sync(volume, int(group_id), days)
-            payload = _pg_request_sync("POST", "/api/user/from_template", {
-                "user_template_id": int(template["id"]),
-                "username": username,
-                "note": note,
-            })
-        except Exception as template_error:
-            direct_text = str(direct_error or "خطای نامشخص")[:280]
-            template_text = str(template_error)[:420]
-            raise RuntimeError(
-                f"ساخت مستقیم: {direct_text} | ساخت از Template مناسب: {template_text}"
-            )
+        status = _pg_error_status(direct_error)
+        # Template fallback is appropriate for validation/RBAC-style failures,
+        # not for arbitrary server/network errors.
+        if status in (400, 401, 403, 405, 409, 422) or status == 0:
+            template = None
+            template_error = None
+
+            # 2) Prefer an already-existing exact template.
+            try:
+                template = pg_find_template_for_plan_sync(volume, int(group_id), days)
+            except Exception as exc:
+                template_error = exc
+
+            # 3) If there is no exact template, create one automatically.
+            if template is None:
+                try:
+                    template = pg_get_or_create_exact_template_sync(volume, int(group_id))
+                except Exception as exc:
+                    template_error = exc
+
+            if template is not None:
+                try:
+                    payload = _pg_request_sync("POST", "/api/user/from_template", {
+                        "user_template_id": int(template["id"]),
+                        "username": username,
+                        "note": note,
+                    })
+                except Exception as from_template_error:
+                    template_error = from_template_error
+
+            if payload is None:
+                direct_text = str(direct_error or "خطای نامشخص")[:300]
+                template_text = str(template_error or "Template fallback ناموفق بود")[:500]
+                raise RuntimeError(
+                    f"ساخت مستقیم: {direct_text} | ساخت خودکار از Template: {template_text}"
+                )
+        else:
+            raise RuntimeError(str(direct_error)[:600])
 
     sub = _pg_subscription_from_created_user_sync(payload, username)
     final_username = _pg_find_value(payload, ["username"]) or username
@@ -1787,11 +1826,11 @@ def pg_create_order_service_sync(order):
 
     sub = str(sub).strip()
     if sub.startswith("/"):
-        base_url = str(cfg.get("base_url") or "").rstrip("/")
+        base_url = str(cfg["base_url"] or "").rstrip("/")
         if base_url:
             sub = base_url + sub
     elif not sub.startswith(("http://", "https://")):
-        base_url = str(cfg.get("base_url") or "").rstrip("/")
+        base_url = str(cfg["base_url"] or "").rstrip("/")
         if base_url:
             sub = base_url + "/" + sub.lstrip("/")
 

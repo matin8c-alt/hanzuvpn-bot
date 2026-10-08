@@ -1177,6 +1177,20 @@ def init_db():
         )
     """)
 
+    # Templateهای خودکار Hanzu برای پلن‌های مختلف؛ هر پلن فقط یک بار ساخته می‌شود.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pasarguard_plan_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volume_key TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            group_id INTEGER NOT NULL,
+            template_id INTEGER NOT NULL,
+            template_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(volume_key, days, group_id)
+        )
+    """)
+
     conn.commit()
 
     # سازگاری اتصال PasarGuard با نسخه‌های قبلی
@@ -1514,6 +1528,74 @@ def pg_create_user_sync(volume, username, group_id, note=""):
     return _pg_request_sync("POST", "/api/user", payload)
 
 
+def pg_get_or_create_exact_template_sync(volume, group_id):
+    """Get/create a template whose limits exactly match the Hanzu order.
+
+    This avoids creating a user from an unrelated template and then doing a
+    second RBAC-sensitive PUT. PasarGuard templates natively carry group,
+    data_limit and expire_duration, so the whole user can be created in one
+    template call.
+    """
+    cfg = get_pasarguard_config()
+    if not cfg:
+        raise RuntimeError("پنل PasarGuard متصل نیست.")
+    volume_key = "unlimited" if is_unlimited_volume(volume) else str(_normalize_volume(volume) or "0")
+    days = int(SERVICE_DAYS)
+    gid = int(group_id)
+
+    conn = get_db()
+    row = conn.execute(
+        "SELECT template_id, template_name FROM pasarguard_plan_templates WHERE volume_key=? AND days=? AND group_id=? LIMIT 1",
+        (volume_key, days, gid)
+    ).fetchone()
+    conn.close()
+    if row:
+        return {"id": int(row["template_id"]), "name": str(row["template_name"])}
+
+    data_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
+    expire_duration = days * 86400
+    safe_volume = "Unlimited" if is_unlimited_volume(volume) else f"{_normalize_volume(volume)}GB"
+    name = f"HanzuVPN {safe_volume} {days}D G{gid}"[:64]
+    payload = {
+        "name": name,
+        "data_limit": data_limit,
+        "expire_duration": expire_duration,
+        "group_ids": [gid],
+        "status": "active",
+        "data_limit_reset_strategy": "no_reset",
+        "is_disabled": False,
+    }
+    try:
+        created = _pg_request_sync("POST", "/api/user_template", payload)
+    except Exception as exc:
+        # If it already exists, resolve it from the readable template list.
+        text = str(exc).lower()
+        if "already exists" not in text and "unique" not in text and "409" not in text:
+            raise
+        created = None
+
+    if created:
+        tid = _pg_find_value(created, ["id", "template_id", "templateId"])
+        tname = _pg_find_value(created, ["name"]) or name
+    else:
+        templates = pg_get_templates_sync()
+        found = next((t for t in templates if str(t.get("name")) == name), None)
+        if not found:
+            raise RuntimeError("Template دقیق پلن در PasarGuard پیدا نشد.")
+        tid, tname = found["id"], found["name"]
+
+    if tid is None:
+        raise RuntimeError("PasarGuard Template ساخته شد ولی شناسه آن برنگشت.")
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO pasarguard_plan_templates(volume_key,days,group_id,template_id,template_name,created_at) VALUES(?,?,?,?,?,?)",
+        (volume_key, days, gid, int(tid), str(tname), now_text())
+    )
+    conn.commit()
+    conn.close()
+    return {"id": int(tid), "name": str(tname)}
+
+
 def pg_create_user_from_template_sync(username, note=""):
     template = pg_get_selected_template_sync()
     # ثبت انتخاب خودکار در DB تا خریدهای بعدی نیاز به جستجوی template نداشته باشند.
@@ -1597,36 +1679,48 @@ def pg_create_order_service_sync(order):
     username = f"hz_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
     note = f"HanzuVPN order #{order['id']}"
 
+    # مسیر اصلی: ساخت مستقیم با تمام مقادیر سفارش. این endpoint در API فعلی PasarGuard
+    # پشتیبانی می‌شود و برای ادمین‌هایی که require_template ندارند سریع‌ترین مسیر است.
     try:
         payload = pg_create_user_sync(order["volume"], username, int(group_id), note)
     except Exception as direct_error:
-        # در RBAC جدید، ممکن است این مدیر اجازه ساخت مستقیم نداشته باشد
-        # و فقط اجازه ساخت از Template داشته باشد. در این حالت خودکار Template را امتحان می‌کنیم.
         error_text = str(direct_error).lower()
-        # هر خطای 4xx ساخت مستقیم می‌تواند ناشی از RBAC/Template اجباری باشد؛
-        # به‌جای توقف، یک‌بار مسیر Template را امتحان می‌کنیم. خطاهای شبکه/5xx
-        # همچنان همان‌جا گزارش می‌شوند تا ربات بی‌دلیل درخواست اضافه نزند.
         template_related = any(x in error_text for x in (
             "template", "require_template", "not allowed", "forbidden", "permission", "403", "400", "405", "422"
         ))
         if not template_related:
             raise
+
+        # مسیر دوم: یک Template دقیق برای همین پلن بساز/استفاده کن.
+        # این کار مهم است چون Template خودش group + data_limit + expire_duration را اعمال می‌کند
+        # و دیگر لازم نیست بعد از ساخت، یک PUT حساس به RBAC انجام دهیم.
         try:
-            payload, template = pg_create_user_from_template_sync(username, note)
-            # Template کاربر را می‌سازد. اگر خودش دقیقاً همان حجم سفارش را دارد،
-            # دیگر PUT اضافی نمی‌زنیم؛ این برای RBAC محدود مهم است.
-            final_username = _pg_find_value(payload, ["username"]) or username
-            if not _pg_user_plan_matches(payload, order["volume"]):
-                payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
-                if isinstance(payload2, dict):
-                    merged = dict(payload)
-                    merged.update(payload2)
-                    payload = merged
-        except Exception as template_error:
-            raise RuntimeError(
-                f"ساخت مستقیم ناموفق بود: {str(direct_error)[:220]} | "
-                f"ساخت از Template هم ناموفق بود: {str(template_error)[:320]}"
-            )
+            exact = pg_get_or_create_exact_template_sync(order["volume"], int(group_id))
+            payload = _pg_request_sync("POST", "/api/user/from_template", {
+                "user_template_id": int(exact["id"]),
+                "username": username,
+                "note": note,
+            })
+        except Exception as exact_error:
+            # اگر ساخت Template توسط نقش متصل ممنوع بود، آخرین راه‌حل استفاده از Template موجود است.
+            # این مسیر برای Operatorهایی است که فقط اجازه استفاده از Template دارند.
+            try:
+                payload, template = pg_create_user_from_template_sync(username, note)
+                if not _pg_user_plan_matches(payload, order["volume"]):
+                    # فقط در صورت نیاز تلاش برای اصلاح؛ اگر RBAC اجازه update ندهد،
+                    # خطای واقعی را برمی‌گردانیم تا سفارش اشتباهاً تحویل نشود.
+                    final_username = _pg_find_value(payload, ["username"]) or username
+                    payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
+                    if isinstance(payload2, dict):
+                        merged = dict(payload)
+                        merged.update(payload2)
+                        payload = merged
+            except Exception as template_error:
+                raise RuntimeError(
+                    f"ساخت مستقیم ناموفق: {str(direct_error)[:180]} | "
+                    f"Template دقیق ناموفق: {str(exact_error)[:220]} | "
+                    f"Template موجود هم ناموفق: {str(template_error)[:220]}"
+                )
 
     sub = _pg_find_value(payload, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
     final_username = _pg_find_value(payload, ["username"]) or username
@@ -1644,6 +1738,7 @@ def pg_create_order_service_sync(order):
             sub = base_url + "/" + sub.lstrip("/")
 
     return {"username": str(final_username), "subscription_url": sub}
+
 
 def save_pasarguard_connection(base_url, username, password):
     base_url = base_url.strip().rstrip("/")

@@ -1770,6 +1770,19 @@ def _pg_error_status(exc):
     return int(m.group(1)) if m else 0
 
 
+def _pg_absolute_subscription_url(subscription, base_url):
+    """Normalize PasarGuard subscription paths into absolute URLs."""
+    value = str(subscription or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://")):
+        return value
+    base = str(base_url or "").strip().rstrip("/")
+    if not base:
+        return value
+    return urljoin(base + "/", value)
+
+
 # =========================================================
 # PasarGuard دوم — فقط سرویس‌های نامحدود
 # =========================================================
@@ -1813,55 +1826,6 @@ def disable_pasarguard_unlimited():
         _PG2_TOKEN_CACHE.update(token=None, expires_at=0.0)
 
 
-class _PG2RedirectHandler(__import__("urllib").request.HTTPRedirectHandler):
-    """Keep POST/form requests as POST when the second panel redirects HTTP→HTTPS."""
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        method = getattr(req, "method", None) or ("POST" if req.data is not None else "GET")
-        data = req.data
-        new_headers = dict(req.headers)
-        # urllib may strip Content-Length on redirects; rebuilding the request
-        # with the original body keeps PasarGuard's token endpoint POST-compatible.
-        new_headers.pop("Content-length", None)
-        new_headers.pop("Host", None)
-        return urlrequest.Request(
-            newurl, data=data, headers=new_headers, method=method
-        )
-
-
-_PG2_OPENER = urlrequest.build_opener(_PG2RedirectHandler())
-
-
-def _pg2_http(method, url, headers=None, json_body=None, form=None, timeout=12):
-    """Second-panel HTTP client with POST-preserving redirects."""
-    data = None
-    req_headers = dict(headers or {})
-    if json_body is not None:
-        data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
-        req_headers["Content-Type"] = "application/json"
-    elif form is not None:
-        from urllib.parse import urlencode
-        data = urlencode(form).encode("utf-8")
-        req_headers["Content-Type"] = "application/x-www-form-urlencoded"
-    req = urlrequest.Request(url, data=data, headers=req_headers, method=method.upper())
-    try:
-        with _PG2_OPENER.open(req, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            try:
-                payload = json.loads(body) if body else {}
-            except Exception:
-                payload = {"raw": body}
-            return response.status, payload
-    except Exception as exc:
-        status = getattr(exc, "code", None)
-        body = ""
-        try:
-            body = exc.read().decode("utf-8", errors="replace")
-            payload = json.loads(body) if body else {}
-        except Exception:
-            payload = {}
-        return int(status or 0), payload or {"detail": str(exc)}
-
-
 def _pg2_login_sync(force=False):
     cfg = get_pasarguard_unlimited_config()
     if not cfg or not cfg["enabled"]:
@@ -1881,7 +1845,7 @@ def _pg2_login_sync(force=False):
         password = _pg_decrypt_secret(cfg["password_enc"])
         if not password:
             raise RuntimeError("رمز اتصال پنل دوم قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
-        status, payload = _pg2_http(
+        status, payload = _pg_http(
             "POST", _pg_url(cfg["base_url"], "/api/admin/token"),
             form={"username": cfg["username"], "password": password, "grant_type": "password"},
             timeout=12,
@@ -1913,12 +1877,12 @@ def _pg2_request_sync(method, path, json_body=None, retry=True):
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل دوم PasarGuard نامحدود متصل نیست.")
     token = _pg2_login_sync(False)
-    status, payload = _pg2_http(method, _pg_url(cfg["base_url"], path),
+    status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                headers={"Authorization": f"Bearer {token}"},
                                json_body=json_body, timeout=15)
     if status == 401 and retry:
         token = _pg2_login_sync(True)
-        status, payload = _pg2_http(method, _pg_url(cfg["base_url"], path),
+        status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                    headers={"Authorization": f"Bearer {token}"},
                                    json_body=json_body, timeout=15)
     if status < 200 or status >= 300:
@@ -1977,7 +1941,10 @@ def pg2_create_unlimited_user_sync(order):
                 continue
     if not sub:
         raise RuntimeError("کاربر نامحدود در پنل دوم ساخته شد اما Subscription URL دریافت نشد.")
-    return {"username": username, "subscription_url": str(sub).strip(), "hwid": int(info["hwid"])}
+    sub = _pg_absolute_subscription_url(sub, cfg["base_url"])
+    if not sub.startswith(("http://", "https://")):
+        raise RuntimeError("آدرس Subscription پنل دوم کامل نیست؛ آدرس پایه پنل را بررسی کنید.")
+    return {"username": username, "subscription_url": sub, "hwid": int(info["hwid"])}
 
 
 def pasarguard_unlimited_status_text():
@@ -2076,15 +2043,9 @@ def pg_create_order_service_sync(order):
             "دسترسی read کاربر یا API سابسکریپشن را بررسی کنید."
         )
 
-    sub = str(sub).strip()
-    if sub.startswith("/"):
-        base_url = str(cfg["base_url"] or "").rstrip("/")
-        if base_url:
-            sub = base_url + sub
-    elif not sub.startswith(("http://", "https://")):
-        base_url = str(cfg["base_url"] or "").rstrip("/")
-        if base_url:
-            sub = base_url + "/" + sub.lstrip("/")
+    sub = _pg_absolute_subscription_url(sub, cfg["base_url"])
+    if not sub.startswith(("http://", "https://")):
+        raise RuntimeError("آدرس Subscription کامل نیست؛ آدرس پایه پنل را بررسی کنید.")
 
     return {"username": str(final_username), "subscription_url": sub}
 
@@ -2917,6 +2878,14 @@ async def approve_order_with_source(order_id):
             if mode == "fallback" and not use_pg2:
                 return await asyncio.to_thread(approve_order, order_id)
             return {"status": "pg_error", "order": order, "error": str(exc)}
+
+        # Final safety net: never save or send a relative /sub/... path.
+        link_base_cfg = unlimited_cfg if use_pg2 else get_pasarguard_config()
+        link_base_url = link_base_cfg["base_url"] if link_base_cfg else ""
+        link = _pg_absolute_subscription_url(provision.get("subscription_url"), link_base_url)
+        if not link.startswith(("http://", "https://")):
+            return {"status": "pg_error", "order": order, "error": "لینک Subscription کامل نیست؛ آدرس پایه پنل را بررسی کنید."}
+        provision["subscription_url"] = link
 
         approved_at = datetime.now()
         expires_at = approved_at + timedelta(days=SERVICE_DAYS)

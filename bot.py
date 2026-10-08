@@ -57,6 +57,7 @@ PLANS = {
 
 SERVICE_DAYS = 30
 TRIAL_DAYS = 1
+TRIAL_VOLUME_MB = 100
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
 TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
@@ -1090,6 +1091,16 @@ def init_db():
             expires_at TEXT NOT NULL
         )
     """)
+
+    # اطلاعات تست‌های ساخته‌شده در PasarGuard (در صورت فعال بودن پنل)
+    for col, default in [
+        ("pg_username", "TEXT"),
+        ("pg_subscription_url", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE free_trial_users ADD COLUMN {col} {default}")
+        except sqlite3.OperationalError:
+            pass
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS coupons (
@@ -2399,6 +2410,129 @@ def delete_free_trial(trial_id):
     conn.close()
 
 
+def pg_create_trial_service_sync(user_id):
+    """Create the 100 MB / 1 day trial directly in PasarGuard."""
+    cfg = get_pasarguard_config()
+    if not cfg or not cfg["enabled"]:
+        raise RuntimeError("پنل PasarGuard فعال نیست.")
+    group_id = cfg["group_id"]
+    if not group_id:
+        raise RuntimeError("گروه پیش‌فرض PasarGuard انتخاب نشده است.")
+
+    username = f"hztrial_{user_id}_{hashlib.sha1(os.urandom(8)).hexdigest()[:8]}"
+    note = "HanzuVPN free trial 100MB"
+    data_limit = TRIAL_VOLUME_MB * 1024 ** 2
+    expire = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).replace(microsecond=0).isoformat()
+    payload = {
+        "username": username,
+        "proxy_settings": {},
+        "expire": expire,
+        "data_limit": data_limit,
+        "data_limit_reset_strategy": "no_reset",
+        "status": "active",
+        "group_ids": [int(group_id)],
+        "note": note,
+    }
+
+    created = None
+    direct_error = None
+    try:
+        created = _pg_request_sync("POST", "/api/user", payload)
+    except Exception as exc:
+        direct_error = exc
+
+    if created is None:
+        status = _pg_error_status(direct_error)
+        if status not in (0, 400, 401, 403, 405, 409, 422):
+            raise RuntimeError(str(direct_error)[:600])
+
+        # First try an existing exact 100MB/1-day template.
+        templates = pg_get_templates_sync()
+        wanted = []
+        for t in templates:
+            limit = t.get("data_limit")
+            duration = t.get("expire_duration")
+            try:
+                if int(limit) == data_limit and int(duration) == TRIAL_DAYS * 86400 and not t.get("is_disabled"):
+                    wanted.append(t)
+                    continue
+            except Exception:
+                pass
+            name = _pg_normalize_digits(t.get("name") or "").lower()
+            if any(x in name for x in ("100mb", "100 mb", "100 مگ", "100مگ", "0.1gb", "0.1 gb")) and not t.get("is_disabled"):
+                wanted.append(t)
+        template = wanted[0] if wanted else None
+
+        if template is None:
+            name = f"HanzuVPN Trial 100MB {TRIAL_DAYS}D G{int(group_id)}"[:64]
+            try:
+                created_template = _pg_request_sync("POST", "/api/user_template", {
+                    "name": name,
+                    "data_limit": data_limit,
+                    "expire_duration": TRIAL_DAYS * 86400,
+                    "group_ids": [int(group_id)],
+                    "status": "active",
+                    "data_limit_reset_strategy": "no_reset",
+                    "is_disabled": False,
+                })
+                tid = _pg_find_value(created_template, ["id", "template_id", "templateId"])
+                template = {"id": int(tid), "name": str(_pg_find_value(created_template, ["name"]) or name)} if tid is not None else None
+            except Exception as template_error:
+                raise RuntimeError(f"ساخت تست در PasarGuard ناموفق بود: {template_error}")
+
+        if template is None:
+            raise RuntimeError(f"Template تست 100MB پیدا نشد. خطای ساخت مستقیم: {direct_error}")
+        try:
+            created = _pg_request_sync("POST", "/api/user/from_template", {
+                "user_template_id": int(template["id"]),
+                "username": username,
+                "note": note,
+            })
+        except Exception as exc:
+            raise RuntimeError(f"ساخت تست از Template ناموفق بود: {exc}")
+
+    sub = _pg_subscription_from_created_user_sync(created, username)
+    if not sub:
+        raise RuntimeError("تست ساخته شد اما Subscription URL دریافت نشد.")
+    if str(sub).startswith("/"):
+        sub = str(cfg["base_url"]).rstrip("/") + "/" + str(sub).lstrip("/")
+    return {"username": username, "link": str(sub).strip()}
+
+
+def claim_panel_trial(user):
+    """Atomically claim the one-time trial and create it in PasarGuard."""
+    conn = get_db()
+    try:
+        existing = conn.execute("SELECT * FROM free_trial_users WHERE user_id = ?", (user.id,)).fetchone()
+        if existing:
+            return {"status": "already"}
+    finally:
+        conn.close()
+
+    service = pg_create_trial_service_sync(user.id)
+    claimed_at = datetime.now()
+    expires_at = claimed_at + timedelta(days=TRIAL_DAYS)
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute("SELECT * FROM free_trial_users WHERE user_id = ?", (user.id,)).fetchone()
+        if existing:
+            conn.rollback()
+            return {"status": "already"}
+        conn.execute("""
+            INSERT INTO free_trial_users (user_id, trial_id, claimed_at, expires_at, pg_username, pg_subscription_url)
+            VALUES (?, NULL, ?, ?, ?, ?)
+        """, (user.id, claimed_at.strftime("%Y-%m-%d %H:%M:%S"),
+              expires_at.strftime("%Y-%m-%d %H:%M:%S"), service["username"], service["link"]))
+        conn.commit()
+        return {"status": "success", "link": service["link"], "panel": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def claim_trial(user):
     conn = get_db()
     try:
@@ -2590,10 +2724,65 @@ def reject_order(order_id):
     return updated.rowcount == 1, order
 
 
+def _pg_usage_bytes_text(value):
+    try:
+        n = max(0, int(float(value or 0)))
+    except Exception:
+        n = 0
+    units = [(1024**3, "GB"), (1024**2, "MB"), (1024, "KB")]
+    for size, unit in units:
+        if n >= size:
+            return f"{n / size:.2f} {unit}"
+    return f"{n} B"
+
+
+def _pg_live_usage_sync(pg_username):
+    """Read current traffic directly from PasarGuard for a Hanzu service."""
+    if not pg_username:
+        return None
+    username = quote(str(pg_username), safe="")
+    candidates = [
+        f"/api/user/by-username/{username}",
+        f"/api/user/{username}",
+    ]
+    last_error = None
+    for path in candidates:
+        try:
+            payload = _pg_request_sync("GET", path)
+            data_limit = _pg_find_value(payload, ["data_limit", "dataLimit"])
+            used = _pg_find_value(payload, ["used_traffic", "usedTraffic"])
+            expire = _pg_find_value(payload, ["expire", "expires_at", "expire_at"])
+            status = _pg_find_value(payload, ["status"])
+            if data_limit is None and used is None:
+                continue
+            try:
+                limit = int(float(data_limit or 0))
+            except Exception:
+                limit = 0
+            try:
+                used_n = max(0, int(float(used or 0)))
+            except Exception:
+                used_n = 0
+            remaining = max(0, limit - used_n) if limit else 0
+            return {
+                "data_limit": limit,
+                "used_traffic": used_n,
+                "remaining": remaining,
+                "expire": expire,
+                "status": status,
+            }
+        except Exception as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    return None
+
+
 def get_user_services(user_id):
     conn = get_db()
     rows = conn.execute("""
-        SELECT o.id, o.volume, o.price, o.approved_at, o.expires_at, COALESCE(s.link, o.pg_subscription_url) AS link
+        SELECT o.id, o.volume, o.price, o.approved_at, o.expires_at, o.pg_username,
+               COALESCE(s.link, o.pg_subscription_url) AS link
         FROM orders o
         LEFT JOIN subscriptions s ON o.subscription_id = s.id
         WHERE o.user_id = ? AND o.status = 'approved' AND o.is_charge = 0
@@ -2611,16 +2800,32 @@ async def send_services_message(message, user_id):
     else:
         text = t(lang, "services_title")
         for row in rows:
-            if is_unlimited_volume(row["volume"]):
+            live = None
+            if row["pg_username"] and get_pasarguard_mode() in ("pasarguard", "fallback"):
+                try:
+                    live = await asyncio.to_thread(_pg_live_usage_sync, row["pg_username"])
+                except Exception as exc:
+                    print(f"PasarGuard live usage error for order #{row['id']}: {exc}")
+            if live:
+                limit = live["data_limit"]
+                used = live["used_traffic"]
+                remaining = live["remaining"]
+                usage_line = (
+                    f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
+                    f"📊 مصرف: {_pg_usage_bytes_text(used)}\n"
+                    f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
+                ) if limit else f"♾️ حجم: نامحدود\n📊 مصرف: {_pg_usage_bytes_text(used)}\n"
+                status = str(live.get("status") or "active")
+                status_icon = "🟢" if status == "active" else "🔴"
+                text += (f"🧾 سفارش #{row['id']}\n📦 پلن: {row['volume']} گیگ\n"
+                          f"{usage_line}{status_icon} وضعیت: {status}\n"
+                          f"⏳ انقضا: {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n")
+            elif is_unlimited_volume(row["volume"]):
                 plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
-                if lang == "en":
-                    text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-                elif lang == "ku":
-                    text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-                else:
-                    text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
+                text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
             else:
-                text += t(lang, "service_item", id=row["id"], volume=row["volume"], expires=row["expires_at"] or "-", link=row["link"] or "-")
+                text += t(lang, "service_item", id=row["id"], volume=row["volume"],
+                          expires=row["expires_at"] or "-", link=row["link"] or "-")
     await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "renew"), callback_data="renew")],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
@@ -3467,9 +3672,30 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await rich_edit(query, t(lang, "custom_prompt"))
         return
 
-    # تست
+    # تست رایگان: در حالت PasarGuard مستقیماً 100MB / 1 روز ساخته می‌شود.
     if data == "trial":
-        result = claim_trial(user)
+        panel_mode = get_pasarguard_mode()
+        result = None
+        panel_error = None
+        if panel_mode in ("pasarguard", "fallback"):
+            try:
+                result = await asyncio.to_thread(claim_panel_trial, user)
+            except Exception as exc:
+                panel_error = exc
+                result = None
+                # در حالت fallback، تست دستی قبلی همچنان پشتیبان است.
+                if panel_mode == "fallback":
+                    try:
+                        result = claim_trial(user)
+                    except Exception:
+                        result = None
+        else:
+            result = claim_trial(user)
+
+        if result is None:
+            await rich_edit(query, "❌ ساخت تست رایگان ناموفق بود.\n\n" + (str(panel_error)[:500] if panel_error else "در حال حاضر تست در دسترس نیست."),
+                            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]]))
+            return
         if result["status"] == "already":
             await rich_edit(query, t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "buy"), callback_data="buy")],
@@ -3487,7 +3713,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         ]))
         return
 
-    # سرویس‌های من
+    # سرویس‌های من: برای سرویس‌های PasarGuard مصرف را همان لحظه از پنل می‌خوانیم.
     if data == "my_services":
         rows = get_user_services(user_id)
         if not rows:
@@ -3495,7 +3721,36 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             text = t(lang, "services_title")
             for row in rows:
-                if is_unlimited_volume(row["volume"]):
+                live = None
+                if row["pg_username"] and get_pasarguard_mode() in ("pasarguard", "fallback"):
+                    try:
+                        live = await asyncio.to_thread(_pg_live_usage_sync, row["pg_username"])
+                    except Exception as exc:
+                        print(f"PasarGuard live usage error for order #{row['id']}: {exc}")
+
+                if live:
+                    limit = live["data_limit"]
+                    used = live["used_traffic"]
+                    remaining = live["remaining"]
+                    if limit:
+                        usage_line = (
+                            f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
+                            f"📊 مصرف: {_pg_usage_bytes_text(used)}\n"
+                            f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
+                        )
+                    else:
+                        usage_line = f"♾️ حجم: نامحدود\n📊 مصرف: {_pg_usage_bytes_text(used)}\n"
+                    status = str(live.get("status") or "active")
+                    status_icon = "🟢" if status == "active" else "🔴"
+                    text += (
+                        f"🧾 سفارش #{row['id']}\n"
+                        f"📦 پلن: {row['volume']} گیگ\n"
+                        f"{usage_line}"
+                        f"{status_icon} وضعیت: {status}\n"
+                        f"⏳ انقضا: {row['expires_at'] or '-'}\n\n"
+                        f"🔗 {row['link'] or '-'}\n\n"
+                    )
+                elif is_unlimited_volume(row["volume"]):
                     plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
                     if lang == "en":
                         text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"

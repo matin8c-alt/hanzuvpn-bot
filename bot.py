@@ -2072,7 +2072,34 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not lang:
         await show_language_selector_message(update.message)
         return
-    result = claim_trial(user)
+
+    # همان منطق دکمه Rich Message: در حالت PasarGuard تست واقعی 100MB/1 روز
+    # داخل پنل ساخته می‌شود؛ در حالت fallback تست دستی فقط پشتیبان است.
+    panel_mode = get_pasarguard_mode()
+    result = None
+    panel_error = None
+    if panel_mode in ("pasarguard", "fallback"):
+        try:
+            result = await asyncio.to_thread(claim_panel_trial, user)
+        except Exception as exc:
+            panel_error = exc
+            if panel_mode == "fallback":
+                try:
+                    result = claim_trial(user)
+                except Exception:
+                    result = None
+    else:
+        try:
+            result = claim_trial(user)
+        except Exception as exc:
+            panel_error = exc
+
+    if result is None:
+        await rich_reply_text(
+            update.message,
+            "❌ ساخت تست رایگان ناموفق بود.\n\n" + (str(panel_error)[:500] if panel_error else "در حال حاضر تست در دسترس نیست.")
+        )
+        return
     if result["status"] == "already":
         await rich_reply_text(update.message, t(lang, "trial_already"))
         return
@@ -2792,42 +2819,143 @@ def get_user_services(user_id):
     return rows
 
 
+def get_user_trial(user_id):
+    conn = get_db()
+    row = conn.execute("""
+        SELECT user_id, claimed_at, expires_at, pg_username, pg_subscription_url
+        FROM free_trial_users WHERE user_id = ? LIMIT 1
+    """, (user_id,)).fetchone()
+    conn.close()
+    return row
+
+
 async def send_services_message(message, user_id):
+    """Show each service as its own Rich Message button.
+    Usage is intentionally fetched only after the user opens a service, so
+    opening "My Services" stays fast and the displayed PasarGuard traffic is
+    as fresh as possible.
+    """
     lang = get_user_language(user_id) or "fa"
     rows = get_user_services(user_id)
-    if not rows:
-        text = t(lang, "no_services")
+    trial = get_user_trial(user_id)
+
+    if not rows and not trial:
+        await rich_reply_text(message, t(lang, "no_services"), reply_markup=InlineKeyboardMarkup([
+            [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+            [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
+        ]))
+        return
+
+    keyboard = []
+    if trial:
+        keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+
+    for row in rows:
+        volume = str(row["volume"] or "-")
+        label = unlimited_display(volume, lang).replace("♾️ ", "") if is_unlimited_volume(volume) else f"{volume} گیگ"
+        keyboard.append([styled_inline_button(
+            f"📦 {label} | #{row['id']}",
+            callback_data=f"service_order_{row['id']}"
+        )])
+
+    keyboard.append([styled_inline_button(t(lang, "renew"), callback_data="renew")])
+    keyboard.append([styled_inline_button(t(lang, "main_menu"), callback_data="home")])
+
+    await rich_reply_text(
+        message,
+        "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def show_service_detail(query, user_id, service_type, service_id=None):
+    """Render one service and fetch live PasarGuard usage only on click."""
+    lang = get_user_language(user_id) or "fa"
+    row = None
+    trial = None
+
+    if service_type == "trial":
+        trial = get_user_trial(user_id)
+        if not trial:
+            await query.answer("❌ تستی برای شما ثبت نشده است.", show_alert=True)
+            return
     else:
-        text = t(lang, "services_title")
-        for row in rows:
-            live = None
-            if row["pg_username"] and get_pasarguard_mode() in ("pasarguard", "fallback"):
-                try:
-                    live = await asyncio.to_thread(_pg_live_usage_sync, row["pg_username"])
-                except Exception as exc:
-                    print(f"PasarGuard live usage error for order #{row['id']}: {exc}")
-            if live:
-                limit = live["data_limit"]
-                used = live["used_traffic"]
-                remaining = live["remaining"]
-                usage_line = (
-                    f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
-                    f"📊 مصرف: {_pg_usage_bytes_text(used)}\n"
-                    f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
-                ) if limit else f"♾️ حجم: نامحدود\n📊 مصرف: {_pg_usage_bytes_text(used)}\n"
-                status = str(live.get("status") or "active")
-                status_icon = "🟢" if status == "active" else "🔴"
-                text += (f"🧾 سفارش #{row['id']}\n📦 پلن: {row['volume']} گیگ\n"
-                          f"{usage_line}{status_icon} وضعیت: {status}\n"
-                          f"⏳ انقضا: {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n")
-            elif is_unlimited_volume(row["volume"]):
-                plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
-                text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-            else:
-                text += t(lang, "service_item", id=row["id"], volume=row["volume"],
-                          expires=row["expires_at"] or "-", link=row["link"] or "-")
-    await rich_reply_text(message, text, reply_markup=InlineKeyboardMarkup([
-        [styled_inline_button(t(lang, "renew"), callback_data="renew")],
+        try:
+            order_id = int(service_id)
+        except (TypeError, ValueError):
+            await query.answer("❌ سرویس نامعتبر است.", show_alert=True)
+            return
+        conn = get_db()
+        row = conn.execute("""
+            SELECT o.id, o.volume, o.price, o.approved_at, o.expires_at, o.pg_username,
+                   COALESCE(s.link, o.pg_subscription_url) AS link
+            FROM orders o
+            LEFT JOIN subscriptions s ON o.subscription_id = s.id
+            WHERE o.id = ? AND o.user_id = ? AND o.status = 'approved' AND o.is_charge = 0
+            LIMIT 1
+        """, (order_id, user_id)).fetchone()
+        conn.close()
+        if not row:
+            await query.answer("❌ این سرویس پیدا نشد.", show_alert=True)
+            return
+
+    live = None
+    pg_enabled = get_pasarguard_mode() in ("pasarguard", "fallback")
+    pg_username = trial["pg_username"] if trial else row["pg_username"]
+    if pg_username and pg_enabled:
+        try:
+            live = await asyncio.to_thread(_pg_live_usage_sync, pg_username)
+        except Exception as exc:
+            print(f"PasarGuard live usage error for service {service_id or 'trial'}: {exc}")
+
+    if trial:
+        title = "🎁 تست رایگان"
+        link = trial["pg_subscription_url"] or "-"
+        fallback_expire = trial["expires_at"] or "-"
+        fallback_volume = "100 MB"
+    else:
+        title = f"📦 سرویس #{row['id']}"
+        link = row["link"] or "-"
+        fallback_expire = row["expires_at"] or "-"
+        fallback_volume = f"{row['volume']} گیگ"
+
+    if live:
+        limit = live["data_limit"]
+        used = live["used_traffic"]
+        remaining = live["remaining"]
+        if limit:
+            usage = (
+                f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
+                f"📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
+                f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
+            )
+        else:
+            usage = f"♾️ حجم: نامحدود\n📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
+        status = str(live.get("status") or "active")
+        status_icon = "🟢" if status == "active" else "🔴"
+        expire = live.get("expire") or fallback_expire
+    else:
+        usage = (
+            f"📦 حجم کل: {fallback_volume}\n"
+            "📊 مصرف لحظه‌ای: در دسترس نیست\n"
+            "ℹ️ این سرویس دستی است یا ارتباط با پنل برقرار نیست.\n"
+        )
+        status_icon = "🟢"
+        status = "active"
+        expire = fallback_expire
+
+    text = (
+        f"{title}\n\n"
+        f"{usage}"
+        f"{status_icon} وضعیت: {status}\n"
+        f"⏳ انقضا: {expire}\n\n"
+        f"🔗 لینک Subscription:\n{link}"
+    )
+
+    back_data = "my_services"
+    await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
+        [styled_inline_button("🔄 بروزرسانی مصرف", callback_data=query.data)],
+        [styled_inline_button("📦 بازگشت به سرویس‌های من", callback_data=back_data)],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
     ]))
 
@@ -3713,58 +3841,39 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         ]))
         return
 
-    # سرویس‌های من: برای سرویس‌های PasarGuard مصرف را همان لحظه از پنل می‌خوانیم.
+    # سرویس‌های من: هر سرویس یک دکمه جدا دارد؛ مصرف فقط هنگام کلیک روی همان سرویس خوانده می‌شود.
     if data == "my_services":
         rows = get_user_services(user_id)
-        if not rows:
-            text = t(lang, "no_services")
-        else:
-            text = t(lang, "services_title")
-            for row in rows:
-                live = None
-                if row["pg_username"] and get_pasarguard_mode() in ("pasarguard", "fallback"):
-                    try:
-                        live = await asyncio.to_thread(_pg_live_usage_sync, row["pg_username"])
-                    except Exception as exc:
-                        print(f"PasarGuard live usage error for order #{row['id']}: {exc}")
+        trial = get_user_trial(user_id)
+        if not rows and not trial:
+            await rich_edit(query, t(lang, "no_services"), reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+                [styled_inline_button(t(lang, "back"), callback_data="home")],
+            ]))
+            return
 
-                if live:
-                    limit = live["data_limit"]
-                    used = live["used_traffic"]
-                    remaining = live["remaining"]
-                    if limit:
-                        usage_line = (
-                            f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
-                            f"📊 مصرف: {_pg_usage_bytes_text(used)}\n"
-                            f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
-                        )
-                    else:
-                        usage_line = f"♾️ حجم: نامحدود\n📊 مصرف: {_pg_usage_bytes_text(used)}\n"
-                    status = str(live.get("status") or "active")
-                    status_icon = "🟢" if status == "active" else "🔴"
-                    text += (
-                        f"🧾 سفارش #{row['id']}\n"
-                        f"📦 پلن: {row['volume']} گیگ\n"
-                        f"{usage_line}"
-                        f"{status_icon} وضعیت: {status}\n"
-                        f"⏳ انقضا: {row['expires_at'] or '-'}\n\n"
-                        f"🔗 {row['link'] or '-'}\n\n"
-                    )
-                elif is_unlimited_volume(row["volume"]):
-                    plan_text = unlimited_display(row["volume"], lang).replace("♾️ ", "")
-                    if lang == "en":
-                        text += f"🧾 Order #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-                    elif lang == "ku":
-                        text += f"🧾 داواکاری #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-                    else:
-                        text += f"🧾 سفارش #{row['id']}\n♾️ {plan_text}\n⏳ {row['expires_at'] or '-'}\n\n🔗 {row['link'] or '-'}\n\n"
-                else:
-                    text += t(lang, "service_item", id=row["id"], volume=row["volume"],
-                              expires=row["expires_at"] or "-", link=row["link"] or "-")
-        await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
-            [styled_inline_button(t(lang, "renew"), callback_data="renew")],
-            [styled_inline_button(t(lang, "back"), callback_data="home")],
-        ]))
+        keyboard = []
+        if trial:
+            keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+        for row in rows:
+            volume = str(row["volume"] or "-")
+            label = unlimited_display(volume, lang).replace("♾️ ", "") if is_unlimited_volume(volume) else f"{volume} گیگ"
+            keyboard.append([styled_inline_button(
+                f"📦 {label} | #{row['id']}",
+                callback_data=f"service_order_{row['id']}"
+            )])
+        keyboard.append([styled_inline_button(t(lang, "renew"), callback_data="renew")])
+        keyboard.append([styled_inline_button(t(lang, "main_menu"), callback_data="home")])
+        await rich_edit(query, "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+                        reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "service_trial":
+        await show_service_detail(query, user_id, "trial")
+        return
+
+    if data.startswith("service_order_"):
+        await show_service_detail(query, user_id, "order", data[len("service_order_"):])
         return
 
     # تمدید

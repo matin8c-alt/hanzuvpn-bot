@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import threading
 import tempfile
-from urllib.parse import parse_qsl, unquote, urljoin
+from urllib.parse import parse_qsl, unquote, urljoin, quote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
@@ -1171,11 +1171,23 @@ def init_db():
             mode TEXT DEFAULT 'manual',
             group_id INTEGER,
             group_name TEXT,
+            template_id INTEGER,
+            template_name TEXT,
             updated_at TEXT NOT NULL
         )
     """)
 
     conn.commit()
+
+    # سازگاری اتصال PasarGuard با نسخه‌های قبلی
+    for col, default in [
+        ("template_id", "INTEGER"),
+        ("template_name", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE pasarguard_config ADD COLUMN {col} {default}")
+        except sqlite3.OperationalError:
+            pass
 
     # سازگاری
     for col, default in [
@@ -1404,6 +1416,83 @@ def pg_get_groups_sync():
             for g in groups if isinstance(g, dict) and g.get("id") is not None]
 
 
+def pg_get_templates_sync():
+    """Return templates allowed for the connected admin.
+    PasarGuard RBAC exposes full templates to sudo and simple templates to operators.
+    """
+    first_error = None
+    try:
+        payload = _pg_request_sync("GET", "/api/user_templates")
+        templates = _pg_extract_list(payload, "user_templates")
+        if not templates:
+            templates = _pg_extract_list(payload, "templates")
+        return [
+            {
+                "id": int(t.get("id")),
+                "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
+                "group_ids": [int(x) for x in (t.get("group_ids") or []) if str(x).isdigit()],
+                "is_disabled": bool(t.get("is_disabled", False)),
+            }
+            for t in templates if isinstance(t, dict) and t.get("id") is not None
+        ]
+    except Exception as exc:
+        first_error = exc
+
+    try:
+        payload = _pg_request_sync("GET", "/api/user_templates/simple")
+        templates = _pg_extract_list(payload, "user_templates")
+        if not templates:
+            templates = _pg_extract_list(payload, "templates")
+        return [
+            {
+                "id": int(t.get("id")),
+                "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
+                "group_ids": [],
+                "is_disabled": False,
+            }
+            for t in templates if isinstance(t, dict) and t.get("id") is not None
+        ]
+    except Exception:
+        if first_error:
+            raise first_error
+        raise
+
+
+def pg_get_selected_template_sync():
+    cfg = get_pasarguard_config()
+    if not cfg:
+        raise RuntimeError("پنل PasarGuard متصل نیست.")
+    templates = pg_get_templates_sync()
+    if not templates:
+        raise RuntimeError("هیچ User Template مجازی برای این مدیر در PasarGuard پیدا نشد.")
+
+    selected_id = cfg["template_id"]
+    if selected_id:
+        selected = next((t for t in templates if t["id"] == int(selected_id) and not t.get("is_disabled")), None)
+        if selected:
+            return selected
+
+    group_id = cfg["group_id"]
+    # اگر اطلاعات کامل template در دسترس باشد، template هم‌گروه را ترجیح بده.
+    if group_id:
+        matching = [t for t in templates if int(group_id) in t.get("group_ids", []) and not t.get("is_disabled")]
+        if matching:
+            return matching[0]
+
+    usable = [t for t in templates if not t.get("is_disabled")]
+    if not usable:
+        raise RuntimeError("تمام User Templateهای قابل دسترسی غیرفعال هستند.")
+    return usable[0]
+
+
+def set_pasarguard_template(template_id, template_name):
+    conn = get_db()
+    conn.execute("UPDATE pasarguard_config SET template_id=?, template_name=?, updated_at=? WHERE id=1",
+                 (int(template_id), str(template_name), now_text()))
+    conn.commit()
+    conn.close()
+
+
 def pg_create_user_sync(volume, username, group_id, note=""):
     cfg = get_pasarguard_config()
     if not cfg:
@@ -1422,6 +1511,42 @@ def pg_create_user_sync(volume, username, group_id, note=""):
     }
     return _pg_request_sync("POST", "/api/user", payload)
 
+
+def pg_create_user_from_template_sync(username, note=""):
+    template = pg_get_selected_template_sync()
+    # ثبت انتخاب خودکار در DB تا خریدهای بعدی نیاز به جستجوی template نداشته باشند.
+    set_pasarguard_template(template["id"], template["name"])
+    payload = _pg_request_sync("POST", "/api/user/from_template", {
+        "user_template_id": int(template["id"]),
+        "username": username,
+        "note": note or "HanzuVPN",
+    })
+    return payload, template
+
+
+def pg_update_user_limits_sync(username, payload, volume, group_id, note=""):
+    """After template creation, force HanzuVPN's exact volume/expiry/group settings."""
+    data_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
+    expire = (datetime.now() + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
+    update_payload = {
+        "data_limit": data_limit,
+        "data_limit_reset_strategy": "no_reset",
+        "expire": expire,
+        "status": "active",
+        "group_ids": [int(group_id)],
+        "note": note or "HanzuVPN",
+    }
+    user_id = _pg_find_value(payload, ["id", "user_id", "userId"])
+    if user_id is not None:
+        try:
+            return _pg_request_sync("PUT", f"/api/user/by-id/{int(user_id)}", update_payload)
+        except Exception as first:
+            # بعض نسخه‌های قدیمی هنوز مسیر username را نگه داشته‌اند.
+            try:
+                return _pg_request_sync("PUT", f"/api/user/{quote(str(username), safe='')}", update_payload)
+            except Exception:
+                raise first
+    return _pg_request_sync("PUT", f"/api/user/{quote(str(username), safe='')}", update_payload)
 
 def _pg_find_value(obj, names):
     if isinstance(obj, dict):
@@ -1448,14 +1573,39 @@ def pg_create_order_service_sync(order):
     if not group_id:
         raise RuntimeError("گروه پیش‌فرض PasarGuard انتخاب نشده است.")
     username = f"hz_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
-    payload = pg_create_user_sync(order["volume"], username, int(group_id), f"HanzuVPN order #{order['id']}")
+    note = f"HanzuVPN order #{order['id']}"
+
+    try:
+        payload = pg_create_user_sync(order["volume"], username, int(group_id), note)
+    except Exception as direct_error:
+        # در RBAC جدید، ممکن است این مدیر اجازه ساخت مستقیم نداشته باشد
+        # و فقط اجازه ساخت از Template داشته باشد. در این حالت خودکار Template را امتحان می‌کنیم.
+        error_text = str(direct_error).lower()
+        template_related = any(x in error_text for x in (
+            "template", "require_template", "not allowed", "forbidden", "permission", "403", "400"
+        ))
+        if not template_related:
+            raise
+        try:
+            payload, template = pg_create_user_from_template_sync(username, note)
+            # Template فقط پایه کاربر را می‌سازد؛ تنظیمات دقیق سفارش HanzuVPN را بعد از آن اعمال می‌کنیم.
+            final_username = _pg_find_value(payload, ["username"]) or username
+            payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
+            if isinstance(payload2, dict):
+                merged = dict(payload)
+                merged.update(payload2)
+                payload = merged
+        except Exception as template_error:
+            raise RuntimeError(
+                f"ساخت مستقیم ناموفق بود: {str(direct_error)[:180]} | "
+                f"ساخت از Template هم ناموفق بود: {str(template_error)[:260]}"
+            )
+
     sub = _pg_find_value(payload, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
     final_username = _pg_find_value(payload, ["username"]) or username
     if not sub:
         raise RuntimeError("PasarGuard کاربر را ساخت اما Subscription URL برنگرداند.")
 
-    # بعضی نسخه‌های PasarGuard آدرس Subscription را به‌صورت نسبی
-    # مثل /sub/TOKEN برمی‌گردانند. برای کاربر باید لینک کامل ارسال شود.
     sub = str(sub).strip()
     if sub.startswith("/"):
         base_url = str(cfg.get("base_url") or "").rstrip("/")
@@ -1468,7 +1618,6 @@ def pg_create_order_service_sync(order):
 
     return {"username": str(final_username), "subscription_url": sub}
 
-
 def save_pasarguard_connection(base_url, username, password):
     base_url = base_url.strip().rstrip("/")
     if not base_url.startswith(("http://", "https://")):
@@ -1477,9 +1626,9 @@ def save_pasarguard_connection(base_url, username, password):
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_config
-        (id, base_url, username, password_enc, access_token, token_expires_at, enabled, mode, group_id, group_name, updated_at)
-        VALUES (1, ?, ?, ?, NULL, NULL, 1, 'manual', NULL, NULL, ?)
-        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, updated_at=excluded.updated_at
+        (id, base_url, username, password_enc, access_token, token_expires_at, enabled, mode, group_id, group_name, template_id, template_name, updated_at)
+        VALUES (1, ?, ?, ?, NULL, NULL, 1, 'manual', NULL, NULL, NULL, NULL, ?)
+        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, mode='manual', group_id=NULL, group_name=NULL, template_id=NULL, template_name=NULL, updated_at=excluded.updated_at
     """, (base_url, username.strip(), enc, now_text()))
     conn.commit(); conn.close()
     with _PG_TOKEN_LOCK:
@@ -3335,7 +3484,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
 
             if result.get("status") == "pg_error":
-                await query.answer("❌ ساخت سرویس در PasarGuard ناموفق بود؛ سفارش هنوز تأیید نشده است.", show_alert=True)
+                err = str(result.get("error") or "خطای نامشخص")[:180]
+                await query.answer(f"❌ ساخت سرویس در PasarGuard ناموفق بود.\n{err}", show_alert=True)
                 pg_order = result.get("order")
                 if pg_order:
                     try:
@@ -3453,6 +3603,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"🌐 {cfg['base_url']}\n"
                 f"👤 {cfg['username']}\n"
                 f"📦 گروه انتخابی: {cfg['group_name'] or 'انتخاب نشده'}\n"
+                f"🧩 Template: {cfg['template_name'] or 'خودکار هنگام ساخت'}\n"
                 f"🔢 تعداد گروه‌ها: {group_count}\n"
                 f"🛒 حالت فروش: {mode_labels.get(cfg['mode'] or 'manual')}" )
         kb = [[styled_inline_button("📦 انتخاب گروه", callback_data="pg_groups")],
@@ -3497,6 +3648,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             group = next((g for g in groups if g["id"] == group_id), None)
             if not group: raise RuntimeError("گروه پیدا نشد.")
             set_pasarguard_group(group_id, group["name"])
+            conn = get_db()
+            conn.execute("UPDATE pasarguard_config SET template_id=NULL, template_name=NULL, updated_at=? WHERE id=1", (now_text(),))
+            conn.commit(); conn.close()
             await rich_edit(query, f"✅ گروه انتخاب شد.\n\n📦 {group['name']}\n🆔 {group_id}\n\nحالا در حالت «پنل» خریدها به‌صورت خودکار در PasarGuard ساخته می‌شوند.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("🛒 حالت فروش", callback_data="pg_mode")], [styled_inline_button("🔙 وضعیت پنل", callback_data="pg_status")]]))
         except Exception as exc:
             await query.answer(str(exc)[:190], show_alert=True)
@@ -3712,7 +3866,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer("برای این حجم لینک موجود نیست.", show_alert=True)
             return
         if result["status"] == "pg_error":
-            await query.answer("❌ ساخت سرویس نامحدود در پنل ناموفق بود. سفارش هنوز در انتظار تأیید است.", show_alert=True)
+            err = str(result.get("error") or "خطای نامشخص")[:180]
+            await query.answer(f"❌ ساخت سرویس در پنل ناموفق بود.\n{err}", show_alert=True)
             return
 
         order = result["order"]

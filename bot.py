@@ -2078,7 +2078,7 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     panel_mode = get_pasarguard_mode()
     result = None
     panel_error = None
-    if panel_mode in ("pasarguard", "fallback"):
+    if panel_mode in ("panel", "pasarguard", "fallback"):
         try:
             result = await asyncio.to_thread(claim_panel_trial, user)
         except Exception as exc:
@@ -2900,7 +2900,7 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
             return
 
     live = None
-    pg_enabled = get_pasarguard_mode() in ("pasarguard", "fallback")
+    pg_enabled = get_pasarguard_mode() in ("panel", "pasarguard", "fallback")
     pg_username = trial["pg_username"] if trial else row["pg_username"]
     if pg_username and pg_enabled:
         try:
@@ -3805,7 +3805,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         panel_mode = get_pasarguard_mode()
         result = None
         panel_error = None
-        if panel_mode in ("pasarguard", "fallback"):
+        if panel_mode in ("panel", "pasarguard", "fallback"):
             try:
                 result = await asyncio.to_thread(claim_panel_trial, user)
             except Exception as exc:

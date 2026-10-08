@@ -376,6 +376,90 @@ TEXTS = {
 }
 
 
+# ترجمه‌های قابلیت‌های جدید PasarGuard / سرویس‌های من
+TEXTS["fa"].update({
+    "my_services_title": t(lang, "my_services_title"),
+    "trial_button": t(lang, "trial_button"),
+    "service_button": "📦 {label} | #{id}",
+    "service_trial_missing": t(lang, "service_trial_missing"),
+    "service_invalid": t(lang, "service_invalid"),
+    "service_not_found": t(lang, "service_not_found"),
+    "total_volume": "📦 حجم کل: {value}",
+    "live_used": "📊 مصرف لحظه‌ای: {value}",
+    "remaining": "🟢 باقی‌مانده: {value}",
+    "unlimited_volume": "♾️ حجم: نامحدود",
+    "live_unavailable": "📊 مصرف لحظه‌ای: در دسترس نیست",
+    "manual_service_note": "ℹ️ این سرویس دستی است یا ارتباط با پنل برقرار نیست.",
+    "status": "🟢 وضعیت: {value}",
+    "expiry": "⏳ انقضا: {value}",
+    "subscription": "🔗 لینک Subscription:\n{value}",
+    "refresh_usage": t(lang, "refresh_usage"),
+    "back_services": t(lang, "back_services"),
+    "pg2_connect_title": t(lang, "pg2_connect_title"),
+    "pg2_not_connected": t(lang, "pg2_not_connected"),
+    "pg2_connect_button": t(lang, "pg2_connect_button"),
+    "pg2_status": "♾️ وضعیت پنل نامحدود",
+    "pg2_select_group": t(lang, "pg2_select_group"),
+    "pg2_refresh": t(lang, "pg2_refresh"),
+    "pg2_disconnect": t(lang, "pg2_disconnect"),
+    "pg2_choose_group": t(lang, "pg2_choose_group"),
+})
+TEXTS["en"].update({
+    "my_services_title": "📦 My Services\n\nTap a service to see live usage and status:",
+    "trial_button": "🎁 Free Trial | 100 MB",
+    "service_button": "📦 {label} | #{id}",
+    "service_trial_missing": "❌ No trial is registered for you.",
+    "service_invalid": "❌ Invalid service.",
+    "service_not_found": "❌ This service was not found.",
+    "total_volume": "📦 Total volume: {value}",
+    "live_used": "📊 Live usage: {value}",
+    "remaining": "🟢 Remaining: {value}",
+    "unlimited_volume": "♾️ Volume: Unlimited",
+    "live_unavailable": "📊 Live usage: unavailable",
+    "manual_service_note": "ℹ️ This is a manual service or the panel connection is unavailable.",
+    "status": "🟢 Status: {value}",
+    "expiry": "⏳ Expires: {value}",
+    "subscription": "🔗 Subscription link:\n{value}",
+    "refresh_usage": "🔄 Refresh usage",
+    "back_services": "📦 Back to My Services",
+    "pg2_connect_title": "♾️ Connect Unlimited PasarGuard Panel\n\nSend the full URL of the second panel.\n\nThis panel is used only for unlimited services.",
+    "pg2_not_connected": "♾️ Unlimited Panel\n\n❌ The second panel is not connected.",
+    "pg2_connect_button": "♾️ Connect Unlimited Panel",
+    "pg2_status": "♾️ Unlimited Panel Status",
+    "pg2_select_group": "📦 Select Unlimited Panel Group",
+    "pg2_refresh": "🔄 Refresh",
+    "pg2_disconnect": "🗑 Disconnect Unlimited Panel",
+    "pg2_choose_group": "♾️ Unlimited Panel Groups\n\nChoose a group:",
+})
+TEXTS["ku"].update({
+    "my_services_title": "📦 خزمەتگوزارییەکانم\n\nبۆ بینینی بەکارهێنانی ڕاستەوخۆ و دۆخ، خزمەتگوزارییەکە هەڵبژێرە:",
+    "trial_button": "🎁 تاقیکردنەوەی بەخۆڕایی | 100 MB",
+    "service_button": "📦 {label} | #{id}",
+    "service_trial_missing": "❌ هیچ تاقیکردنەوەیەکت تۆمار نەکراوە.",
+    "service_invalid": "❌ خزمەتگوزاری نادروستە.",
+    "service_not_found": "❌ ئەم خزمەتگوزارییە نەدۆزرایەوە.",
+    "total_volume": "📦 قەبارەی گشتی: {value}",
+    "live_used": "📊 بەکارهێنانی ڕاستەوخۆ: {value}",
+    "remaining": "🟢 ماوە: {value}",
+    "unlimited_volume": "♾️ قەبارە: بێ سنوور",
+    "live_unavailable": "📊 بەکارهێنانی ڕاستەوخۆ: بەردەست نییە",
+    "manual_service_note": "ℹ️ ئەم خزمەتگوزارییە دەستییە یان پەیوەندی بە پانێڵ بەردەست نییە.",
+    "status": "🟢 دۆخ: {value}",
+    "expiry": "⏳ بەسەرچوون: {value}",
+    "subscription": "🔗 بەستەری Subscription:\n{value}",
+    "refresh_usage": "🔄 نوێکردنەوەی بەکارهێنان",
+    "back_services": "📦 گەڕانەوە بۆ خزمەتگوزارییەکانم",
+    "pg2_connect_title": "♾️ پەیوەندی پانێڵی بێ سنووری PasarGuard\n\nبەستەری تەواوی پانێڵی دووەم بنێرە.\n\nئەم پانێڵە تەنها بۆ خزمەتگوزارییە بێ سنوورەکانە.",
+    "pg2_not_connected": "♾️ پانێڵی بێ سنوور\n\n❌ پانێڵی دووەم پەیوەندی نەکراوە.",
+    "pg2_connect_button": "♾️ پەیوەندی پانێڵی بێ سنوور",
+    "pg2_status": "♾️ دۆخی پانێڵی بێ سنوور",
+    "pg2_select_group": "📦 هەڵبژاردنی گروپی پانێڵی بێ سنوور",
+    "pg2_refresh": "🔄 نوێکردنەوە",
+    "pg2_disconnect": "🗑 پچڕاندنی پەیوەندی پانێڵی بێ سنوور",
+    "pg2_choose_group": "♾️ گروپەکانی پانێڵی بێ سنوور\n\nگروپێک هەڵبژێرە:",
+})
+
+
 # منوی اصلی جمع‌وجور و مناسب موبایل؛ دو دکمه در هر ردیف.
 MENU_ONE_PER_ROW = False
 
@@ -1020,7 +1104,8 @@ def clear_user_states(context):
         "admin_ticket_id", "admin_waiting_ticket_reply", "last_order_id",
         "waiting_charge_amount", "charge_amount", "admin_waiting_balance_user",
         "admin_balance_user_id", "admin_waiting_balance_amount",
-        "pg_waiting_url", "pg_waiting_username", "pg_waiting_password"
+        "pg_waiting_url", "pg_waiting_username", "pg_waiting_password",
+        "pg2_waiting_url", "pg2_waiting_username", "pg2_waiting_password"
     ]
     for key in keys:
         context.user_data.pop(key, None)
@@ -1201,6 +1286,35 @@ def init_db():
             UNIQUE(volume_key, days, group_id)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pasarguard_unlimited_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            base_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password_enc TEXT NOT NULL,
+            access_token TEXT,
+            token_expires_at TEXT,
+            enabled INTEGER DEFAULT 1,
+            mode TEXT DEFAULT 'panel',
+            group_id INTEGER,
+            group_name TEXT,
+            template_id INTEGER,
+            template_name TEXT,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pasarguard_unlimited_plan_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            volume_key TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            group_id INTEGER NOT NULL,
+            template_id INTEGER NOT NULL,
+            template_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(volume_key, days, group_id)
+        )
+    """)
 
     conn.commit()
 
@@ -1248,8 +1362,44 @@ def init_db():
 # اتصال اختیاری PasarGuard
 # =========================================================
 
-_PG_TOKEN_CACHE = {"token": None, "expires_at": 0.0}
+_PG_TOKEN_CACHE = {
+    "default": {"token": None, "expires_at": 0.0},
+    "unlimited": {"token": None, "expires_at": 0.0},
+}
 _PG_TOKEN_LOCK = threading.Lock()
+_PG_SCOPE = threading.local()
+
+
+def _pg_scope():
+    return getattr(_PG_SCOPE, "name", "default") or "default"
+
+
+def _pg_set_scope(scope):
+    previous = _pg_scope()
+    _PG_SCOPE.name = "unlimited" if scope == "unlimited" else "default"
+    return previous
+
+
+def _pg_restore_scope(previous):
+    _PG_SCOPE.name = previous
+
+
+def _pg_config_table(scope=None):
+    scope = scope or _pg_scope()
+    return "pasarguard_unlimited_config" if scope == "unlimited" else "pasarguard_config"
+
+
+def _pg_templates_table(scope=None):
+    scope = scope or _pg_scope()
+    return "pasarguard_unlimited_plan_templates" if scope == "unlimited" else "pasarguard_plan_templates"
+
+
+def _pg_call_in_scope(scope, fn, *args, **kwargs):
+    previous = _pg_set_scope(scope)
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _pg_restore_scope(previous)
 _PG_ORDER_LOCK = None
 
 
@@ -1298,15 +1448,16 @@ def _pg_decrypt_secret(value):
         return ""
 
 
-def get_pasarguard_config():
+def get_pasarguard_config(scope=None):
+    table = _pg_config_table(scope)
     conn = get_db()
-    row = conn.execute("SELECT * FROM pasarguard_config WHERE id = 1").fetchone()
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = 1").fetchone()
     conn.close()
     return row
 
 
-def get_pasarguard_mode():
-    row = get_pasarguard_config()
+def get_pasarguard_mode(scope=None):
+    row = get_pasarguard_config(scope)
     if not row or not row["enabled"]:
         return "manual"
     return row["mode"] or "manual"
@@ -1352,16 +1503,18 @@ def _pg_login_sync(force=False):
     if not cfg:
         raise RuntimeError("پنل PasarGuard متصل نیست.")
     now = _pg_now_epoch()
+    scope = _pg_scope()
+    cache = _PG_TOKEN_CACHE[scope]
     with _PG_TOKEN_LOCK:
-        if not force and _PG_TOKEN_CACHE.get("token") and _PG_TOKEN_CACHE.get("expires_at", 0) > now + 60:
-            return _PG_TOKEN_CACHE["token"]
+        if not force and cache.get("token") and cache.get("expires_at", 0) > now + 60:
+            return cache["token"]
         token = cfg["access_token"] or ""
         try:
             expires = datetime.strptime(cfg["token_expires_at"], "%Y-%m-%d %H:%M:%S").timestamp() if cfg["token_expires_at"] else 0
         except Exception:
             expires = 0
         if not force and token and expires > now + 60:
-            _PG_TOKEN_CACHE.update(token=token, expires_at=expires)
+            cache.update(token=token, expires_at=expires)
             return token
 
         password = _pg_decrypt_secret(cfg["password_enc"])
@@ -1388,10 +1541,11 @@ def _pg_login_sync(force=False):
         except Exception:
             pass
         conn = get_db()
-        conn.execute("UPDATE pasarguard_config SET access_token=?, token_expires_at=?, updated_at=? WHERE id=1",
+        table = _pg_config_table()
+        conn.execute(f"UPDATE {table} SET access_token=?, token_expires_at=?, updated_at=? WHERE id=1",
                      (token, datetime.fromtimestamp(exp).strftime("%Y-%m-%d %H:%M:%S"), now_text()))
         conn.commit(); conn.close()
-        _PG_TOKEN_CACHE.update(token=token, expires_at=exp)
+        cache.update(token=token, expires_at=exp)
         return token
 
 
@@ -1559,7 +1713,8 @@ def pg_get_selected_template_sync():
 
 def set_pasarguard_template(template_id, template_name):
     conn = get_db()
-    conn.execute("UPDATE pasarguard_config SET template_id=?, template_name=?, updated_at=? WHERE id=1",
+    table = _pg_config_table()
+    conn.execute(f"UPDATE {table} SET template_id=?, template_name=?, updated_at=? WHERE id=1",
                  (int(template_id), str(template_name), now_text()))
     conn.commit()
     conn.close()
@@ -1643,8 +1798,9 @@ def pg_get_or_create_exact_template_sync(volume, group_id):
     if tid is None:
         raise RuntimeError("PasarGuard Template ساخته شد ولی شناسه آن برنگشت.")
     conn = get_db()
+    table = _pg_templates_table()
     conn.execute(
-        "INSERT OR REPLACE INTO pasarguard_plan_templates(volume_key,days,group_id,template_id,template_name,created_at) VALUES(?,?,?,?,?,?)",
+        f"INSERT OR REPLACE INTO {table}(volume_key,days,group_id,template_id,template_name,created_at) VALUES(?,?,?,?,?,?)",
         (volume_key, days, gid, int(tid), str(tname), now_text())
     )
     conn.commit()
@@ -1755,6 +1911,21 @@ def _pg_error_status(exc):
 
 
 def pg_create_order_service_sync(order):
+    """Route Unlimited plans to the dedicated PasarGuard panel; all other plans use the main panel."""
+    if is_unlimited_volume(order["volume"]):
+        cfg2 = get_pasarguard_config("unlimited")
+        if not cfg2 or not cfg2["enabled"]:
+            raise RuntimeError("پنل PasarGuard مخصوص سرویس نامحدود متصل نیست.")
+        scope = "unlimited"
+    else:
+        scope = "default"
+    previous = _pg_set_scope(scope)
+    try:
+        return _pg_create_order_service_sync_impl(order)
+    finally:
+        _pg_restore_scope(previous)
+
+def _pg_create_order_service_sync_impl(order):
     """Create exactly one HanzuVPN service in PasarGuard.
 
     Strategy:
@@ -1847,39 +2018,44 @@ def pg_create_order_service_sync(order):
 
     return {"username": str(final_username), "subscription_url": sub}
 
-def save_pasarguard_connection(base_url, username, password):
+def save_pasarguard_connection(base_url, username, password, scope="default"):
     base_url = base_url.strip().rstrip("/")
     if not base_url.startswith(("http://", "https://")):
         raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود.")
     enc = _pg_encrypt_secret(password)
+    table = _pg_config_table(scope)
+    mode = "panel" if scope == "unlimited" else "manual"
     conn = get_db()
-    conn.execute("""
-        INSERT INTO pasarguard_config
+    conn.execute(f"""
+        INSERT INTO {table}
         (id, base_url, username, password_enc, access_token, token_expires_at, enabled, mode, group_id, group_name, template_id, template_name, updated_at)
-        VALUES (1, ?, ?, ?, NULL, NULL, 1, 'manual', NULL, NULL, NULL, NULL, ?)
-        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, mode='manual', group_id=NULL, group_name=NULL, template_id=NULL, template_name=NULL, updated_at=excluded.updated_at
-    """, (base_url, username.strip(), enc, now_text()))
+        VALUES (1, ?, ?, ?, NULL, NULL, 1, ?, NULL, NULL, NULL, NULL, ?)
+        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, mode=excluded.mode, group_id=NULL, group_name=NULL, template_id=NULL, template_name=NULL, updated_at=excluded.updated_at
+    """, (base_url, username.strip(), enc, mode, now_text()))
     conn.commit(); conn.close()
     with _PG_TOKEN_LOCK:
-        _PG_TOKEN_CACHE.update(token=None, expires_at=0)
+        _PG_TOKEN_CACHE["unlimited" if scope == "unlimited" else "default"].update(token=None, expires_at=0)
 
 
-def set_pasarguard_group(group_id, group_name):
+def set_pasarguard_group(group_id, group_name, scope=None):
+    table = _pg_config_table(scope)
     conn = get_db()
-    conn.execute("UPDATE pasarguard_config SET group_id=?, group_name=?, updated_at=? WHERE id=1", (int(group_id), str(group_name), now_text()))
+    conn.execute(f"UPDATE {table} SET group_id=?, group_name=?, updated_at=? WHERE id=1", (int(group_id), str(group_name), now_text()))
     conn.commit(); conn.close()
 
 
-def set_pasarguard_mode(mode):
+def set_pasarguard_mode(mode, scope=None):
     if mode not in {"manual", "panel", "fallback"}:
         return
-    conn = get_db(); conn.execute("UPDATE pasarguard_config SET mode=?, enabled=1, updated_at=? WHERE id=1", (mode, now_text())); conn.commit(); conn.close()
+    table = _pg_config_table(scope)
+    conn = get_db(); conn.execute(f"UPDATE {table} SET mode=?, enabled=1, updated_at=? WHERE id=1", (mode, now_text())); conn.commit(); conn.close()
 
 
-def disable_pasarguard():
-    conn = get_db(); conn.execute("UPDATE pasarguard_config SET enabled=0, mode='manual', updated_at=? WHERE id=1", (now_text(),)); conn.commit(); conn.close()
+def disable_pasarguard(scope=None):
+    table = _pg_config_table(scope)
+    conn = get_db(); conn.execute(f"UPDATE {table} SET enabled=0, mode='manual', updated_at=? WHERE id=1", (now_text(),)); conn.commit(); conn.close()
     with _PG_TOKEN_LOCK:
-        _PG_TOKEN_CACHE.update(token=None, expires_at=0)
+        _PG_TOKEN_CACHE["unlimited" if (scope or _pg_scope()) == "unlimited" else "default"].update(token=None, expires_at=0)
 
 
 def _pg_groups_text(groups):
@@ -2650,7 +2826,15 @@ async def approve_order_with_source(order_id):
         _PG_ORDER_LOCK = asyncio.Lock()
     mode = get_pasarguard_mode()
     if mode == "manual":
-        return await asyncio.to_thread(approve_order, order_id)
+        # Unlimited plans can use their dedicated PasarGuard panel even when
+        # the normal panel is left in manual mode.
+        conn = get_db()
+        probe = conn.execute("SELECT volume FROM orders WHERE id = ?", (order_id,)).fetchone()
+        conn.close()
+        unlimited_cfg = get_pasarguard_config("unlimited")
+        if not probe or not is_unlimited_volume(probe["volume"]) or not (unlimited_cfg and unlimited_cfg["enabled"]):
+            return await asyncio.to_thread(approve_order, order_id)
+        mode = "panel"
 
     async with _PG_ORDER_LOCK:
         conn = get_db()
@@ -2763,7 +2947,14 @@ def _pg_usage_bytes_text(value):
     return f"{n} B"
 
 
-def _pg_live_usage_sync(pg_username):
+def _pg_live_usage_sync(pg_username, scope="default"):
+    previous = _pg_set_scope(scope)
+    try:
+        return _pg_live_usage_sync_impl(pg_username)
+    finally:
+        _pg_restore_scope(previous)
+
+def _pg_live_usage_sync_impl(pg_username):
     """Read current traffic directly from PasarGuard for a Hanzu service."""
     if not pg_username:
         return None
@@ -2848,7 +3039,7 @@ async def send_services_message(message, user_id):
 
     keyboard = []
     if trial:
-        keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+        keyboard.append([styled_inline_button(t(lang, "trial_button"), callback_data="service_trial")])
 
     for row in rows:
         volume = str(row["volume"] or "-")
@@ -2863,7 +3054,7 @@ async def send_services_message(message, user_id):
 
     await rich_reply_text(
         message,
-        "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        t(lang, "my_services_title"),
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -2877,13 +3068,13 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
     if service_type == "trial":
         trial = get_user_trial(user_id)
         if not trial:
-            await query.answer("❌ تستی برای شما ثبت نشده است.", show_alert=True)
+            await query.answer(t(lang, "service_trial_missing"), show_alert=True)
             return
     else:
         try:
             order_id = int(service_id)
         except (TypeError, ValueError):
-            await query.answer("❌ سرویس نامعتبر است.", show_alert=True)
+            await query.answer(t(lang, "service_invalid"), show_alert=True)
             return
         conn = get_db()
         row = conn.execute("""
@@ -2896,15 +3087,17 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
         """, (order_id, user_id)).fetchone()
         conn.close()
         if not row:
-            await query.answer("❌ این سرویس پیدا نشد.", show_alert=True)
+            await query.answer(t(lang, "service_not_found"), show_alert=True)
             return
 
     live = None
-    pg_enabled = get_pasarguard_mode() in ("panel", "pasarguard", "fallback")
+    service_scope = "unlimited" if (row and is_unlimited_volume(row["volume"])) else "default"
+    service_cfg = get_pasarguard_config(service_scope)
+    pg_enabled = bool(service_cfg and service_cfg["enabled"])
     pg_username = trial["pg_username"] if trial else row["pg_username"]
     if pg_username and pg_enabled:
         try:
-            live = await asyncio.to_thread(_pg_live_usage_sync, pg_username)
+            live = await asyncio.to_thread(_pg_live_usage_sync, pg_username, service_scope)
         except Exception as exc:
             print(f"PasarGuard live usage error for service {service_id or 'trial'}: {exc}")
 
@@ -2925,20 +3118,20 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
         remaining = live["remaining"]
         if limit:
             usage = (
-                f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
-                f"📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
-                f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
+                t(lang, "total_volume", value=_pg_usage_bytes_text(limit)) + "\n"
+                + t(lang, "live_used", value=_pg_usage_bytes_text(used)) + "\n"
+                + t(lang, "remaining", value=_pg_usage_bytes_text(remaining)) + "\n"
             )
         else:
-            usage = f"♾️ حجم: نامحدود\n📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
+            usage = t(lang, "unlimited_volume") + "\n" + t(lang, "live_used", value=_pg_usage_bytes_text(used)) + "\n"
         status = str(live.get("status") or "active")
         status_icon = "🟢" if status == "active" else "🔴"
         expire = live.get("expire") or fallback_expire
     else:
         usage = (
-            f"📦 حجم کل: {fallback_volume}\n"
-            "📊 مصرف لحظه‌ای: در دسترس نیست\n"
-            "ℹ️ این سرویس دستی است یا ارتباط با پنل برقرار نیست.\n"
+            t(lang, "total_volume", value=fallback_volume) + "\n"
+            + t(lang, "live_unavailable") + "\n"
+            + t(lang, "manual_service_note") + "\n"
         )
         status_icon = "🟢"
         status = "active"
@@ -2947,15 +3140,15 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
     text = (
         f"{title}\n\n"
         f"{usage}"
-        f"{status_icon} وضعیت: {status}\n"
-        f"⏳ انقضا: {expire}\n\n"
-        f"🔗 لینک Subscription:\n{link}"
+        f"{status_icon} " + t(lang, "status", value=status).split(" ", 1)[1] + "\n"
+        + t(lang, "expiry", value=expire) + "\n\n"
+        + t(lang, "subscription", value=link)
     )
 
     back_data = "my_services"
     await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
-        [styled_inline_button("🔄 بروزرسانی مصرف", callback_data=query.data)],
-        [styled_inline_button("📦 بازگشت به سرویس‌های من", callback_data=back_data)],
+        [styled_inline_button(t(lang, "refresh_usage"), callback_data=query.data)],
+        [styled_inline_button(t(lang, "back_services"), callback_data=back_data)],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
     ]))
 
@@ -3854,7 +4047,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
         keyboard = []
         if trial:
-            keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+            keyboard.append([styled_inline_button(t(lang, "trial_button"), callback_data="service_trial")])
         for row in rows:
             volume = str(row["volume"] or "-")
             label = unlimited_display(volume, lang).replace("♾️ ", "") if is_unlimited_volume(volume) else f"{volume} گیگ"
@@ -3864,7 +4057,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             )])
         keyboard.append([styled_inline_button(t(lang, "renew"), callback_data="renew")])
         keyboard.append([styled_inline_button(t(lang, "main_menu"), callback_data="home")])
-        await rich_edit(query, "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        await rich_edit(query, t(lang, "my_services_title"),
                         reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -4155,6 +4348,109 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         if user_id != ADMIN_ID:
             return
         await send_db_backup(query, context)
+        return
+
+    if data == "pg2_connect":
+        if user_id != ADMIN_ID:
+            return
+        context.user_data["pg2_waiting_url"] = True
+        context.user_data.pop("pg2_waiting_username", None)
+        context.user_data.pop("pg2_waiting_password", None)
+        await rich_edit(query, t(lang, "pg2_connect_title"))
+        return
+
+    if data == "pg2_status":
+        if user_id != ADMIN_ID:
+            return
+        cfg2 = get_pasarguard_config("unlimited")
+        if not cfg2 or not cfg2["enabled"]:
+            await rich_edit(query, t(lang, "pg2_not_connected"), reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button(t(lang, "pg2_connect_button"), callback_data="pg2_connect")],
+                [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
+            ]))
+            return
+        try:
+            groups2 = await asyncio.to_thread(_pg_call_in_scope, "unlimited", pg_get_groups_sync)
+            status2 = f"🟢 اتصال موفق\n📦 تعداد گروه‌ها: {len(groups2)}"
+        except Exception as exc:
+            status2 = f"🔴 خطا: {str(exc)[:220]}"
+        text2 = (f"{t(lang, 'pg2_status')}\n\n{status2}\n"
+                 f"🌐 {cfg2['base_url']}\n"
+                 f"👤 {cfg2['username']}\n"
+                 f"📦 گروه انتخابی: {cfg2['group_name'] or 'انتخاب نشده'}\n"
+                 f"🧩 Template: {cfg2['template_name'] or 'خودکار هنگام ساخت'}\n\n"
+                 "این پنل فقط برای UNLIMITED_1 / UNLIMITED_2 / UNLIMITED_3 استفاده می‌شود.")
+        kb2 = [
+            [styled_inline_button(t(lang, "pg2_select_group"), callback_data="pg2_groups")],
+            [styled_inline_button(t(lang, "pg2_refresh"), callback_data="pg2_refresh")],
+            [styled_inline_button(t(lang, "pg2_disconnect"), callback_data="pg2_disconnect")],
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
+        ]
+        await rich_edit(query, text2, reply_markup=InlineKeyboardMarkup(kb2))
+        return
+
+    if data == "pg2_refresh":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            groups2 = await asyncio.to_thread(_pg_call_in_scope, "unlimited", pg_get_groups_sync)
+            await rich_edit(query, f"✅ پنل نامحدود متصل است.\n\n📦 گروه‌های قابل دریافت: {len(groups2)}", reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button("📦 انتخاب گروه", callback_data="pg2_groups")],
+                [styled_inline_button("🔙 وضعیت پنل نامحدود", callback_data="pg2_status")]
+            ]))
+        except Exception as exc:
+            await rich_edit(query, f"❌ بروزرسانی ناموفق بود.\n\n{str(exc)[:300]}", reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button("🔙 وضعیت پنل نامحدود", callback_data="pg2_status")]
+            ]))
+        return
+
+    if data == "pg2_groups":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            groups2 = await asyncio.to_thread(_pg_call_in_scope, "unlimited", pg_get_groups_sync)
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
+            return
+        keyboard2 = []
+        cfg2 = get_pasarguard_config("unlimited")
+        selected2 = cfg2["group_id"] if cfg2 else None
+        for g in groups2[:50]:
+            mark = "✅ " if selected2 == g["id"] else ""
+            keyboard2.append([styled_inline_button(f"{mark}{g['name']} | ID {g['id']}", callback_data=f"pg2_group_{g['id']}")])
+        keyboard2.append([styled_inline_button("🔙 وضعیت پنل نامحدود", callback_data="pg2_status")])
+        await rich_edit(query, t(lang, "pg2_choose_group"), reply_markup=InlineKeyboardMarkup(keyboard2))
+        return
+
+    if data.startswith("pg2_group_"):
+        if user_id != ADMIN_ID:
+            return
+        try:
+            group_id2 = int(data.split("_", 2)[2])
+            groups2 = await asyncio.to_thread(_pg_call_in_scope, "unlimited", pg_get_groups_sync)
+            group2 = next((g for g in groups2 if g["id"] == group_id2), None)
+            if not group2:
+                raise RuntimeError("گروه پیدا نشد.")
+            set_pasarguard_group(group_id2, group2["name"], scope="unlimited")
+            conn = get_db()
+            conn.execute("UPDATE pasarguard_unlimited_config SET template_id=NULL, template_name=NULL, updated_at=? WHERE id=1", (now_text(),))
+            conn.commit(); conn.close()
+            await rich_edit(query, f"✅ گروه پنل نامحدود انتخاب شد.\n\n📦 {group2['name']}\n🆔 {group_id2}\n\nاز این به بعد سرویس‌های نامحدود در این پنل ساخته می‌شوند.", reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button("♾️ وضعیت پنل نامحدود", callback_data="pg2_status")],
+                [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
+            ]))
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
+        return
+
+    if data == "pg2_disconnect":
+        if user_id != ADMIN_ID:
+            return
+        disable_pasarguard("unlimited")
+        await rich_edit(query, "🗑 اتصال پنل نامحدود قطع شد.\n\nسرویس‌های نامحدود دیگر به پنل دوم ارسال نمی‌شوند.", reply_markup=InlineKeyboardMarkup([
+            [styled_inline_button(t(lang, "pg2_connect_button"), callback_data="pg2_connect")],
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]
+        ]))
         return
 
     if data == "pg_connect":
@@ -4630,12 +4926,53 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [styled_inline_button(t(lang, "admin_broadcast"), callback_data="admin_broadcast")],
                 [styled_inline_button(t(lang, "admin_stats"), callback_data="admin_stats"), styled_inline_button(t(lang, "admin_orders"), callback_data="admin_orders")],
                 [styled_inline_button(t(lang, "admin_tickets"), callback_data="admin_tickets")],
-                [styled_inline_button("🔌 اتصال پنل PasarGuard", callback_data="pg_connect")],
-                [styled_inline_button("📡 وضعیت / گروه پنل", callback_data="pg_status")],
+                [styled_inline_button("🔌 اتصال پنل اصلی PasarGuard", callback_data="pg_connect")],
+                [styled_inline_button(t(lang, "pg2_connect_button"), callback_data="pg2_connect")],
+                [styled_inline_button("📡 وضعیت / گروه پنل اصلی", callback_data="pg_status")],
+                [styled_inline_button("♾️ وضعیت پنل نامحدود", callback_data="pg2_status")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]
             await rich_reply_text(update.message, "⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
             return
+
+    # اتصال پنل دوم PasarGuard مخصوص سرویس‌های نامحدود
+    if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_url"):
+        base_url = text.strip()
+        if not base_url.startswith(("http://", "https://")):
+            await rich_reply_text(update.message, "❌ آدرس پنل باید با http:// یا https:// شروع شود.")
+            return
+        context.user_data["pg2_waiting_url"] = False
+        context.user_data["pg2_waiting_username"] = True
+        context.user_data["pg2_base_url"] = base_url
+        await rich_reply_text(update.message, "👤 نام کاربری مدیر پنل دوم PasarGuard را ارسال کن.")
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_username"):
+        context.user_data["pg2_waiting_username"] = False
+        context.user_data["pg2_waiting_password"] = True
+        context.user_data["pg2_username"] = text.strip()
+        await rich_reply_text(update.message, "🔐 رمز عبور پنل دوم PasarGuard را ارسال کن.\n\nبعد از دریافت، پیام رمز حذف می‌شود.")
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_password"):
+        context.user_data["pg2_waiting_password"] = False
+        password2 = text
+        base_url2 = context.user_data.pop("pg2_base_url", "")
+        username2 = context.user_data.pop("pg2_username", "")
+        try:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            save_pasarguard_connection(base_url2, username2, password2, scope="unlimited")
+            await asyncio.to_thread(_pg_call_in_scope, "unlimited", _pg_login_sync, True)
+            groups2 = await asyncio.to_thread(_pg_call_in_scope, "unlimited", pg_get_groups_sync)
+            keyboard2 = [[styled_inline_button(f"{g['name']} | ID {g['id']}", callback_data=f"pg2_group_{g['id']}")] for g in groups2[:50]]
+            keyboard2.append([styled_inline_button("🔙 پنل مدیریت", callback_data="admin")])
+            await context.bot.send_message(chat_id=user.id, text=f"✅ اتصال پنل نامحدود برقرار شد.\n\n📦 {len(groups2)} گروه پیدا شد.\nگروه پیش‌فرض پنل دوم را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard2))
+        except Exception as exc:
+            await rich_reply_text(update.message, f"❌ اتصال پنل نامحدود ناموفق بود.\n\n{str(exc)[:350]}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("♾️ تلاش دوباره", callback_data="pg2_connect")], [styled_inline_button("🔙 پنل مدیریت", callback_data="admin")]]))
+        return
 
     # اتصال PasarGuard - مرحله ۱: آدرس پنل
     if user.id == ADMIN_ID and context.user_data.get("pg_waiting_url"):

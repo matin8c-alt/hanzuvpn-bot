@@ -5647,10 +5647,57 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         return self._send(404,{"ok":False,"error":"not_found"})
 
 
+class _ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    # Prevent deploy/restart races from leaving the TCP socket unusable briefly.
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def _miniapp_api_is_alive(host, port):
+    """Return True when an HTTP service is already answering on the API port.
+
+    During cPanel/Cron restarts the previous HanzuVPN process can release its
+    socket a moment after the process is stopped. If the existing API is
+    already alive, starting a second copy is unnecessary and would raise
+    OSError: [Errno 98] Address already in use.
+    """
+    import http.client
+    probe_host = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
+    try:
+        conn = http.client.HTTPConnection(probe_host, int(port), timeout=1.0)
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        response.read(64)
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
 def start_miniapp_api():
-    server=ThreadingHTTPServer((API_HOST,API_PORT),MiniAppHandler)
-    threading.Thread(target=server.serve_forever,daemon=True).start()
-    print(f"Mini App API listening on {API_HOST}:{API_PORT}")
+    # cPanel/Cloudflare can restart the bot while the old API socket is still
+    # being released. Retry instead of crashing the whole Telegram bot.
+    last_error = None
+    for attempt in range(1, 16):
+        try:
+            server = _ReusableThreadingHTTPServer((API_HOST, API_PORT), MiniAppHandler)
+            threading.Thread(target=server.serve_forever, daemon=True, name="miniapp-api").start()
+            print(f"Mini App API listening on {API_HOST}:{API_PORT}")
+            return server
+        except OSError as e:
+            last_error = e
+            if getattr(e, "errno", None) != 98:
+                raise
+            # If the already-open port is our existing Mini App API, leave it
+            # alone and let the new Telegram bot continue normally.
+            if _miniapp_api_is_alive(API_HOST, API_PORT):
+                print(f"Mini App API already running on {API_HOST}:{API_PORT}; reusing existing API.")
+                return None
+            if attempt < 15:
+                print(f"Mini App API port {API_PORT} is busy; retry {attempt}/15...")
+                import time
+                time.sleep(1)
+    raise last_error
 
 
 # =========================================================

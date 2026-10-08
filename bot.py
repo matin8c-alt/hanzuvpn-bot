@@ -1430,49 +1430,94 @@ def pg_get_groups_sync():
             for g in groups if isinstance(g, dict) and g.get("id") is not None]
 
 
-def pg_get_templates_sync():
-    """Return templates allowed for the connected admin.
-    PasarGuard RBAC exposes full templates to sudo and simple templates to operators.
-    """
-    first_error = None
-    # RBAC operators are intentionally allowed to use the simple endpoint.
-    try:
-        payload = _pg_request_sync("GET", "/api/user_templates/simple")
-        templates = _pg_extract_list(payload, "user_templates")
-        if not templates:
-            templates = _pg_extract_list(payload, "templates")
-        if templates:
-            return [
-                {
-                    "id": int(t.get("id")),
-                    "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
-                    "group_ids": [],
-                    "is_disabled": False,
-                }
-                for t in templates if isinstance(t, dict) and t.get("id") is not None
-            ]
-    except Exception as exc:
-        first_error = exc
+def _pg_normalize_digits(text):
+    trans = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    return str(text or "").translate(trans)
 
+
+def _pg_template_matches_plan(template, volume, days):
+    """Match a PasarGuard template to a Hanzu plan without modifying users later."""
+    if not isinstance(template, dict) or template.get("is_disabled"):
+        return False
+    wanted_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
+    wanted_duration = int(days) * 86400
+
+    # Best case: full template endpoint exposes the actual limits.
+    limit = template.get("data_limit", template.get("dataLimit"))
+    duration = template.get("expire_duration", template.get("expireDuration"))
     try:
-        payload = _pg_request_sync("GET", "/api/user_templates")
-        templates = _pg_extract_list(payload, "user_templates")
-        if not templates:
-            templates = _pg_extract_list(payload, "templates")
-        return [
-            {
-                "id": int(t.get("id")),
-                "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
-                "group_ids": [],
-                "is_disabled": False,
-            }
-            for t in templates if isinstance(t, dict) and t.get("id") is not None
-        ]
+        if limit is not None and duration is not None:
+            return int(limit) == wanted_limit and int(duration) == wanted_duration
     except Exception:
-        if first_error:
-            raise first_error
-        raise
+        pass
 
+    # Operator simple endpoint only returns id/name. Match common volume names.
+    name = _pg_normalize_digits(template.get("name") or template.get("label") or "").lower()
+    if is_unlimited_volume(volume):
+        return any(x in name for x in ("unlimited", "نامحدود", "no limit", "∞"))
+    vol = str(_normalize_volume(volume) or "")
+    if not vol:
+        return False
+    patterns = (
+        f"{vol}gb", f"{vol} gb", f"{vol}g", f"{vol} گیگ", f"{vol}گیگ",
+        f"{vol}gig", f"{vol}-gb", f"gb-{vol}", f"{vol}g-", f"-{vol}gb",
+    )
+    return any(x in name for x in patterns)
+
+
+def pg_get_templates_sync():
+    """Return templates available to the connected admin, preserving full fields when visible."""
+    first_error = None
+    endpoints = ("/api/user_templates/simple", "/api/user_templates")
+    for endpoint in endpoints:
+        try:
+            payload = _pg_request_sync("GET", endpoint)
+            templates = _pg_extract_list(payload, "user_templates")
+            if not templates:
+                templates = _pg_extract_list(payload, "templates")
+            if not templates:
+                continue
+            out = []
+            for t in templates:
+                if not isinstance(t, dict) or t.get("id") is None:
+                    continue
+                out.append({
+                    "id": int(t["id"]),
+                    "name": str(t.get("name") or t.get("label") or f"Template {t['id']}"),
+                    "group_ids": [int(x) for x in (t.get("group_ids") or []) if str(x).isdigit()],
+                    "data_limit": t.get("data_limit", t.get("dataLimit")),
+                    "expire_duration": t.get("expire_duration", t.get("expireDuration")),
+                    "is_disabled": bool(t.get("is_disabled", False)),
+                })
+            if out:
+                return out
+        except Exception as exc:
+            first_error = exc
+    if first_error:
+        raise first_error
+    return []
+
+
+def pg_find_template_for_plan_sync(volume, group_id, days=None):
+    days = int(days or SERVICE_DAYS)
+    templates = pg_get_templates_sync()
+    if not templates:
+        raise RuntimeError("هیچ User Template قابل استفاده‌ای برای این حساب PasarGuard پیدا نشد.")
+
+    matches = [t for t in templates if _pg_template_matches_plan(t, volume, days)]
+    if group_id:
+        grouped = [t for t in matches if not t.get("group_ids") or int(group_id) in t.get("group_ids", [])]
+        if grouped:
+            matches = grouped
+    if matches:
+        return matches[0]
+
+    names = ", ".join(str(t["name"]) for t in templates[:12])
+    wanted = "نامحدود" if is_unlimited_volume(volume) else f"{_normalize_volume(volume)}GB"
+    raise RuntimeError(
+        f"برای پلن {wanted} یک User Template مناسب پیدا نشد. "
+        f"Templateهای قابل دسترسی: {names or 'هیچ‌کدام'}"
+    )
 
 def pg_get_selected_template_sync():
     cfg = get_pasarguard_config()
@@ -1669,6 +1714,30 @@ def _pg_find_value(obj, names):
     return None
 
 
+def _pg_subscription_from_created_user_sync(payload, username):
+    """Get subscription URL from create response, or re-read the created user."""
+    sub = _pg_find_value(payload, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+    if sub:
+        return str(sub).strip()
+    user_id = _pg_find_value(payload, ["id", "user_id", "userId"])
+    candidates = []
+    if user_id is not None:
+        candidates.append(f"/api/user/by-id/{int(user_id)}")
+    candidates.extend([
+        f"/api/user/by-username/{quote(str(username), safe='')}",
+        f"/api/user/{quote(str(username), safe='')}",
+    ])
+    for path in candidates:
+        try:
+            got = _pg_request_sync("GET", path)
+            sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+            if sub:
+                return str(sub).strip()
+        except Exception:
+            continue
+    return None
+
+
 def pg_create_order_service_sync(order):
     cfg = get_pasarguard_config()
     if not cfg or not cfg["enabled"]:
@@ -1676,56 +1745,45 @@ def pg_create_order_service_sync(order):
     group_id = cfg["group_id"]
     if not group_id:
         raise RuntimeError("گروه پیش‌فرض PasarGuard انتخاب نشده است.")
+
     username = f"hz_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
     note = f"HanzuVPN order #{order['id']}"
+    volume = order["volume"]
+    days = int(SERVICE_DAYS)
 
-    # مسیر اصلی: ساخت مستقیم با تمام مقادیر سفارش. این endpoint در API فعلی PasarGuard
-    # پشتیبانی می‌شود و برای ادمین‌هایی که require_template ندارند سریع‌ترین مسیر است.
+    direct_error = None
+    payload = None
+
+    # 1) مسیر مستقیم؛ برای ادمینی که require_template=false دارد.
     try:
-        payload = pg_create_user_sync(order["volume"], username, int(group_id), note)
-    except Exception as direct_error:
-        error_text = str(direct_error).lower()
-        template_related = any(x in error_text for x in (
-            "template", "require_template", "not allowed", "forbidden", "permission", "403", "400", "405", "422"
-        ))
-        if not template_related:
-            raise
+        payload = pg_create_user_sync(volume, username, int(group_id), note)
+    except Exception as exc:
+        direct_error = exc
 
-        # مسیر دوم: یک Template دقیق برای همین پلن بساز/استفاده کن.
-        # این کار مهم است چون Template خودش group + data_limit + expire_duration را اعمال می‌کند
-        # و دیگر لازم نیست بعد از ساخت، یک PUT حساس به RBAC انجام دهیم.
+    # 2) اگر نقش پنل ساخت مستقیم را ممنوع کرده، فقط Template دقیق همان پلن را استفاده کن.
+    # Template از ابتدا group + data_limit + expire_duration را اعمال می‌کند؛ هیچ PUT بعدی نداریم.
+    if payload is None:
         try:
-            exact = pg_get_or_create_exact_template_sync(order["volume"], int(group_id))
+            template = pg_find_template_for_plan_sync(volume, int(group_id), days)
             payload = _pg_request_sync("POST", "/api/user/from_template", {
-                "user_template_id": int(exact["id"]),
+                "user_template_id": int(template["id"]),
                 "username": username,
                 "note": note,
             })
-        except Exception as exact_error:
-            # اگر ساخت Template توسط نقش متصل ممنوع بود، آخرین راه‌حل استفاده از Template موجود است.
-            # این مسیر برای Operatorهایی است که فقط اجازه استفاده از Template دارند.
-            try:
-                payload, template = pg_create_user_from_template_sync(username, note)
-                if not _pg_user_plan_matches(payload, order["volume"]):
-                    # فقط در صورت نیاز تلاش برای اصلاح؛ اگر RBAC اجازه update ندهد،
-                    # خطای واقعی را برمی‌گردانیم تا سفارش اشتباهاً تحویل نشود.
-                    final_username = _pg_find_value(payload, ["username"]) or username
-                    payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
-                    if isinstance(payload2, dict):
-                        merged = dict(payload)
-                        merged.update(payload2)
-                        payload = merged
-            except Exception as template_error:
-                raise RuntimeError(
-                    f"ساخت مستقیم ناموفق: {str(direct_error)[:180]} | "
-                    f"Template دقیق ناموفق: {str(exact_error)[:220]} | "
-                    f"Template موجود هم ناموفق: {str(template_error)[:220]}"
-                )
+        except Exception as template_error:
+            direct_text = str(direct_error or "خطای نامشخص")[:280]
+            template_text = str(template_error)[:420]
+            raise RuntimeError(
+                f"ساخت مستقیم: {direct_text} | ساخت از Template مناسب: {template_text}"
+            )
 
-    sub = _pg_find_value(payload, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+    sub = _pg_subscription_from_created_user_sync(payload, username)
     final_username = _pg_find_value(payload, ["username"]) or username
     if not sub:
-        raise RuntimeError("PasarGuard کاربر را ساخت اما Subscription URL برنگرداند.")
+        raise RuntimeError(
+            "کاربر در PasarGuard ساخته شد اما Subscription URL دریافت نشد. "
+            "دسترسی read کاربر یا API سابسکریپشن را بررسی کنید."
+        )
 
     sub = str(sub).strip()
     if sub.startswith("/"):
@@ -1738,7 +1796,6 @@ def pg_create_order_service_sync(order):
             sub = base_url + "/" + sub.lstrip("/")
 
     return {"username": str(final_username), "subscription_url": sub}
-
 
 def save_pasarguard_connection(base_url, username, password):
     base_url = base_url.strip().rstrip("/")

@@ -1727,64 +1727,18 @@ def _pg_user_plan_matches(payload, volume):
 def _pg_find_value(obj, names):
     if isinstance(obj, dict):
         for n in names:
-            value = obj.get(n)
-            if value is not None and value != "":
-                return value
+            if obj.get(n):
+                return obj[n]
         for v in obj.values():
             found = _pg_find_value(v, names)
-            if found is not None and found != "":
+            if found:
                 return found
     elif isinstance(obj, list):
         for v in obj:
             found = _pg_find_value(v, names)
-            if found is not None and found != "":
+            if found:
                 return found
     return None
-
-
-def _pg2_extract_subscription_url(payload, base_url=""):
-    """Extract the COMPLETE subscription URL from PasarGuard responses.
-
-    Some PasarGuard versions return subscription data as a nested object
-    instead of a plain subscription_url string. Never stringify that object;
-    walk it until a real URL/string is found. Relative paths are resolved
-    against the second panel base URL.
-    """
-    preferred = (
-        "subscription_url", "subscriptionUrl", "sub_url",
-        "subscription", "url", "link"
-    )
-
-    def walk(obj):
-        if isinstance(obj, dict):
-            for key in preferred:
-                if key in obj:
-                    value = obj.get(key)
-                    if isinstance(value, str) and value.strip():
-                        value = value.strip()
-                        if value.startswith(("http://", "https://")):
-                            return value
-                        if value.startswith("/") and base_url:
-                            return urljoin(base_url.rstrip("/") + "/", value.lstrip("/"))
-                    nested = walk(value)
-                    if nested:
-                        return nested
-            for value in obj.values():
-                found = walk(value)
-                if found:
-                    return found
-        elif isinstance(obj, list):
-            for value in obj:
-                found = walk(value)
-                if found:
-                    return found
-        elif isinstance(obj, str):
-            value = obj.strip()
-            if value.startswith(("http://", "https://")):
-                return value
-        return None
-
-    return walk(payload)
 
 
 def _pg_subscription_from_created_user_sync(payload, username):
@@ -1832,6 +1786,9 @@ def get_pasarguard_unlimited_config():
 
 
 def save_pasarguard_unlimited_config(base_url, username, password, enabled=True):
+    base_url = str(base_url or "").strip().rstrip("/")
+    if not base_url.startswith(("http://", "https://")):
+        raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود.")
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_unlimited_config
@@ -1955,19 +1912,19 @@ def pg2_create_unlimited_user_sync(order):
         "note": f"HanzuVPN unlimited {info['hwid']} user(s) | order #{order['id']}",
     }
     created = _pg2_request_sync("POST", "/api/user", payload)
-    sub = _pg2_extract_subscription_url(created, cfg["base_url"])
+    sub = _pg_find_value(created, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
     user_id = _pg_find_value(created, ["id", "user_id", "userId"])
     if not sub and user_id is not None:
         try:
             got = _pg2_request_sync("GET", f"/api/user/by-id/{int(user_id)}")
-            sub = _pg2_extract_subscription_url(got, cfg["base_url"])
+            sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
         except Exception:
             pass
     if not sub:
         for path in [f"/api/user/by-username/{quote(username, safe='')}", f"/api/user/{quote(username, safe='')}"]:
             try:
                 got = _pg2_request_sync("GET", path)
-                sub = _pg2_extract_subscription_url(got, cfg["base_url"])
+                sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
                 if sub:
                     break
             except Exception:

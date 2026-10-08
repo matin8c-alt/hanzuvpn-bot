@@ -1872,14 +1872,36 @@ def _pg2_login_sync(force=False):
         password = _pg_decrypt_secret(cfg["password_enc"])
         if not password:
             raise RuntimeError("رمز اتصال پنل دوم قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
+        login_form = {"username": cfg["username"], "password": password, "grant_type": "password"}
+        base_url = _pg_normalize_base_url(cfg["base_url"])
         status, payload = _pg_http(
-            "POST", _pg_url(cfg["base_url"], "/api/admin/token"),
-            form={"username": cfg["username"], "password": password, "grant_type": "password"},
+            "POST", _pg_url(base_url, "/api/admin/token"),
+            form=login_form,
             timeout=12,
         )
+        # Some HTTP virtual-hosts redirect POST requests to HTTPS with a 301/302;
+        # urllib follows that redirect as GET, which produces "405 Method Not Allowed".
+        # Retry the same POST directly over HTTPS and remember HTTPS if it succeeds.
+        if status == 405 and base_url.lower().startswith("http://"):
+            https_base = "https://" + base_url[len("http://"):]
+            https_status, https_payload = _pg_http(
+                "POST", _pg_url(https_base, "/api/admin/token"),
+                form=login_form,
+                timeout=12,
+            )
+            if https_status == 200 and https_payload.get("access_token"):
+                base_url = https_base
+                status, payload = https_status, https_payload
+                conn = get_db()
+                conn.execute("UPDATE pasarguard_unlimited_config SET base_url=?, updated_at=? WHERE id=1",
+                             (base_url.rstrip("/"), now_text()))
+                conn.commit(); conn.close()
+            else:
+                # Prefer the direct HTTPS response: it usually reveals the actual API/TLS issue.
+                status, payload = https_status, https_payload
         if status != 200 or not payload.get("access_token"):
-            detail = payload.get("detail") or payload.get("message") or "ورود به پنل دوم PasarGuard ناموفق بود."
-            raise RuntimeError(str(detail)[:300])
+            detail = payload.get("detail") or payload.get("message") or payload.get("error") or "ورود به پنل دوم PasarGuard ناموفق بود."
+            raise RuntimeError(f"HTTP {status}: {str(detail)[:300]}")
         token = str(payload["access_token"])
         exp = now + 25 * 60
         try:
@@ -1904,9 +1926,25 @@ def _pg2_request_sync(method, path, json_body=None, retry=True):
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل دوم PasarGuard نامحدود متصل نیست.")
     token = _pg2_login_sync(False)
+    # Login may have detected that the HTTP host redirects POSTs and upgraded
+    # the saved base URL to HTTPS. Reload it before making the API call.
+    cfg = get_pasarguard_unlimited_config() or cfg
     status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                headers={"Authorization": f"Bearer {token}"},
                                json_body=json_body, timeout=15)
+    if status == 405 and _pg_normalize_base_url(cfg["base_url"]).lower().startswith("http://"):
+        https_base = "https://" + _pg_normalize_base_url(cfg["base_url"])[len("http://"):]
+        https_status, https_payload = _pg_http(method, _pg_url(https_base, path),
+                                               headers={"Authorization": f"Bearer {token}"},
+                                               json_body=json_body, timeout=15)
+        if 200 <= https_status < 300:
+            conn = get_db()
+            conn.execute("UPDATE pasarguard_unlimited_config SET base_url=?, updated_at=? WHERE id=1",
+                         (https_base.rstrip("/"), now_text()))
+            conn.commit(); conn.close()
+            status, payload = https_status, https_payload
+        else:
+            status, payload = https_status, https_payload
     if status == 401 and retry:
         token = _pg2_login_sync(True)
         status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),

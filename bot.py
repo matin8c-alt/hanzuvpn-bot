@@ -1902,6 +1902,32 @@ def test_pasarguard_unlimited_sync():
     return True
 
 
+def _pg2_get_default_group_id_sync():
+    """Return a group visible to the second-panel account.
+
+    PasarGuard installations commonly require group_ids when creating users.
+    The second-panel settings intentionally stay simple, so use the first group
+    the configured account is allowed to see. Try both common list endpoints.
+    """
+    errors = []
+    for path in ("/api/groups", "/api/groups/simple"):
+        try:
+            response = _pg2_request_sync("GET", path)
+            groups = _pg_extract_list(response, "groups")
+            valid = [g for g in groups if isinstance(g, dict) and g.get("id") is not None]
+            if valid:
+                # Prefer a non-disabled group if the API exposes that flag.
+                valid.sort(key=lambda g: bool(g.get("is_disabled", False)))
+                return int(valid[0]["id"])
+            errors.append(f"{path}: فهرست گروه خالی بود")
+        except Exception as exc:
+            errors.append(f"{path}: {str(exc)[:180]}")
+    raise RuntimeError(
+        "پنل دوم گروه قابل استفاده‌ای برنگرداند؛ حساب پنل باید دسترسی مشاهده گروه‌ها داشته باشد. "
+        + " | ".join(errors)[:450]
+    )
+
+
 def pg2_create_unlimited_user_sync(order):
     cfg = get_pasarguard_unlimited_config()
     if not cfg or not cfg["enabled"]:
@@ -1910,6 +1936,9 @@ def pg2_create_unlimited_user_sync(order):
     info = UNLIMITED_PLANS.get(volume)
     if not info:
         raise RuntimeError("پلن نامحدود نامعتبر است.")
+    # FIX: unlike the first-panel request, the old second-panel payload omitted
+    # group_ids. PasarGuard usually requires at least one group for a user.
+    group_id = _pg2_get_default_group_id_sync()
     username = f"hz_u_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
     expire = (datetime.now(timezone.utc) + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
     payload = {
@@ -1919,6 +1948,7 @@ def pg2_create_unlimited_user_sync(order):
         "data_limit": 0,
         "data_limit_reset_strategy": "no_reset",
         "status": "active",
+        "group_ids": [group_id],
         "note": f"HanzuVPN unlimited {info['hwid']} user(s) | order #{order['id']}",
     }
     created = _pg2_request_sync("POST", "/api/user", payload)
@@ -4288,9 +4318,21 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
 
             if result.get("status") == "pg_error":
-                err = str(result.get("error") or "خطای نامشخص")[:180]
-                await query.answer(f"❌ ساخت سرویس در PasarGuard ناموفق بود.\n{err}", show_alert=True)
+                err = str(result.get("error") or "خطای نامشخص")[:500]
+                await query.answer(f"❌ ساخت سرویس در PasarGuard ناموفق بود.\n{err[:180]}", show_alert=True)
                 pg_order = result.get("order")
+                # Keep the technical reason in the admin chat so it is not lost
+                # when Telegram dismisses the short callback popup.
+                try:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_ID,
+                        text=(f"⚠️ خطای ساخت سرویس PasarGuard\n"
+                              f"🧾 سفارش: #{order_id}\n"
+                              f"📦 پلن: {pg_order['volume'] if pg_order else '-'}\n"
+                              f"🔎 جزئیات: {err}"),
+                    )
+                except Exception:
+                    pass
                 if pg_order:
                     try:
                         await context.bot.send_message(chat_id=pg_order["user_id"], text="❌ ساخت سرویس در پنل PasarGuard ناموفق بود. سفارش شما هنوز در انتظار بررسی است.")

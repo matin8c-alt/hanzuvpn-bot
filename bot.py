@@ -1453,7 +1453,20 @@ def pg_create_order_service_sync(order):
     final_username = _pg_find_value(payload, ["username"]) or username
     if not sub:
         raise RuntimeError("PasarGuard کاربر را ساخت اما Subscription URL برنگرداند.")
-    return {"username": str(final_username), "subscription_url": str(sub)}
+
+    # بعضی نسخه‌های PasarGuard آدرس Subscription را به‌صورت نسبی
+    # مثل /sub/TOKEN برمی‌گردانند. برای کاربر باید لینک کامل ارسال شود.
+    sub = str(sub).strip()
+    if sub.startswith("/"):
+        base_url = str(cfg.get("base_url") or "").rstrip("/")
+        if base_url:
+            sub = base_url + sub
+    elif not sub.startswith(("http://", "https://")):
+        base_url = str(cfg.get("base_url") or "").rstrip("/")
+        if base_url:
+            sub = base_url + "/" + sub.lstrip("/")
+
+    return {"username": str(final_username), "subscription_url": sub}
 
 
 def save_pasarguard_connection(base_url, username, password):

@@ -1421,25 +1421,27 @@ def pg_get_templates_sync():
     PasarGuard RBAC exposes full templates to sudo and simple templates to operators.
     """
     first_error = None
+    # RBAC operators are intentionally allowed to use the simple endpoint.
     try:
-        payload = _pg_request_sync("GET", "/api/user_templates")
+        payload = _pg_request_sync("GET", "/api/user_templates/simple")
         templates = _pg_extract_list(payload, "user_templates")
         if not templates:
             templates = _pg_extract_list(payload, "templates")
-        return [
-            {
-                "id": int(t.get("id")),
-                "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
-                "group_ids": [int(x) for x in (t.get("group_ids") or []) if str(x).isdigit()],
-                "is_disabled": bool(t.get("is_disabled", False)),
-            }
-            for t in templates if isinstance(t, dict) and t.get("id") is not None
-        ]
+        if templates:
+            return [
+                {
+                    "id": int(t.get("id")),
+                    "name": str(t.get("name") or t.get("label") or f"Template {t.get('id')}"),
+                    "group_ids": [],
+                    "is_disabled": False,
+                }
+                for t in templates if isinstance(t, dict) and t.get("id") is not None
+            ]
     except Exception as exc:
         first_error = exc
 
     try:
-        payload = _pg_request_sync("GET", "/api/user_templates/simple")
+        payload = _pg_request_sync("GET", "/api/user_templates")
         templates = _pg_extract_list(payload, "user_templates")
         if not templates:
             templates = _pg_extract_list(payload, "templates")
@@ -1525,7 +1527,12 @@ def pg_create_user_from_template_sync(username, note=""):
 
 
 def pg_update_user_limits_sync(username, payload, volume, group_id, note=""):
-    """After template creation, force HanzuVPN's exact volume/expiry/group settings."""
+    """Apply the exact HanzuVPN plan after template creation.
+
+    Important: do NOT rewrite group_ids here. RBAC roles may be allowed to
+    create from a template while being forbidden from changing groups after
+    creation. The selected template already supplies its groups.
+    """
     data_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
     expire = (datetime.now() + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
     update_payload = {
@@ -1533,20 +1540,35 @@ def pg_update_user_limits_sync(username, payload, volume, group_id, note=""):
         "data_limit_reset_strategy": "no_reset",
         "expire": expire,
         "status": "active",
-        "group_ids": [int(group_id)],
         "note": note or "HanzuVPN",
     }
     user_id = _pg_find_value(payload, ["id", "user_id", "userId"])
+    errors = []
     if user_id is not None:
         try:
             return _pg_request_sync("PUT", f"/api/user/by-id/{int(user_id)}", update_payload)
         except Exception as first:
-            # بعض نسخه‌های قدیمی هنوز مسیر username را نگه داشته‌اند.
-            try:
-                return _pg_request_sync("PUT", f"/api/user/{quote(str(username), safe='')}", update_payload)
-            except Exception:
-                raise first
-    return _pg_request_sync("PUT", f"/api/user/{quote(str(username), safe='')}", update_payload)
+            errors.append(str(first))
+    try:
+        return _pg_request_sync("PUT", f"/api/user/{quote(str(username), safe='')}", update_payload)
+    except Exception as second:
+        errors.append(str(second))
+    raise RuntimeError(" | ".join(errors)[:500])
+
+def _pg_user_plan_matches(payload, volume):
+    """Best-effort verification for templates that already contain the exact plan."""
+    wanted_limit = 0 if is_unlimited_volume(volume) else int(float(_normalize_volume(volume) or 0)) * 1024 ** 3
+    actual_limit = _pg_find_value(payload, ["data_limit", "dataLimit"])
+    if actual_limit is not None:
+        try:
+            if int(actual_limit) != int(wanted_limit):
+                return False
+        except Exception:
+            return False
+    # If the API response doesn't expose data_limit, don't claim a match.
+    else:
+        return False
+    return True
 
 def _pg_find_value(obj, names):
     if isinstance(obj, dict):
@@ -1581,24 +1603,29 @@ def pg_create_order_service_sync(order):
         # در RBAC جدید، ممکن است این مدیر اجازه ساخت مستقیم نداشته باشد
         # و فقط اجازه ساخت از Template داشته باشد. در این حالت خودکار Template را امتحان می‌کنیم.
         error_text = str(direct_error).lower()
+        # هر خطای 4xx ساخت مستقیم می‌تواند ناشی از RBAC/Template اجباری باشد؛
+        # به‌جای توقف، یک‌بار مسیر Template را امتحان می‌کنیم. خطاهای شبکه/5xx
+        # همچنان همان‌جا گزارش می‌شوند تا ربات بی‌دلیل درخواست اضافه نزند.
         template_related = any(x in error_text for x in (
-            "template", "require_template", "not allowed", "forbidden", "permission", "403", "400"
+            "template", "require_template", "not allowed", "forbidden", "permission", "403", "400", "405", "422"
         ))
         if not template_related:
             raise
         try:
             payload, template = pg_create_user_from_template_sync(username, note)
-            # Template فقط پایه کاربر را می‌سازد؛ تنظیمات دقیق سفارش HanzuVPN را بعد از آن اعمال می‌کنیم.
+            # Template کاربر را می‌سازد. اگر خودش دقیقاً همان حجم سفارش را دارد،
+            # دیگر PUT اضافی نمی‌زنیم؛ این برای RBAC محدود مهم است.
             final_username = _pg_find_value(payload, ["username"]) or username
-            payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
-            if isinstance(payload2, dict):
-                merged = dict(payload)
-                merged.update(payload2)
-                payload = merged
+            if not _pg_user_plan_matches(payload, order["volume"]):
+                payload2 = pg_update_user_limits_sync(final_username, payload, order["volume"], int(group_id), note)
+                if isinstance(payload2, dict):
+                    merged = dict(payload)
+                    merged.update(payload2)
+                    payload = merged
         except Exception as template_error:
             raise RuntimeError(
-                f"ساخت مستقیم ناموفق بود: {str(direct_error)[:180]} | "
-                f"ساخت از Template هم ناموفق بود: {str(template_error)[:260]}"
+                f"ساخت مستقیم ناموفق بود: {str(direct_error)[:220]} | "
+                f"ساخت از Template هم ناموفق بود: {str(template_error)[:320]}"
             )
 
     sub = _pg_find_value(payload, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])

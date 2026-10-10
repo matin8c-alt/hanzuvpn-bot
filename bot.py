@@ -3137,6 +3137,56 @@ def get_user_services(user_id):
     return rows
 
 
+def _api_live_service_data(row):
+    """Attach fresh usage from the same panel that provisioned this service."""
+    item = dict(row)
+    item.update({"usage_available": False, "data_limit": 0, "used_traffic": 0, "remaining": 0})
+    username = str(item.get("pg_username") or "").strip()
+    volume = str(item.get("volume") or "").upper()
+    if not username:
+        return item
+    try:
+        if is_unlimited_volume(volume):
+            cfg = get_pasarguard_unlimited_config()
+            if not cfg or not cfg["enabled"]:
+                return item
+            encoded = quote(username, safe="")
+            payload = None
+            for path in (f"/api/user/by-username/{encoded}", f"/api/user/{encoded}"):
+                try:
+                    payload = _pg2_request_sync("GET", path)
+                    break
+                except Exception:
+                    continue
+            if payload is None:
+                return item
+        else:
+            live = _pg_live_usage_sync(username)
+            if not live:
+                return item
+            item.update(live)
+            item["usage_available"] = True
+            item["live_expire"] = live.get("expire") or item.get("expires_at")
+            return item
+        data_limit = _pg_find_value(payload, ["data_limit", "dataLimit"])
+        used = _pg_find_value(payload, ["used_traffic", "usedTraffic"])
+        expire = _pg_find_value(payload, ["expire", "expires_at", "expire_at"])
+        status = _pg_find_value(payload, ["status"])
+        item.update({"data_limit": int(float(data_limit or 0)), "used_traffic": max(0, int(float(used or 0))),
+                     "panel_status": status or "", "live_expire": expire or item.get("expires_at"),
+                     "usage_available": used is not None})
+        item["remaining"] = max(0, item["data_limit"] - item["used_traffic"]) if item["data_limit"] else 0
+    except Exception as exc:
+        print(f"Mini App live usage error for service #{item.get('id')}: {exc}")
+    return item
+
+
+def _api_services_payload(user_id):
+    # Each service is enriched independently so a temporary panel failure does not
+    # prevent the user's other subscriptions from appearing.
+    return [_api_live_service_data(row) for row in get_user_services(user_id)]
+
+
 def get_user_trial(user_id):
     conn = get_db()
     row = conn.execute("""
@@ -5663,11 +5713,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         u=self._user()
         if not u: return self._send(401,{"ok":False,"error":"unauthorized"})
         if self.path.startswith("/api/services"):
-            rows=get_user_services(u.id); return self._send(200,{"ok":True,"services":[dict(r) for r in rows]})
+            return self._send(200,{"ok":True,"services":_api_services_payload(u.id)})
         if self.path.startswith("/api/wallet"):
             return self._send(200,{"ok":True,"balance":get_balance(u.id)})
         if self.path.startswith("/api/bootstrap"):
-            rows=get_user_services(u.id)
+            rows=_api_services_payload(u.id)
             plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()] + [
                 {"volume":k,"price":int(v["price"]),"available":bool(get_stock().get(k,0)),"kind":"unlimited","label_fa":v["label_fa"],"label_en":v["label_en"],"label_ku":v["label_ku"]}
                 for k,v in UNLIMITED_PLANS.items()

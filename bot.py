@@ -60,6 +60,7 @@ TRIAL_DAYS = 1
 TRIAL_VOLUME_MB = 100
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
 TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
+VIP_PLANS = {f"VIP{gb}": {"gb": gb, "price": gb * 7000, "label_fa": f"تانل (VIP) - {gb} گیگ", "label_en": f"Tunnel (VIP) - {gb} GB", "label_ku": f"تانل (VIP) - {gb} گیگ"} for gb in (1, 5, 10, 15, 20, 30, 50)}
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
@@ -1021,7 +1022,8 @@ def clear_user_states(context):
         "waiting_charge_amount", "charge_amount", "admin_waiting_balance_user",
         "admin_balance_user_id", "admin_waiting_balance_amount",
         "pg_waiting_url", "pg_waiting_username", "pg_waiting_password",
-        "pg2_waiting_url", "pg2_waiting_username", "pg2_waiting_password"
+        "pg2_waiting_url", "pg2_waiting_username", "pg2_waiting_password",
+        "pg3_waiting_url", "pg3_waiting_username", "pg3_waiting_password"
     ]
     for key in keys:
         context.user_data.pop(key, None)
@@ -1193,6 +1195,22 @@ def init_db():
     # اتصال پنل اول و تمام منطق قبلی آن بدون تغییر باقی می‌ماند.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS pasarguard_unlimited_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            base_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password_enc TEXT NOT NULL,
+            access_token TEXT,
+            token_expires_at TEXT,
+            enabled INTEGER DEFAULT 1,
+            group_id INTEGER,
+            group_name TEXT,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    # پنل سوم PasarGuard مخصوص سرویس‌های تانل (VIP)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pasarguard_vip_config (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             base_url TEXT NOT NULL,
             username TEXT NOT NULL,
@@ -2041,6 +2059,260 @@ def pg2_create_unlimited_user_sync(order):
     return {"username": username, "subscription_url": sub, "hwid": int(info["hwid"])}
 
 
+_PG3_TOKEN_CACHE = {"token": None, "expires_at": 0.0}
+_PG3_TOKEN_LOCK = threading.Lock()
+
+
+def get_pasarguard_vip_config():
+    conn = get_db()
+    row = conn.execute("SELECT * FROM pasarguard_vip_config WHERE id = 1").fetchone()
+    conn.close()
+    return row
+
+
+def save_pasarguard_vip_config(base_url, username, password, enabled=True):
+    base_url = _pg_normalize_base_url(base_url)
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO pasarguard_vip_config
+            (id,base_url,username,password_enc,access_token,token_expires_at,enabled,updated_at)
+        VALUES (1,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET
+            base_url=excluded.base_url,
+            username=excluded.username,
+            password_enc=excluded.password_enc,
+            access_token=NULL,
+            token_expires_at=NULL,
+            enabled=excluded.enabled,
+            updated_at=excluded.updated_at
+    """, (base_url.rstrip('/'), username, _pg_encrypt_secret(password), None, None, 1 if enabled else 0, now_text()))
+    conn.commit(); conn.close()
+    with _PG3_TOKEN_LOCK:
+        _PG3_TOKEN_CACHE.update(token=None, expires_at=0.0)
+
+
+def set_pasarguard_vip_group(group_id, group_name):
+    conn = get_db()
+    conn.execute("UPDATE pasarguard_vip_config SET group_id=?, group_name=?, updated_at=? WHERE id=1",
+                 (int(group_id), str(group_name), now_text()))
+    conn.commit(); conn.close()
+
+
+def disable_pasarguard_vip():
+    conn = get_db()
+    conn.execute("DELETE FROM pasarguard_vip_config WHERE id=1")
+    conn.commit(); conn.close()
+    with _PG3_TOKEN_LOCK:
+        _PG3_TOKEN_CACHE.update(token=None, expires_at=0.0)
+
+
+def _pg3_login_sync(force=False):
+    cfg = get_pasarguard_vip_config()
+    if not cfg or not cfg["enabled"]:
+        raise RuntimeError("پنل سوم PasarGuard برای تانل VIP متصل نیست.")
+    now = _pg_now_epoch()
+    with _PG3_TOKEN_LOCK:
+        if not force and _PG3_TOKEN_CACHE.get("token") and _PG3_TOKEN_CACHE.get("expires_at", 0) > now + 60:
+            return _PG3_TOKEN_CACHE["token"]
+        token = cfg["access_token"] or ""
+        try:
+            expires = datetime.strptime(cfg["token_expires_at"], "%Y-%m-%d %H:%M:%S").timestamp() if cfg["token_expires_at"] else 0
+        except Exception:
+            expires = 0
+        if not force and token and expires > now + 60:
+            _PG3_TOKEN_CACHE.update(token=token, expires_at=expires)
+            return token
+        password = _pg_decrypt_secret(cfg["password_enc"])
+        if not password:
+            raise RuntimeError("رمز اتصال پنل سوم VIP قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
+        login_form = {"username": cfg["username"], "password": password, "grant_type": "password"}
+        base_url = _pg_normalize_base_url(cfg["base_url"])
+        status, payload = _pg_http(
+            "POST", _pg_url(base_url, "/api/admin/token"),
+            form=login_form,
+            timeout=12,
+        )
+        # Some HTTP virtual-hosts redirect POST requests to HTTPS with a 301/302;
+        # urllib follows that redirect as GET, which produces "405 Method Not Allowed".
+        # Retry the same POST directly over HTTPS and remember HTTPS if it succeeds.
+        if status == 405 and base_url.lower().startswith("http://"):
+            https_base = "https://" + base_url[len("http://"):]
+            https_status, https_payload = _pg_http(
+                "POST", _pg_url(https_base, "/api/admin/token"),
+                form=login_form,
+                timeout=12,
+            )
+            if https_status == 200 and https_payload.get("access_token"):
+                base_url = https_base
+                status, payload = https_status, https_payload
+                conn = get_db()
+                conn.execute("UPDATE pasarguard_vip_config SET base_url=?, updated_at=? WHERE id=1",
+                             (base_url.rstrip("/"), now_text()))
+                conn.commit(); conn.close()
+            else:
+                # Prefer the direct HTTPS response: it usually reveals the actual API/TLS issue.
+                status, payload = https_status, https_payload
+        if status != 200 or not payload.get("access_token"):
+            detail = payload.get("detail") or payload.get("message") or payload.get("error") or "ورود به پنل سوم PasarGuard ناموفق بود."
+            raise RuntimeError(f"HTTP {status}: {str(detail)[:300]}")
+        token = str(payload["access_token"])
+        exp = now + 25 * 60
+        try:
+            parts = token.split(".")
+            if len(parts) == 3:
+                raw = parts[1] + "=" * (-len(parts[1]) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(raw.encode("ascii")).decode("utf-8"))
+                if claims.get("exp"):
+                    exp = float(claims["exp"])
+        except Exception:
+            pass
+        conn = get_db()
+        conn.execute("UPDATE pasarguard_vip_config SET access_token=?, token_expires_at=?, updated_at=? WHERE id=1",
+                     (token, datetime.fromtimestamp(exp).strftime("%Y-%m-%d %H:%M:%S"), now_text()))
+        conn.commit(); conn.close()
+        _PG3_TOKEN_CACHE.update(token=token, expires_at=exp)
+        return token
+
+
+def _pg3_request_sync(method, path, json_body=None, retry=True):
+    cfg = get_pasarguard_vip_config()
+    if not cfg or not cfg["enabled"]:
+        raise RuntimeError("پنل سوم PasarGuard برای تانل VIP متصل نیست.")
+    token = _pg3_login_sync(False)
+    # Login may have detected that the HTTP host redirects POSTs and upgraded
+    # the saved base URL to HTTPS. Reload it before making the API call.
+    cfg = get_pasarguard_vip_config() or cfg
+    status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
+                               headers={"Authorization": f"Bearer {token}"},
+                               json_body=json_body, timeout=15)
+    if status == 405 and _pg_normalize_base_url(cfg["base_url"]).lower().startswith("http://"):
+        https_base = "https://" + _pg_normalize_base_url(cfg["base_url"])[len("http://"):]
+        https_status, https_payload = _pg_http(method, _pg_url(https_base, path),
+                                               headers={"Authorization": f"Bearer {token}"},
+                                               json_body=json_body, timeout=15)
+        if 200 <= https_status < 300:
+            conn = get_db()
+            conn.execute("UPDATE pasarguard_vip_config SET base_url=?, updated_at=? WHERE id=1",
+                         (https_base.rstrip("/"), now_text()))
+            conn.commit(); conn.close()
+            status, payload = https_status, https_payload
+        else:
+            status, payload = https_status, https_payload
+    if status == 401 and retry:
+        token = _pg3_login_sync(True)
+        status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
+                                   headers={"Authorization": f"Bearer {token}"},
+                                   json_body=json_body, timeout=15)
+    if status < 200 or status >= 300:
+        detail = payload.get("detail") or payload.get("message") or payload.get("error") or str(payload)
+        raise RuntimeError(f"PasarGuard API {status}: {str(detail)[:350]}")
+    return payload
+
+
+def pg3_get_groups_sync():
+    """Fetch groups from the second PasarGuard panel for VIP tunnel plans."""
+    try:
+        payload = _pg3_request_sync("GET", "/api/groups")
+    except Exception as first:
+        try:
+            payload = _pg3_request_sync("GET", "/api/groups/simple")
+        except Exception:
+            raise first
+    groups = _pg_extract_list(payload, "groups")
+    result = []
+    for group in groups:
+        if not isinstance(group, dict) or group.get("id") is None:
+            continue
+        if group.get("is_disabled") or group.get("disabled"):
+            continue
+        try:
+            group_id = int(group["id"])
+        except (TypeError, ValueError):
+            continue
+        name = str(group.get("name") or group.get("label") or f"Group {group_id}")
+        result.append({"id": group_id, "name": name})
+    return result
+
+
+def test_pasarguard_vip_sync():
+    _pg3_login_sync(True)
+    try:
+        _pg3_request_sync("GET", "/api/groups")
+    except Exception:
+        # Authentication itself is enough to prove the credentials work on
+        # installations where the account is not allowed to list groups.
+        pass
+    return True
+
+
+def pg3_create_vip_user_sync(order):
+    """Create a volume-limited VIP tunnel user in the third PasarGuard panel."""
+    cfg = get_pasarguard_vip_config()
+    if not cfg or not cfg["enabled"]:
+        raise RuntimeError("پنل سوم PasarGuard برای تانل VIP متصل نیست.")
+    volume_key = str(order["volume"] or "").upper()
+    plan = VIP_PLANS.get(volume_key)
+    if not plan:
+        raise RuntimeError("پلن تانل VIP نامعتبر است.")
+    group_id = cfg["group_id"] if "group_id" in cfg.keys() else None
+    if not group_id:
+        raise RuntimeError("ابتدا گروه ساخت سرویس پنل سوم VIP را از بخش مدیریت انتخاب کن.")
+    username = f"hz_vip_{order['user_id']}_{order['id']}_{hashlib.sha1(os.urandom(8)).hexdigest()[:6]}"
+    expire = (datetime.now(timezone.utc) + timedelta(days=SERVICE_DAYS)).replace(microsecond=0).isoformat()
+    payload = {
+        "username": username,
+        "group_ids": [int(group_id)],
+        "proxy_settings": {},
+        "expire": expire,
+        "data_limit": int(plan["gb"]) * (1024 ** 3),
+        "data_limit_reset_strategy": "no_reset",
+        "status": "active",
+        "note": f"HanzuVPN Tunnel VIP {plan['gb']}GB | order #{order['id']}",
+    }
+    created = _pg3_request_sync("POST", "/api/user", payload)
+    sub = _pg_find_value(created, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+    panel_user_id = _pg_find_value(created, ["id", "user_id", "userId"])
+    if not sub and panel_user_id is not None:
+        try:
+            got = _pg3_request_sync("GET", f"/api/user/by-id/{int(panel_user_id)}")
+            sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+        except Exception:
+            pass
+    if not sub:
+        for path in [f"/api/user/by-username/{quote(username, safe='')}", f"/api/user/{quote(username, safe='')}"]:
+            try:
+                got = _pg3_request_sync("GET", path)
+                sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+                if sub:
+                    break
+            except Exception:
+                continue
+    if not sub:
+        raise RuntimeError("کاربر تانل VIP در پنل سوم ساخته شد اما Subscription URL دریافت نشد.")
+    sub = _pg_absolute_subscription_url(sub, cfg["base_url"])
+    if not sub.startswith(("http://", "https://")):
+        raise RuntimeError("آدرس Subscription پنل سوم کامل نیست؛ آدرس پایه پنل را بررسی کنید.")
+    return {"username": username, "subscription_url": sub, "gb": int(plan["gb"])}
+
+
+def pasarguard_vip_status_text():
+    cfg = get_pasarguard_vip_config()
+    if not cfg or not cfg["enabled"]:
+        return "🌐 پنل سوم تانل VIP\n\n❌ متصل نیست."
+    try:
+        test_pasarguard_vip_sync()
+        state = "🟢 اتصال سالم"
+    except Exception as exc:
+        state = f"🔴 خطا: {str(exc)[:180]}"
+    group_name = cfg["group_name"] if "group_name" in cfg.keys() else None
+    group_id = cfg["group_id"] if "group_id" in cfg.keys() else None
+    group_text = f"{group_name} (ID {group_id})" if group_id else "❌ انتخاب نشده"
+    return (f"🌐 پنل سوم سرویس‌های تانل VIP\n\n{state}\n"
+            f"🌐 {cfg['base_url']}\n👤 {cfg['username']}\n"
+            f"📦 گروه ساخت سرویس: {group_text}\n\n"
+            "این پنل فقط برای خریدهای تانل (VIP) استفاده می‌شود.")
+
+
 def pasarguard_unlimited_status_text():
     cfg = get_pasarguard_unlimited_config()
     if not cfg or not cfg["enabled"]:
@@ -2482,6 +2754,16 @@ async def set_bot_commands(application):
 def is_unlimited_volume(volume):
     return str(volume).upper() in UNLIMITED_PLANS
 
+def is_vip_volume(volume):
+    return str(volume or "").strip().upper() in VIP_PLANS
+
+def vip_display(volume, lang="fa"):
+    plan = VIP_PLANS.get(str(volume or "").strip().upper())
+    if not plan:
+        return str(volume)
+    key = "label_en" if lang == "en" else ("label_ku" if lang == "ku" else "label_fa")
+    return "🌐 " + plan[key]
+
 def unlimited_plan_info(volume, lang="fa"):
     plan = UNLIMITED_PLANS.get(str(volume).upper())
     if not plan:
@@ -2498,6 +2780,8 @@ def plan_price(volume):
     key = str(volume).strip().upper()
     if key in UNLIMITED_PLANS:
         return int(UNLIMITED_PLANS[key]["price"])
+    if key in VIP_PLANS:
+        return int(VIP_PLANS[key]["price"])
     normalized = _normalize_volume(key) if "_normalize_volume" in globals() else None
     if normalized and normalized in TARIFF_PLANS:
         return int(TARIFF_PLANS[normalized])
@@ -2540,6 +2824,7 @@ def buy_period_keyboard(user_id):
     return InlineKeyboardMarkup([
         [styled_inline_button(period_text, callback_data="buy_monthly")],
         [styled_inline_button(unlimited_text, callback_data="unlimited")],
+        [styled_inline_button("🌐 تانل (VIP)", callback_data="vip_tunnel")],
         [styled_inline_button(t(lang, "back"), callback_data="home")],
     ])
 
@@ -2622,7 +2907,9 @@ async def show_payment(query, volume, price, original_price=None, coupon_code=No
     if original_price is None:
         original_price = price
 
-    if is_unlimited_volume(volume):
+    if is_vip_volume(volume):
+        caption = f"{vip_display(volume, lang)}\n💰 {price:,} {'Toman' if lang == 'en' else 'تومان'}\n⏳ {'30 days' if lang == 'en' else '۳۰ روز'}"
+    elif is_unlimited_volume(volume):
         if lang == "en":
             caption = f"♾️ Unlimited Service\n\n👤 Plan: {unlimited_display(volume, lang)}\n💰 Price: {price:,} Toman\n⏳ 30 days\n"
         elif lang == "ku":
@@ -2652,7 +2939,9 @@ async def show_card_payment(query, volume, original_price, coupon_code=None, fin
         else:
             coupon_code = None
 
-    if is_unlimited_volume(volume):
+    if is_vip_volume(volume):
+        caption = f"{vip_display(volume, lang)}\n💰 {price:,} {'Toman' if lang == 'en' else 'تومان'}\n⏳ {'30 days' if lang == 'en' else '۳۰ روز'}"
+    elif is_unlimited_volume(volume):
         if lang == "en":
             caption = f"♾️ Unlimited Service\n\n👤 Plan: {unlimited_display(volume, lang)}\n💰 Price: {price:,} Toman\n⏳ 30 days\n"
         elif lang == "ku":
@@ -2960,8 +3249,12 @@ async def approve_order_with_source(order_id):
         # از پنل اول جدا می‌کنیم. اگر پنل دوم متصل نباشد، منطق قبلی V9
         # بدون تغییر ادامه پیدا می‌کند.
         unlimited_cfg = get_pasarguard_unlimited_config()
+        vip_cfg = get_pasarguard_vip_config()
+        use_pg3 = bool(is_vip_volume(order["volume"]) and vip_cfg and vip_cfg["enabled"])
         use_pg2 = bool(is_unlimited_volume(order["volume"]) and unlimited_cfg and unlimited_cfg["enabled"])
-        if mode == "manual" and not use_pg2:
+        if is_vip_volume(order["volume"]) and not use_pg3:
+            return {"status": "pg_error", "order": order, "error": "پنل سوم تانل VIP هنوز متصل یا فعال نشده است."}
+        if mode == "manual" and not use_pg2 and not use_pg3:
             return await asyncio.to_thread(approve_order, order_id)
         if not order:
             return {"status": "not_found"}
@@ -2969,16 +3262,16 @@ async def approve_order_with_source(order_id):
             return {"status": "already_processed", "order": order}
         try:
             provision = await asyncio.to_thread(
-                pg2_create_unlimited_user_sync if use_pg2 else pg_create_order_service_sync,
+                pg3_create_vip_user_sync if use_pg3 else (pg2_create_unlimited_user_sync if use_pg2 else pg_create_order_service_sync),
                 order
             )
         except Exception as exc:
-            if mode == "fallback" and not use_pg2:
+            if mode == "fallback" and not use_pg2 and not use_pg3:
                 return await asyncio.to_thread(approve_order, order_id)
             return {"status": "pg_error", "order": order, "error": str(exc)}
 
         # Final safety net: never save or send a relative /sub/... path.
-        link_base_cfg = unlimited_cfg if use_pg2 else get_pasarguard_config()
+        link_base_cfg = vip_cfg if use_pg3 else (unlimited_cfg if use_pg2 else get_pasarguard_config())
         link_base_url = link_base_cfg["base_url"] if link_base_cfg else ""
         link = _pg_absolute_subscription_url(provision.get("subscription_url"), link_base_url)
         if not link.startswith(("http://", "https://")):
@@ -3619,6 +3912,8 @@ async def show_admin(query):
         [styled_inline_button("📡 وضعیت / گروه پنل", callback_data="pg_status")],
         [styled_inline_button("♾️ اتصال پنل دوم نامحدود", callback_data="pg2_connect")],
         [styled_inline_button("📡 وضعیت پنل دوم نامحدود", callback_data="pg2_status")],
+        [styled_inline_button("🌐 اتصال پنل سوم تانل VIP", callback_data="pg3_connect")],
+        [styled_inline_button("📡 وضعیت پنل سوم VIP", callback_data="pg3_status")],
         [styled_inline_button("🎨 استایل دکمه‌ها", callback_data="admin_button_style")],
         [styled_inline_button(t(lang, "back"), callback_data="home")],
     ]
@@ -3912,6 +4207,42 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await show_unlimited_services(query)
         return
 
+    if data == "vip_tunnel":
+        lang = get_user_language(user_id) or "fa"
+        title = "🌐 تانل (VIP)\n\nهر گیگ ۷٬۰۰۰ تومان — اعتبار ۳۰ روزه\nحجم موردنظر را انتخاب کن:"
+        if lang == "en":
+            title = "🌐 Tunnel (VIP)\n\n7,000 Toman per GB — valid for 30 days\nChoose volume:"
+        keyboard = []
+        for key, plan in VIP_PLANS.items():
+            gb = plan["gb"]
+            price = plan["price"]
+            label = f"{gb} GB | {price:,} Toman" if lang == "en" else f"{gb} گیگ | {price:,} تومان"
+            keyboard.append([styled_inline_button(label, callback_data=f"vipplan_{gb}")])
+        keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy")])
+        await rich_edit(query, title, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("vipplan_"):
+        try:
+            gb = int(data.rsplit("_", 1)[1])
+            volume = f"VIP{gb}"
+            plan = VIP_PLANS[volume]
+        except Exception:
+            await query.answer("پلن VIP نامعتبر است.", show_alert=True)
+            return
+        coupon_code = context.user_data.get("coupon_code")
+        price = int(plan["price"])
+        original_price = price
+        if coupon_code:
+            result = apply_coupon(coupon_code, user_id, price)
+            if result["status"] == "success":
+                price = int(result["price"])
+            else:
+                context.user_data.pop("coupon_code", None)
+                coupon_code = None
+        await show_payment(query, volume, price, original_price, coupon_code)
+        return
+
     if data.startswith("unlimited_plan_"):
         plan_number = data.split("_")[-1]
         volume = f"UNLIMITED_{plan_number}"
@@ -3958,6 +4289,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         original_price = None
         if is_unlimited_volume(volume):
             original_price = UNLIMITED_PLANS[volume]["price"]
+        elif is_vip_volume(volume):
+            original_price = VIP_PLANS[volume]["price"]
         elif volume in PLANS:
             original_price = PLANS[volume]
         else:
@@ -3983,7 +4316,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data.startswith("paymentback_"):
         volume = data.split("_", 1)[1]
-        original_price = (UNLIMITED_PLANS[volume]["price"] if is_unlimited_volume(volume) else (PLANS.get(volume) or context.user_data.get("custom_price")))
+        original_price = (UNLIMITED_PLANS[volume]["price"] if is_unlimited_volume(volume) else (VIP_PLANS[volume]["price"] if is_vip_volume(volume) else (PLANS.get(volume) or context.user_data.get("custom_price"))))
         if not original_price:
             await show_buy_menu(query)
             return
@@ -4006,7 +4339,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         volume = data[len("paid_"):]
-        if not is_unlimited_volume(volume):
+        if not is_unlimited_volume(volume) and not is_vip_volume(volume):
             volume = parts[1]
 
         # ---------- حالت شارژ کیف پول ----------
@@ -4026,6 +4359,8 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         # ---------- حالت خرید سرویس ----------
         if is_unlimited_volume(volume):
             base_price = UNLIMITED_PLANS[volume]["price"]
+        elif is_vip_volume(volume):
+            base_price = VIP_PLANS[volume]["price"]
         elif volume in PLANS:
             base_price = PLANS[volume]
         else:
@@ -4065,7 +4400,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.pop("pending_payment_original_price", None)
         context.user_data["last_order_id"] = order_id
 
-        if is_unlimited_volume(volume):
+        if is_vip_volume(volume):
+            await rich_edit(query, f"🌐 {vip_display(volume, lang)}\n\n🧾 #{order_id}\n💰 {price:,} تومان\n\n📸 لطفاً تصویر رسید را ارسال کنید.")
+        elif is_unlimited_volume(volume):
             title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
             receipt = (
                 "📸 Send the receipt." if lang == "en"
@@ -4135,7 +4472,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         result = await approve_order_with_source(order_id)
 
         if result["status"] == "approved":
-            if is_unlimited_volume(volume):
+            if is_vip_volume(volume):
+                await rich_edit(query, t(lang, "paid_from_wallet", price=price, balance=get_balance(user_id)) +
+                    f"\n\n{vip_display(volume, lang)}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}")
+            elif is_unlimited_volume(volume):
                 title = "♾️ Unlimited Service" if lang == "en" else ("♾️ خزمەتگوزاری بێ سنوور" if lang == "ku" else "♾️ سرویس نامحدود")
                 plan_text = unlimited_display(volume, lang).replace("♾️ ", "")
                 await rich_edit(query, 
@@ -4645,7 +4985,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["pg2_waiting_url"] = True
         context.user_data.pop("pg2_waiting_username", None)
         context.user_data.pop("pg2_waiting_password", None)
-        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل PasarGuard دوم را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
         return
 
     if data == "pg2_status":
@@ -4702,6 +5042,73 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         clear_user_states(context)
         await rich_edit(query, "🗑 اتصال پنل دوم نامحدود قطع شد.\n\nمنطق پنل اول و سرویس‌های دستی قبلی بدون تغییر باقی می‌مانند.", reply_markup=InlineKeyboardMarkup([
             [styled_inline_button("♾️ اتصال دوباره پنل دوم", callback_data="pg2_connect")],
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
+        ]))
+        return
+
+    if data == "pg3_connect":
+        if user_id != ADMIN_ID:
+            return
+        context.user_data["pg3_waiting_url"] = True
+        context.user_data.pop("pg3_waiting_username", None)
+        context.user_data.pop("pg3_waiting_password", None)
+        await rich_edit(query, "♾️ اتصال پنل سوم تانل VIP\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        return
+
+    if data == "pg3_status":
+        if user_id != ADMIN_ID:
+            return
+        text = await asyncio.to_thread(pasarguard_vip_status_text)
+        kb = [
+            [styled_inline_button("📦 انتخاب گروه پنل سوم VIP", callback_data="pg3_groups")],
+            [styled_inline_button("🔌 اتصال / تغییر پنل سوم VIP", callback_data="pg3_connect")],
+            [styled_inline_button("🗑 قطع اتصال پنل سوم VIP", callback_data="pg3_disconnect")],
+            [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
+        ]
+        await rich_edit(query, text, reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if data == "pg3_groups":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            groups = await asyncio.to_thread(pg3_get_groups_sync)
+            if not groups:
+                raise RuntimeError("پنل سوم تانل VIP هیچ گروه قابل انتخابی برنگرداند؛ دسترسی کاربر پنل را بررسی کن.")
+            cfg = get_pasarguard_vip_config()
+            selected_group_id = cfg["group_id"] if cfg and "group_id" in cfg.keys() else None
+            keyboard = []
+            for group in groups[:50]:
+                mark = "✅ " if selected_group_id == group["id"] else ""
+                keyboard.append([styled_inline_button(f"{mark}{group['name']} | ID {group['id']}", callback_data=f"pg3_group_{group['id']}")])
+            keyboard.append([styled_inline_button("🔙 وضعیت پنل سوم VIP", callback_data="pg3_status")])
+            await rich_edit(query, "📦 گروه‌های پنل سوم PasarGuard\n\nگروهی را انتخاب کن که سرویس‌های تانل VIP در آن ساخته شوند:", reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
+        return
+
+    if data.startswith("pg3_group_"):
+        if user_id != ADMIN_ID:
+            return
+        try:
+            group_id = int(data.rsplit("_", 1)[1])
+            groups = await asyncio.to_thread(pg3_get_groups_sync)
+            group = next((g for g in groups if g["id"] == group_id), None)
+            if not group:
+                raise RuntimeError("گروه پیدا نشد یا دیگر در پنل وجود ندارد.")
+            set_pasarguard_vip_group(group_id, group["name"])
+            await rich_edit(query, f"✅ گروه پنل سوم VIP انتخاب شد.\n\n📦 {group['name']}\n🆔 {group_id}\n\nاز این به بعد فقط سرویس‌های تانل VIP در این گروه ساخته می‌شوند.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل سوم VIP", callback_data="pg3_status")], [styled_inline_button("📦 تغییر گروه", callback_data="pg3_groups")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
+        except Exception as exc:
+            await query.answer(str(exc)[:190], show_alert=True)
+        return
+
+    if data == "pg3_disconnect":
+        if user_id != ADMIN_ID:
+            return
+        disable_pasarguard_vip()
+        clear_user_states(context)
+        await rich_edit(query, "🗑 اتصال پنل سوم تانل VIP قطع شد.\n\nمنطق پنل اول و سرویس‌های دستی قبلی بدون تغییر باقی می‌مانند.", reply_markup=InlineKeyboardMarkup([
+            [styled_inline_button("🌐 اتصال دوباره پنل سوم VIP", callback_data="pg3_connect")],
             [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
         ]))
         return
@@ -4904,7 +5311,9 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                 await rich_edit(query, f"✅ شارژ کیف پول #{order_id} تأیید شد.\n💰 {order['price']:,} تومان")
             return
 
-        if is_unlimited_volume(order["volume"]):
+        if is_vip_volume(order["volume"]):
+            confirmation_text = f"✅ پرداخت تأیید شد.\n\n{vip_display(order['volume'], recipient_lang)}\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
+        elif is_unlimited_volume(order["volume"]):
             plan_text = unlimited_display(order["volume"], recipient_lang).replace("♾️ ", "")
             if recipient_lang == "en":
                 confirmation_text = f"✅ Payment approved.\n\n♾️ Unlimited Service\n👤 {plan_text}\n📅 {result['expires_at']}\n🧾 #{order_id}\n\n🔗 {result['link']}"
@@ -5074,6 +5483,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [styled_inline_button("📡 وضعیت / گروه پنل", callback_data="pg_status")],
                 [styled_inline_button("♾️ اتصال پنل دوم نامحدود", callback_data="pg2_connect")],
                 [styled_inline_button("📡 وضعیت پنل دوم نامحدود", callback_data="pg2_status")],
+                [styled_inline_button("🌐 اتصال پنل سوم تانل VIP", callback_data="pg3_connect")],
+                [styled_inline_button("📡 وضعیت پنل سوم VIP", callback_data="pg3_status")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
             ]
             await rich_reply_text(update.message, "⚙️ پنل مدیریت", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -5123,6 +5534,56 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await rich_reply_text(
                 update.message,
                 "❌ اتصال پنل دوم نامحدود ناموفق بود.\n\n"
+                f"🌐 آدرس ثبت‌شده: {base_url}\n"
+                f"🧪 خطای واقعی: {safe_detail}\n\n"
+                "اگر خطا از اتصال HTTP باشد، این پیام مشخص می‌کند مشکل از تغییر مسیر، دسترسی شبکه یا پاسخ API است."
+            )
+        return
+
+    # اتصال پنل سوم PasarGuard - فقط برای سرویس‌های تانل VIP
+    if user.id == ADMIN_ID and context.user_data.get("pg3_waiting_url"):
+        base_url = _pg_normalize_base_url(text)
+        if not base_url:
+            await rich_reply_text(update.message, "❌ آدرس پنل خالی است. آدرس را مثل http://panel.zirava.ir ارسال کن.")
+            return
+        context.user_data["pg3_waiting_url"] = False
+        context.user_data["pg3_waiting_username"] = True
+        context.user_data["pg3_base_url"] = base_url
+        await rich_reply_text(update.message, "👤 نام کاربری مدیر پنل سوم PasarGuard را ارسال کن.")
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg3_waiting_username"):
+        context.user_data["pg3_waiting_username"] = False
+        context.user_data["pg3_waiting_password"] = True
+        context.user_data["pg3_username"] = text.strip()
+        await rich_reply_text(update.message, "🔐 رمز عبور پنل سوم PasarGuard را ارسال کن.\n\nپیام رمز بعد از دریافت حذف می‌شود.")
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg3_waiting_password"):
+        password = text.strip()
+        base_url = context.user_data.pop("pg3_base_url", "")
+        username = context.user_data.pop("pg3_username", "")
+        context.user_data["pg3_waiting_password"] = False
+        try:
+            save_pasarguard_vip_config(base_url, username, password, enabled=True)
+            try:
+                await context.bot.delete_message(chat_id=user.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            await asyncio.to_thread(test_pasarguard_vip_sync)
+            await rich_reply_text(update.message, "✅ پنل سوم تانل VIP با موفقیت متصل شد.\n\n📦 حالا گروه ساخت سرویس را از دکمه «انتخاب گروه پنل سوم VIP» انتخاب کن.\n\n♾️ فقط سرویس‌های تانل VIP از این پنل ساخته می‌شوند؛ سرویس‌های حجمی و منطق پنل اول تغییر نمی‌کنند.", reply_markup=InlineKeyboardMarkup([
+                [styled_inline_button("📦 انتخاب گروه پنل سوم VIP", callback_data="pg3_groups")],
+                [styled_inline_button("📡 وضعیت پنل سوم VIP", callback_data="pg3_status")],
+                [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")],
+            ]))
+        except Exception as exc:
+            # Keep the entered configuration so the real API/network error can be diagnosed.
+            error_detail = f"{type(exc).__name__}: {exc}"
+            print(f"PasarGuard VIP connect error: {error_detail}")
+            safe_detail = error_detail[:700]
+            await rich_reply_text(
+                update.message,
+                "❌ اتصال پنل سوم تانل VIP ناموفق بود.\n\n"
                 f"🌐 آدرس ثبت‌شده: {base_url}\n"
                 f"🧪 خطای واقعی: {safe_detail}\n\n"
                 "اگر خطا از اتصال HTTP باشد، این پیام مشخص می‌کند مشکل از تغییر مسیر، دسترسی شبکه یا پاسخ API است."
@@ -5593,14 +6054,72 @@ def _json_bytes(obj):
     return json.dumps(obj, ensure_ascii=False).encode("utf-8")
 
 
+def _api_purchase_vip_wallet(user, volume, price):
+    """Wallet purchase for VIP: create a tracked order, provision on panel 3, then confirm."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT balance FROM users WHERE user_id=?", (user.id,)).fetchone()
+        if not row:
+            conn.rollback()
+            return {"status": "error", "error": "user_not_found"}
+        balance = int(row["balance"] or 0)
+        if balance < int(price):
+            conn.rollback()
+            return {"status": "insufficient_balance", "balance": balance}
+        now = datetime.now()
+        expires = now + timedelta(days=SERVICE_DAYS)
+        cur = conn.execute("UPDATE users SET balance=balance-? WHERE user_id=? AND COALESCE(balance,0)>=?", (int(price), user.id, int(price)))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"status": "insufficient_balance", "balance": balance}
+        oid = conn.execute("""INSERT INTO orders
+            (user_id, username, first_name, volume, price, status, created_at, is_charge, approved_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, 0, NULL, NULL)""",
+            (user.id, user.username or "", user.first_name or "", volume, int(price), now_text())).lastrowid
+        tx = conn.execute("INSERT INTO wallet_transactions (user_id,amount,type,description,order_id,created_at) VALUES (?,?,?,?,?,?)",
+            (user.id, -int(price), "purchase", f"خرید تانل VIP {VIP_PLANS[volume]['gb']} گیگ", oid, now_text()))
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        return {"status": "error", "error": str(exc)}
+    finally:
+        conn.close()
+    try:
+        provision = pg3_create_vip_user_sync({"id": oid, "user_id": user.id, "volume": volume})
+        cfg = get_pasarguard_vip_config()
+        link = _pg_absolute_subscription_url(provision.get("subscription_url"), cfg["base_url"] if cfg else "")
+        if not link.startswith(("http://", "https://")):
+            raise RuntimeError("لینک اشتراک پنل سوم معتبر نیست.")
+        conn = get_db()
+        try:
+            conn.execute("UPDATE orders SET status='approved', approved_at=?, expires_at=?, pg_username=?, pg_subscription_url=? WHERE id=? AND status='pending'",
+                (now_text(), expires.strftime("%Y-%m-%d %H:%M:%S"), provision["username"], link, oid))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"status":"approved","order_id":oid,"volume":volume,"price":int(price),"balance":balance-int(price),"link":link,"expires_at":expires.strftime("%Y-%m-%d %H:%M:%S")}
+    except Exception as exc:
+        change_balance(user.id, int(price), "refund", f"برگشت وجه تانل VIP به دلیل خطای پنل - سفارش #{oid}", oid)
+        conn = get_db()
+        try:
+            conn.execute("UPDATE orders SET status='rejected' WHERE id=? AND status='pending'", (oid,))
+            conn.commit()
+        finally:
+            conn.close()
+        return {"status":"error","error":str(exc)}
+
+
 def _api_purchase_wallet(user, volume, price):
     # خرید کیف پول کاملاً اتمیک است: یا همه مراحل انجام می‌شوند یا هیچ‌کدام.
     # volume به شکل عددی نرمال می‌شود تا موجودی‌هایی مثل «10»، «10GB» یا «10 گیگ»
     # هم قابل تطبیق باشند.
     raw_volume = str(volume).strip()
-    normalized_volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
+    normalized_volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS or raw_volume.upper() in VIP_PLANS else _normalize_volume(raw_volume)
     if not normalized_volume:
         return {"status":"invalid_volume"}
+    if normalized_volume in VIP_PLANS:
+        return _api_purchase_vip_wallet(user, normalized_volume, price)
 
     for attempt in range(3):
         conn = get_db()
@@ -5721,6 +6240,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             plans=[{"volume":v,"price":p,"available":bool(get_stock().get(v,0))} for v,p in TARIFF_PLANS.items()] + [
                 {"volume":k,"price":int(v["price"]),"available":bool(get_stock().get(k,0)),"kind":"unlimited","label_fa":v["label_fa"],"label_en":v["label_en"],"label_ku":v["label_ku"]}
                 for k,v in UNLIMITED_PLANS.items()
+            ] + [
+                {"volume":k,"price":int(v["price"]),"available":True,"kind":"vip","label_fa":v["label_fa"],"label_en":v["label_en"],"label_ku":v["label_ku"],"gb":v["gb"]}
+                for k,v in VIP_PLANS.items()
             ]
             conn=get_db()
             try:
@@ -5750,7 +6272,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     conn.rollback(); return self._send(500,{"ok":False,"error":str(e)})
                 finally: conn.close()
             raw_volume = str(payload.get("volume", "")).strip()
-            volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
+            volume = raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS or raw_volume.upper() in VIP_PLANS else _normalize_volume(raw_volume)
             if not volume:
                 return self._send(400,{"ok":False,"error":"invalid_volume"})
             price = plan_price(volume)
@@ -5793,7 +6315,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return self._send(200 if tg.get("ok") else 500,{"ok":bool(tg.get("ok")),"order_id":oid})
         if path=="/api/buy-receipt":
             raw_volume=str(payload.get("volume", "")).strip()
-            volume=raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS else _normalize_volume(raw_volume)
+            volume=raw_volume.upper() if raw_volume.upper() in UNLIMITED_PLANS or raw_volume.upper() in VIP_PLANS else _normalize_volume(raw_volume)
             price=plan_price(volume) if volume else 0
             img=payload.get("image","")
             if not volume or price <= 0 or not img: return self._send(400,{"ok":False,"error":"invalid_purchase_receipt"})

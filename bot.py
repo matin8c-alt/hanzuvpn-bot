@@ -60,7 +60,7 @@ TRIAL_DAYS = 1
 TRIAL_VOLUME_MB = 100
 MIN_CHARGE = 10000  # حداقل مبلغ شارژ کیف پول
 TARIFF_PLANS = {"1": 3500, "10": 35000, "15": 52500, "20": 70000, "30": 105000, "40": 140000, "50": 175000, "100": 350000}
-VIP_PLANS = {f"VIP{gb}": {"gb": gb, "price": gb * 7000, "label_fa": f"تانل (VIP) - {gb} گیگ", "label_en": f"Tunnel (VIP) - {gb} GB", "label_ku": f"تانل (VIP) - {gb} گیگ"} for gb in (1, 5, 10, 15, 20, 30, 50)}
+VIP_PLANS = {f"VIP{gb}": {"gb": gb, "price": gb * 7000, "label_fa": f"تانل (VIP) - {gb} گیگ", "label_en": f"Tunnel (VIP) - {gb} GB", "label_ku": f"تانڵ (VIP) - {gb} گیگ"} for gb in (1, 5, 10, 15, 20, 30, 50)}
 MINI_APP_URL = "https://hanzuvpn-app2.matin8c.workers.dev"
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8080")))
@@ -398,7 +398,10 @@ TEXTS["ku"].update({
     "dash_new_service": "🛒 کڕینی خزمەتگوزاری نوێ",
     "dash_back": "گەڕانەوە بۆ لیستی سەرەکی",
 })
+TEXTS["fa"].update({"vip_tunnel": "🌐 تانل (VIP)"})
+TEXTS["ku"].update({"vip_tunnel": "🌐 تانڵ (VIP)"})
 TEXTS["en"].update({
+    "vip_tunnel": "🌐 Tunnel (VIP)",
     "panel": "Dashboard",
     "panel_btn": "📊 Dashboard",
     "dash_title": "📊 User Dashboard\n\n👋 Hello {name}\n\n💰 Balance: {balance:,} Toman\n📦 Active services: {count}\n\nChoose an option below:",
@@ -448,6 +451,7 @@ BUTTON_COLOR_TARGETS = {
     "wallet_history": "📜 تاریخچه کیف پول",
     "buy_monthly": "📅 خرید ماهانه",
     "unlimited": "♾️ سرویس نامحدود",
+    "vip_tunnel": "🌐 تانل (VIP)",
     "custom": "⚙️ سرویس سفارشی",
     "coupon": "🎟️ کد تخفیف",
     "new_ticket": "🎫 تیکت جدید",
@@ -477,6 +481,7 @@ BUTTON_COLOR_PATTERNS = {
     "paymentback_*": "↩️ بازگشت پرداخت",
     "delete_*": "🗑 حذف مورد",
     "renewminus_*": "➖ کاهش حجم تمدید",
+    "vipplan_*": "🌐 پلن‌های تانل VIP",
 }
 
 def get_button_style():
@@ -2824,7 +2829,7 @@ def buy_period_keyboard(user_id):
     return InlineKeyboardMarkup([
         [styled_inline_button(period_text, callback_data="buy_monthly")],
         [styled_inline_button(unlimited_text, callback_data="unlimited")],
-        [styled_inline_button("🌐 تانل (VIP)", callback_data="vip_tunnel")],
+        [styled_inline_button(t(lang, "vip_tunnel"), callback_data="vip_tunnel")],
         [styled_inline_button(t(lang, "back"), callback_data="home")],
     ])
 
@@ -4209,14 +4214,22 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data == "vip_tunnel":
         lang = get_user_language(user_id) or "fa"
-        title = "🌐 تانل (VIP)\n\nهر گیگ ۷٬۰۰۰ تومان — اعتبار ۳۰ روزه\nحجم موردنظر را انتخاب کن:"
         if lang == "en":
-            title = "🌐 Tunnel (VIP)\n\n7,000 Toman per GB — valid for 30 days\nChoose volume:"
+            title = "🌐 Tunnel (VIP)\n\n7,000 Toman per GB — valid for 30 days\nChoose a volume:"
+        elif lang == "ku":
+            title = "🌐 تانڵ (VIP)\n\nنرخی هەر گیگ ٧,٠٠٠ تومان — ماوەی بەکارهێنان ٣٠ ڕۆژ\nقەبارەی دڵخوازت هەڵبژێرە:"
+        else:
+            title = "🌐 تانل (VIP)\n\nهر گیگ ۷٬۰۰۰ تومان — اعتبار ۳۰ روزه\nحجم موردنظر را انتخاب کن:"
         keyboard = []
         for key, plan in VIP_PLANS.items():
             gb = plan["gb"]
             price = plan["price"]
-            label = f"{gb} GB | {price:,} Toman" if lang == "en" else f"{gb} گیگ | {price:,} تومان"
+            if lang == "en":
+                label = f"{gb} GB | {price:,} Toman"
+            elif lang == "ku":
+                label = f"{gb} گیگ | {price:,} تومان"
+            else:
+                label = f"{gb} گیگ | {price:,} تومان"
             keyboard.append([styled_inline_button(label, callback_data=f"vipplan_{gb}")])
         keyboard.append([styled_inline_button(t(lang, "back"), callback_data="buy")])
         await rich_edit(query, title, reply_markup=InlineKeyboardMarkup(keyboard))

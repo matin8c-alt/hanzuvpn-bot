@@ -1100,6 +1100,19 @@ def init_db():
         )
     """)
 
+    # هر کاربر می‌تواند از هر کدام از سه سرویس، جداگانه یک تست رایگان بگیرد.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS free_trial_claims (
+            user_id INTEGER NOT NULL,
+            service_key TEXT NOT NULL,
+            claimed_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            pg_username TEXT,
+            pg_subscription_url TEXT,
+            PRIMARY KEY (user_id, service_key)
+        )
+    """)
+
     # اطلاعات تست‌های ساخته‌شده در PasarGuard (در صورت فعال بودن پنل)
     for col, default in [
         ("pg_username", "TEXT"),
@@ -3182,6 +3195,94 @@ def claim_trial(user):
         conn.close()
 
 
+def claim_service_trial(user, service_key):
+    """One 100MB/1-day trial per user for each of the three separate panels."""
+    if service_key not in ("volume", "vip", "unlimited"):
+        raise RuntimeError("سرویس تست نامعتبر است.")
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        old = conn.execute("SELECT 1 FROM free_trial_claims WHERE user_id=? AND service_key=?",
+                           (user.id, service_key)).fetchone()
+        # Historical trials from the old schema count as a volume trial.
+        if service_key == "volume" and not old:
+            old = conn.execute("SELECT 1 FROM free_trial_users WHERE user_id=?", (user.id,)).fetchone()
+        if old:
+            conn.rollback()
+            return {"status": "already"}
+        conn.commit()
+    finally:
+        conn.close()
+
+    username = f"hztrial_{service_key}_{user.id}_{hashlib.sha1(os.urandom(8)).hexdigest()[:8]}"
+    group_id = None
+    if service_key == "volume":
+        result = pg_create_trial_service_sync(user.id)
+        username, link = result["username"], result["link"]
+    else:
+        cfg = get_pasarguard_vip_config() if service_key == "vip" else get_pasarguard_unlimited_config()
+        if not cfg or not cfg["enabled"]:
+            raise RuntimeError("پنل این سرویس فعال نیست؛ ابتدا اتصال پنل را در مدیریت بررسی کن.")
+        group_id = cfg["group_id"] if "group_id" in cfg.keys() else None
+        if not group_id:
+            raise RuntimeError("گروه ساخت تست این پنل در تنظیمات مدیریت انتخاب نشده است.")
+        expire = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).replace(microsecond=0).isoformat()
+        payload = {"username": username, "group_ids": [int(group_id)], "proxy_settings": {},
+                   "expire": expire, "data_limit": TRIAL_VOLUME_MB * 1024 ** 2,
+                   "data_limit_reset_strategy": "no_reset", "status": "active",
+                   "note": f"HanzuVPN {service_key} free trial 100MB"}
+        created = (_pg3_request_sync("POST", "/api/user", payload) if service_key == "vip"
+                   else _pg2_request_sync("POST", "/api/user", payload))
+        sub = _pg_find_value(created, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+        panel_user_id = _pg_find_value(created, ["id", "user_id", "userId"])
+        request_fn = _pg3_request_sync if service_key == "vip" else _pg2_request_sync
+        if not sub and panel_user_id is not None:
+            try:
+                got = request_fn("GET", f"/api/user/by-id/{int(panel_user_id)}")
+                sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+            except Exception:
+                pass
+        if not sub:
+            for path in [f"/api/user/by-username/{quote(username, safe='')}", f"/api/user/{quote(username, safe='')}"]:
+                try:
+                    got = request_fn("GET", path)
+                    sub = _pg_find_value(got, ["subscription_url", "subscriptionUrl", "sub_url", "subscription"])
+                    if sub:
+                        break
+                except Exception:
+                    continue
+        if not sub:
+            raise RuntimeError("تست در پنل ساخته شد اما لینک Subscription دریافت نشد.")
+        sub = _pg_absolute_subscription_url(sub, cfg["base_url"])
+        if not str(sub).startswith(("http://", "https://")):
+            raise RuntimeError("لینک Subscription پنل کامل نیست.")
+        link = str(sub)
+
+    now = datetime.now()
+    expires = now + timedelta(days=TRIAL_DAYS)
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        old = conn.execute("SELECT 1 FROM free_trial_claims WHERE user_id=? AND service_key=?",
+                           (user.id, service_key)).fetchone()
+        if old:
+            conn.rollback()
+            return {"status": "already"}
+        conn.execute("INSERT INTO free_trial_claims (user_id, service_key, claimed_at, expires_at, pg_username, pg_subscription_url) VALUES (?, ?, ?, ?, ?, ?)",
+                     (user.id, service_key, now.strftime("%Y-%m-%d %H:%M:%S"),
+                      expires.strftime("%Y-%m-%d %H:%M:%S"), username, link))
+        if service_key == "volume":
+            conn.execute("INSERT OR IGNORE INTO free_trial_users (user_id, trial_id, claimed_at, expires_at, pg_username, pg_subscription_url) VALUES (?, NULL, ?, ?, ?, ?)",
+                         (user.id, now.strftime("%Y-%m-%d %H:%M:%S"), expires.strftime("%Y-%m-%d %H:%M:%S"), username, link))
+        conn.commit()
+        return {"status": "success", "link": link, "service_key": service_key}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def cancel_pending_orders(user_id):
     conn = get_db()
     conn.execute("UPDATE orders SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'", (user_id,))
@@ -4523,45 +4624,50 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         await rich_edit(query, t(lang, "custom_prompt"))
         return
 
-    # تست رایگان: در حالت PasarGuard مستقیماً 100MB / 1 روز ساخته می‌شود.
+    # انتخاب سرویس تست رایگان؛ هر سرویس سهمیه مستقل یک‌باره دارد.
     if data == "trial":
-        panel_mode = get_pasarguard_mode()
-        result = None
-        panel_error = None
-        if panel_mode in ("panel", "pasarguard", "fallback"):
-            try:
-                result = await asyncio.to_thread(claim_panel_trial, user)
-            except Exception as exc:
-                panel_error = exc
-                result = None
-                # در حالت fallback، تست دستی قبلی همچنان پشتیبان است.
-                if panel_mode == "fallback":
-                    try:
-                        result = claim_trial(user)
-                    except Exception:
-                        result = None
+        if lang == "en":
+            title = "🎁 Choose a free trial\n\nYou can get one free trial from each service, once."
+            labels = [("trial_volume", "📦 Volume"), ("trial_vip", "🌐 Tunnel (VIP)"), ("trial_unlimited", "♾️ Unlimited")]
+        elif lang == "ku":
+            title = "🎁 خزمەتگوزاری تاقیکردنەوە هەڵبژێرە\n\nدەتوانیت لە هەر خزمەتگوزارییەک جارێک تاقیکردنەوە وەربگریت."
+            labels = [("trial_volume", "📦 قەبارەیی"), ("trial_vip", "🌐 تانڵ (VIP)"), ("trial_unlimited", "♾️ بێ سنوور")]
         else:
-            result = claim_trial(user)
+            title = "🎁 تست رایگان\n\nمی‌تونی از هر سرویس، جداگانه یک‌بار تست رایگان بگیری."
+            labels = [("trial_volume", "📦 حجمی"), ("trial_vip", "🌐 تانل (VIP)"), ("trial_unlimited", "♾️ نامحدود")]
+        keyboard = [[styled_inline_button(label, callback_data=key)] for key, label in labels]
+        keyboard.append([styled_inline_button(t(lang, "back"), callback_data="home")])
+        await rich_edit(query, title, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
 
-        if result is None:
-            await rich_edit(query, "❌ ساخت تست رایگان ناموفق بود.\n\n" + (str(panel_error)[:500] if panel_error else "در حال حاضر تست در دسترس نیست."),
-                            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="home")]]))
+    if data in ("trial_volume", "trial_vip", "trial_unlimited"):
+        service_key = data.removeprefix("trial_")
+        panel_mode = get_pasarguard_mode()
+        try:
+            if service_key == "volume" and panel_mode not in ("panel", "pasarguard", "fallback"):
+                result = claim_trial(user)
+            else:
+                result = await asyncio.to_thread(claim_service_trial, user, service_key)
+        except Exception as exc:
+            await rich_edit(query, "❌ ساخت تست رایگان ناموفق بود.\n\n" + str(exc)[:500],
+                            reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="trial")]]))
             return
         if result["status"] == "already":
-            await rich_edit(query, t(lang, "trial_already"), reply_markup=InlineKeyboardMarkup([
-                [styled_inline_button(t(lang, "buy"), callback_data="buy")],
-                [styled_inline_button(t(lang, "back"), callback_data="home")],
-            ]))
+            if lang == "en":
+                msg = "⚠️ You have already claimed the free trial for this service. You can still try the other services."
+            elif lang == "ku":
+                msg = "⚠️ تاقیکردنەوەی ئەم خزمەتگوزارییەت پێشتر وەرگرتووە. دەتوانیت خزمەتگوزارییەکانی دیکە تاقی بکەیتەوە."
+            else:
+                msg = "⚠️ تست رایگان این سرویس را قبلاً دریافت کرده‌ای. می‌توانی دو سرویس دیگر را هم جداگانه امتحان کنی."
+            await rich_edit(query, msg, reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="trial")], [styled_inline_button(t(lang, "main_menu"), callback_data="home")]]))
             return
         if result["status"] == "empty":
-            await rich_edit(query, t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([
-                [styled_inline_button(t(lang, "back"), callback_data="home")]
-            ]))
+            await rich_edit(query, t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="trial")]]))
             return
-        await rich_edit(query, t(lang, "trial_success", link=result["link"]), reply_markup=InlineKeyboardMarkup([
-            [styled_inline_button(t(lang, "buy"), callback_data="buy")],
-            [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
-        ]))
+        service_title = {"volume": ("📦 حجمی", "📦 Volume", "📦 قەبارەیی"), "vip": ("🌐 تانل (VIP)", "🌐 Tunnel (VIP)", "🌐 تانڵ (VIP)"), "unlimited": ("♾️ نامحدود", "♾️ Unlimited", "♾️ بێ سنوور")}[service_key][{"fa":0,"en":1,"ku":2}.get(lang,0)]
+        msg = t(lang, "trial_success", link=result["link"])
+        msg = service_title + "\n\n" + msg
+        await rich_edit(query, msg, reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "trial"), callback_data="trial")], [styled_inline_button(t(lang, "buy"), callback_data="buy")], [styled_inline_button(t(lang, "main_menu"), callback_data="home")]]))
         return
 
     # سرویس‌های من: هر سرویس یک دکمه جدا دارد؛ مصرف فقط هنگام کلیک روی همان سرویس خوانده می‌شود.

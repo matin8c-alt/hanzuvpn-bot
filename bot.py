@@ -1016,16 +1016,6 @@ async def show_language_selector_message(message):
     await rich_reply_text(message, TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
 
 
-def clear_pasarguard_setup_states(context):
-    """Prevent stale setup flags for one panel from intercepting another panel's input."""
-    for key in (
-        "pg_waiting_url", "pg_waiting_username", "pg_waiting_password", "pg_base_url", "pg_username",
-        "pg2_waiting_url", "pg2_waiting_username", "pg2_waiting_password", "pg2_base_url", "pg2_username",
-        "pg3_waiting_url", "pg3_waiting_username", "pg3_waiting_password", "pg3_base_url", "pg3_username",
-    ):
-        context.user_data.pop(key, None)
-
-
 def clear_user_states(context):
     keys = [
         "waiting_custom_volume", "waiting_coupon", "waiting_ticket_message",
@@ -1215,6 +1205,8 @@ def init_db():
             group_name TEXT,
             template_id INTEGER,
             template_name TEXT,
+            auth_mode TEXT DEFAULT 'password',
+            api_key_enc TEXT,
             updated_at TEXT NOT NULL
         )
     """)
@@ -1232,6 +1224,8 @@ def init_db():
             enabled INTEGER DEFAULT 1,
             group_id INTEGER,
             group_name TEXT,
+            auth_mode TEXT DEFAULT 'password',
+            api_key_enc TEXT,
             updated_at TEXT NOT NULL
         )
     """)
@@ -1248,6 +1242,8 @@ def init_db():
             enabled INTEGER DEFAULT 1,
             group_id INTEGER,
             group_name TEXT,
+            auth_mode TEXT DEFAULT 'password',
+            api_key_enc TEXT,
             updated_at TEXT NOT NULL
         )
     """)
@@ -1258,6 +1254,14 @@ def init_db():
             conn.execute(f"ALTER TABLE pasarguard_unlimited_config ADD COLUMN {col} {default}")
         except sqlite3.OperationalError:
             pass
+
+    # Backward-compatible auth columns for API-key based PasarGuard connections.
+    for table in ("pasarguard_config", "pasarguard_unlimited_config", "pasarguard_vip_config"):
+        for col, definition in (("auth_mode", "TEXT DEFAULT 'password'"), ("api_key_enc", "TEXT")):
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+            except sqlite3.OperationalError:
+                pass
 
     # Templateهای خودکار Hanzu برای پلن‌های مختلف؛ هر پلن فقط یک بار ساخته می‌شود.
     conn.execute("""
@@ -1399,14 +1403,8 @@ def _pg_url(base, path):
 
 
 def _pg_http(method, url, headers=None, json_body=None, form=None, timeout=12):
-    """HTTP helper with bounded retries only for safe API calls.
-
-    GET calls and the admin-token login may retry temporary network failures.
-    POSTs that create/update users are never retried here, avoiding duplicate services.
-    """
     data = None
     req_headers = dict(headers or {})
-    method = method.upper()
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
         req_headers["Content-Type"] = "application/json"
@@ -1414,39 +1412,39 @@ def _pg_http(method, url, headers=None, json_body=None, form=None, timeout=12):
         from urllib.parse import urlencode
         data = urlencode(form).encode("utf-8")
         req_headers["Content-Type"] = "application/x-www-form-urlencoded"
-    req = urlrequest.Request(url, data=data, headers=req_headers, method=method)
-    safe_to_retry = method == "GET" or str(url).split("?", 1)[0].rstrip("/").endswith("/api/admin/token")
-    attempts = 3 if safe_to_retry else 1
-    last_result = (0, {"detail": "unknown connection error"})
-    for attempt in range(attempts):
-        try:
-            with urlrequest.urlopen(req, timeout=timeout) as response:
-                body = response.read().decode("utf-8", errors="replace")
-                try:
-                    payload = json.loads(body) if body else {}
-                except Exception:
-                    payload = {"raw": body}
-                return response.status, payload
-        except Exception as exc:
-            status = getattr(exc, "code", None)
-            body = ""
+    req = urlrequest.Request(url, data=data, headers=req_headers, method=method.upper())
+    try:
+        with urlrequest.urlopen(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
             try:
-                body = exc.read().decode("utf-8", errors="replace")
                 payload = json.loads(body) if body else {}
             except Exception:
-                payload = {}
-            last_result = (int(status or 0), payload or {"detail": str(exc)})
-            # Only retry network-level failures, not HTTP/API errors.
-            if not safe_to_retry or status is not None or attempt + 1 >= attempts:
-                return last_result
-            time.sleep(0.5 * (attempt + 1))
-    return last_result
+                payload = {"raw": body}
+            return response.status, payload
+    except Exception as exc:
+        status = getattr(exc, "code", None)
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+            payload = json.loads(body) if body else {}
+        except Exception:
+            payload = {}
+        return int(status or 0), payload or {"detail": str(exc)}
 
 
 def _pg_login_sync(force=False):
     cfg = get_pasarguard_config()
     if not cfg:
         raise RuntimeError("پنل PasarGuard متصل نیست.")
+    # API-key mode: use the supplied key as a Bearer credential, without password login.
+    try:
+        if cfg["auth_mode"] == "api_key":
+            api_key = _pg_decrypt_secret(cfg["api_key_enc"])
+            if not api_key:
+                raise RuntimeError("کلید API ذخیره نشده یا قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
+            return api_key
+    except (IndexError, KeyError):
+        pass  # older database row: use username/password authentication
     now = _pg_now_epoch()
     with _PG_TOKEN_LOCK:
         if not force and _PG_TOKEN_CACHE.get("token") and _PG_TOKEN_CACHE.get("expires_at", 0) > now + 60:
@@ -1499,7 +1497,7 @@ def _pg_request_sync(method, path, json_body=None, retry=True):
     status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                headers={"Authorization": f"Bearer {token}"},
                                json_body=json_body, timeout=15)
-    if status == 401 and retry:
+    if status == 401 and retry and (cfg.get("auth_mode") if hasattr(cfg, "get") else cfg["auth_mode"]) != "api_key":
         token = _pg_login_sync(True)
         status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                    headers={"Authorization": f"Bearer {token}"},
@@ -1878,13 +1876,13 @@ def get_pasarguard_unlimited_config():
     return row
 
 
-def save_pasarguard_unlimited_config(base_url, username, password, enabled=True):
+def save_pasarguard_unlimited_config(base_url, username="", password="", enabled=True, auth_mode="password", api_key=""):
     base_url = _pg_normalize_base_url(base_url)
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_unlimited_config
-            (id,base_url,username,password_enc,access_token,token_expires_at,enabled,updated_at)
-        VALUES (1,?,?,?,?,?,?,?)
+            (id,base_url,username,password_enc,access_token,token_expires_at,enabled,auth_mode,api_key_enc,updated_at)
+        VALUES (1,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
             base_url=excluded.base_url,
             username=excluded.username,
@@ -1892,8 +1890,10 @@ def save_pasarguard_unlimited_config(base_url, username, password, enabled=True)
             access_token=NULL,
             token_expires_at=NULL,
             enabled=excluded.enabled,
+            auth_mode=excluded.auth_mode,
+            api_key_enc=excluded.api_key_enc,
             updated_at=excluded.updated_at
-    """, (base_url.rstrip('/'), username, _pg_encrypt_secret(password), None, None, 1 if enabled else 0, now_text()))
+    """, (base_url.rstrip('/'), username or "", _pg_encrypt_secret(password or ""), None, None, 1 if enabled else 0, auth_mode, _pg_encrypt_secret(api_key or "") if api_key else None, now_text()))
     conn.commit(); conn.close()
     with _PG2_TOKEN_LOCK:
         _PG2_TOKEN_CACHE.update(token=None, expires_at=0.0)
@@ -1918,6 +1918,15 @@ def _pg2_login_sync(force=False):
     cfg = get_pasarguard_unlimited_config()
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل دوم PasarGuard نامحدود متصل نیست.")
+    # API-key mode: use the supplied key as a Bearer credential, without password login.
+    try:
+        if cfg["auth_mode"] == "api_key":
+            api_key = _pg_decrypt_secret(cfg["api_key_enc"])
+            if not api_key:
+                raise RuntimeError("کلید API ذخیره نشده یا قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
+            return api_key
+    except (IndexError, KeyError):
+        pass  # older database row: use username/password authentication
     now = _pg_now_epoch()
     with _PG2_TOKEN_LOCK:
         if not force and _PG2_TOKEN_CACHE.get("token") and _PG2_TOKEN_CACHE.get("expires_at", 0) > now + 60:
@@ -2006,7 +2015,7 @@ def _pg2_request_sync(method, path, json_body=None, retry=True):
             status, payload = https_status, https_payload
         else:
             status, payload = https_status, https_payload
-    if status == 401 and retry:
+    if status == 401 and retry and (cfg["auth_mode"] if "auth_mode" in cfg.keys() else "password") != "api_key":
         token = _pg2_login_sync(True)
         status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                    headers={"Authorization": f"Bearer {token}"},
@@ -2113,13 +2122,13 @@ def get_pasarguard_vip_config():
     return row
 
 
-def save_pasarguard_vip_config(base_url, username, password, enabled=True):
+def save_pasarguard_vip_config(base_url, username="", password="", enabled=True, auth_mode="password", api_key=""):
     base_url = _pg_normalize_base_url(base_url)
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_vip_config
-            (id,base_url,username,password_enc,access_token,token_expires_at,enabled,updated_at)
-        VALUES (1,?,?,?,?,?,?,?)
+            (id,base_url,username,password_enc,access_token,token_expires_at,enabled,auth_mode,api_key_enc,updated_at)
+        VALUES (1,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
             base_url=excluded.base_url,
             username=excluded.username,
@@ -2127,8 +2136,10 @@ def save_pasarguard_vip_config(base_url, username, password, enabled=True):
             access_token=NULL,
             token_expires_at=NULL,
             enabled=excluded.enabled,
+            auth_mode=excluded.auth_mode,
+            api_key_enc=excluded.api_key_enc,
             updated_at=excluded.updated_at
-    """, (base_url.rstrip('/'), username, _pg_encrypt_secret(password), None, None, 1 if enabled else 0, now_text()))
+    """, (base_url.rstrip('/'), username or "", _pg_encrypt_secret(password or ""), None, None, 1 if enabled else 0, auth_mode, _pg_encrypt_secret(api_key or "") if api_key else None, now_text()))
     conn.commit(); conn.close()
     with _PG3_TOKEN_LOCK:
         _PG3_TOKEN_CACHE.update(token=None, expires_at=0.0)
@@ -2153,6 +2164,15 @@ def _pg3_login_sync(force=False):
     cfg = get_pasarguard_vip_config()
     if not cfg or not cfg["enabled"]:
         raise RuntimeError("پنل سوم PasarGuard برای تانل VIP متصل نیست.")
+    # API-key mode: use the supplied key as a Bearer credential, without password login.
+    try:
+        if cfg["auth_mode"] == "api_key":
+            api_key = _pg_decrypt_secret(cfg["api_key_enc"])
+            if not api_key:
+                raise RuntimeError("کلید API ذخیره نشده یا قابل بازیابی نیست؛ اتصال را دوباره ثبت کنید.")
+            return api_key
+    except (IndexError, KeyError):
+        pass  # older database row: use username/password authentication
     now = _pg_now_epoch()
     with _PG3_TOKEN_LOCK:
         if not force and _PG3_TOKEN_CACHE.get("token") and _PG3_TOKEN_CACHE.get("expires_at", 0) > now + 60:
@@ -2241,7 +2261,7 @@ def _pg3_request_sync(method, path, json_body=None, retry=True):
             status, payload = https_status, https_payload
         else:
             status, payload = https_status, https_payload
-    if status == 401 and retry:
+    if status == 401 and retry and (cfg["auth_mode"] if "auth_mode" in cfg.keys() else "password") != "api_key":
         token = _pg3_login_sync(True)
         status, payload = _pg_http(method, _pg_url(cfg["base_url"], path),
                                    headers={"Authorization": f"Bearer {token}"},
@@ -2462,7 +2482,7 @@ def pg_create_order_service_sync(order):
 
     return {"username": str(final_username), "subscription_url": sub}
 
-def save_pasarguard_connection(base_url, username, password):
+def save_pasarguard_connection(base_url, username="", password="", auth_mode="password", api_key=""):
     base_url = base_url.strip().rstrip("/")
     if not base_url.startswith(("http://", "https://")):
         raise ValueError("آدرس پنل باید با http:// یا https:// شروع شود.")
@@ -2470,10 +2490,10 @@ def save_pasarguard_connection(base_url, username, password):
     conn = get_db()
     conn.execute("""
         INSERT INTO pasarguard_config
-        (id, base_url, username, password_enc, access_token, token_expires_at, enabled, mode, group_id, group_name, template_id, template_name, updated_at)
-        VALUES (1, ?, ?, ?, NULL, NULL, 1, 'manual', NULL, NULL, NULL, NULL, ?)
-        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, mode='manual', group_id=NULL, group_name=NULL, template_id=NULL, template_name=NULL, updated_at=excluded.updated_at
-    """, (base_url, username.strip(), enc, now_text()))
+        (id, base_url, username, password_enc, access_token, token_expires_at, enabled, mode, group_id, group_name, template_id, template_name, auth_mode, api_key_enc, updated_at)
+        VALUES (1, ?, ?, ?, NULL, NULL, 1, 'manual', NULL, NULL, NULL, NULL, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, username=excluded.username, password_enc=excluded.password_enc, access_token=NULL, token_expires_at=NULL, enabled=1, mode='manual', group_id=NULL, group_name=NULL, template_id=NULL, template_name=NULL, auth_mode=excluded.auth_mode, api_key_enc=excluded.api_key_enc, updated_at=excluded.updated_at
+    """, (base_url, username.strip() if username else "", _pg_encrypt_secret(password or ""), auth_mode, _pg_encrypt_secret(api_key or "") if api_key else None, now_text()))
     conn.commit(); conn.close()
     with _PG_TOKEN_LOCK:
         _PG_TOKEN_CACHE.update(token=None, expires_at=0)
@@ -5014,22 +5034,26 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg_connect":
         if user_id != ADMIN_ID:
             return
-        clear_pasarguard_setup_states(context)
         context.user_data["pg_waiting_url"] = True
         context.user_data.pop("pg_waiting_username", None)
         context.user_data.pop("pg_waiting_password", None)
+        context.user_data.pop("pg_waiting_api_key", None)
         await rich_edit(query, "🔌 اتصال PasarGuard\n\nآدرس کامل پنل را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
         return
 
-    if data == "pg_test":
+    if data in {"pg_auth_password", "pg_auth_key", "pg2_auth_password", "pg2_auth_key", "pg3_auth_password", "pg3_auth_key"}:
         if user_id != ADMIN_ID:
             return
-        try:
-            await asyncio.to_thread(_pg_login_sync, True)
-            groups = await asyncio.to_thread(pg_get_groups_sync)
-            await query.answer(f"اتصال API پنل حجمی موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
-        except Exception as exc:
-            await query.answer(f"اتصال API پنل حجمی ناموفق: {str(exc)[:150]}", show_alert=True)
+        prefix = "pg3" if data.startswith("pg3_") else ("pg2" if data.startswith("pg2_") else "pg")
+        is_key = data.endswith("_key")
+        context.user_data[f"{prefix}_auth_mode"] = "api_key" if is_key else "password"
+        context.user_data[f"{prefix}_waiting_username"] = not is_key
+        context.user_data[f"{prefix}_waiting_api_key"] = is_key
+        context.user_data[f"{prefix}_waiting_password"] = False
+        if is_key:
+            await rich_edit(query, "🔑 کلید API پنل PasarGuard را ارسال کن.\n\nکلید به‌صورت رمزگذاری‌شده ذخیره می‌شود.")
+        else:
+            await rich_edit(query, "👤 نام کاربری مدیر PasarGuard را ارسال کن.")
         return
 
     if data == "pg_status":
@@ -5138,22 +5162,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg2_connect":
         if user_id != ADMIN_ID:
             return
-        clear_pasarguard_setup_states(context)
         context.user_data["pg2_waiting_url"] = True
         context.user_data.pop("pg2_waiting_username", None)
         context.user_data.pop("pg2_waiting_password", None)
-        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل دوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
-        return
-
-    if data == "pg2_test":
-        if user_id != ADMIN_ID:
-            return
-        try:
-            await asyncio.to_thread(_pg2_login_sync, True)
-            groups = await asyncio.to_thread(pg2_get_groups_sync)
-            await query.answer(f"اتصال API پنل نامحدود موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
-        except Exception as exc:
-            await query.answer(f"اتصال API پنل نامحدود ناموفق: {str(exc)[:150]}", show_alert=True)
+        context.user_data.pop("pg2_waiting_api_key", None)
+        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
         return
 
     if data == "pg2_status":
@@ -5161,7 +5174,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         text = await asyncio.to_thread(pasarguard_unlimited_status_text)
         kb = [
-            [styled_inline_button("🧪 تست اتصال API", callback_data="pg2_test")],
             [styled_inline_button("📦 انتخاب گروه پنل دوم", callback_data="pg2_groups")],
             [styled_inline_button("🔌 اتصال / تغییر پنل دوم", callback_data="pg2_connect")],
             [styled_inline_button("🗑 قطع اتصال پنل دوم", callback_data="pg2_disconnect")],
@@ -5218,22 +5230,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg3_connect":
         if user_id != ADMIN_ID:
             return
-        clear_pasarguard_setup_states(context)
         context.user_data["pg3_waiting_url"] = True
         context.user_data.pop("pg3_waiting_username", None)
         context.user_data.pop("pg3_waiting_password", None)
+        context.user_data.pop("pg3_waiting_api_key", None)
         await rich_edit(query, "♾️ اتصال پنل سوم تانل VIP\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
-        return
-
-    if data == "pg3_test":
-        if user_id != ADMIN_ID:
-            return
-        try:
-            await asyncio.to_thread(_pg3_login_sync, True)
-            groups = await asyncio.to_thread(pg3_get_groups_sync)
-            await query.answer(f"اتصال API پنل VIP موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
-        except Exception as exc:
-            await query.answer(f"اتصال API پنل VIP ناموفق: {str(exc)[:150]}", show_alert=True)
         return
 
     if data == "pg3_status":
@@ -5241,7 +5242,6 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         text = await asyncio.to_thread(pasarguard_vip_status_text)
         kb = [
-            [styled_inline_button("🧪 تست اتصال API", callback_data="pg3_test")],
             [styled_inline_button("📦 انتخاب گروه پنل سوم VIP", callback_data="pg3_groups")],
             [styled_inline_button("🔌 اتصال / تغییر پنل سوم VIP", callback_data="pg3_connect")],
             [styled_inline_button("🗑 قطع اتصال پنل سوم VIP", callback_data="pg3_disconnect")],
@@ -5679,9 +5679,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await rich_reply_text(update.message, "❌ آدرس پنل خالی است. آدرس را مثل http://panel.zirava.ir ارسال کن.")
             return
         context.user_data["pg2_waiting_url"] = False
-        context.user_data["pg2_waiting_username"] = True
         context.user_data["pg2_base_url"] = base_url
-        await rich_reply_text(update.message, "👤 نام کاربری مدیر پنل دوم PasarGuard را ارسال کن.")
+        await rich_reply_text(update.message, "روش اتصال پنل دوم را انتخاب کن:", reply_markup=InlineKeyboardMarkup([[styled_inline_button("👤 نام کاربری و رمز عبور", callback_data="pg2_auth_password")], [styled_inline_button("🔑 کلید API", callback_data="pg2_auth_key")]]))
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_api_key"):
+        api_key = text.strip()
+        base_url = context.user_data.pop("pg2_base_url", "")
+        context.user_data["pg2_waiting_api_key"] = False
+        try:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            save_pasarguard_unlimited_config(base_url, "", "", **({"enabled": True, "auth_mode": "api_key", "api_key": api_key}))
+            if "pg2" == "pg":
+                await asyncio.to_thread(_pg_login_sync, True)
+                groups = await asyncio.to_thread(pg_get_groups_sync)
+                await context.bot.send_message(chat_id=user.id, text=f"✅ اتصال پنل حجمی با API Key موفق بود.\n📦 تعداد گروه‌ها: {len(groups)}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg_status")]]))
+            else:
+                await asyncio.to_thread(test_pasarguard_unlimited_sync)
+                await rich_reply_text(update.message, "✅ اتصال پنل دوم نامحدود با کلید API موفق بود.\nحالا از بخش وضعیت پنل، گروه سرویس را انتخاب کن.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg2_status")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
+        except Exception as exc:
+            await rich_reply_text(update.message, f"❌ اتصال با کلید API ناموفق بود.\n\n{type(exc).__name__}: {str(exc)[:500]}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("🔌 تلاش دوباره", callback_data="pg2_connect")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
         return
 
     if user.id == ADMIN_ID and context.user_data.get("pg2_waiting_username"):
@@ -5697,7 +5717,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = context.user_data.pop("pg2_username", "")
         context.user_data["pg2_waiting_password"] = False
         try:
-            save_pasarguard_unlimited_config(base_url, username, password, enabled=True)
+            save_pasarguard_unlimited_config(base_url, username, password, enabled=True, auth_mode="password")
             try:
                 await context.bot.delete_message(chat_id=user.id, message_id=update.message.message_id)
             except Exception:
@@ -5729,9 +5749,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await rich_reply_text(update.message, "❌ آدرس پنل خالی است. آدرس را مثل http://panel.zirava.ir ارسال کن.")
             return
         context.user_data["pg3_waiting_url"] = False
-        context.user_data["pg3_waiting_username"] = True
         context.user_data["pg3_base_url"] = base_url
-        await rich_reply_text(update.message, "👤 نام کاربری مدیر پنل سوم PasarGuard را ارسال کن.")
+        await rich_reply_text(update.message, "روش اتصال پنل VIP را انتخاب کن:", reply_markup=InlineKeyboardMarkup([[styled_inline_button("👤 نام کاربری و رمز عبور", callback_data="pg3_auth_password")], [styled_inline_button("🔑 کلید API", callback_data="pg3_auth_key")]]))
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg3_waiting_api_key"):
+        api_key = text.strip()
+        base_url = context.user_data.pop("pg3_base_url", "")
+        context.user_data["pg3_waiting_api_key"] = False
+        try:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            save_pasarguard_vip_config(base_url, "", "", **({"enabled": True, "auth_mode": "api_key", "api_key": api_key}))
+            if "pg3" == "pg":
+                await asyncio.to_thread(_pg_login_sync, True)
+                groups = await asyncio.to_thread(pg_get_groups_sync)
+                await context.bot.send_message(chat_id=user.id, text=f"✅ اتصال پنل حجمی با API Key موفق بود.\n📦 تعداد گروه‌ها: {len(groups)}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg_status")]]))
+            else:
+                await asyncio.to_thread(test_pasarguard_vip_sync)
+                await rich_reply_text(update.message, "✅ اتصال پنل سوم تانل VIP با کلید API موفق بود.\nحالا از بخش وضعیت پنل، گروه سرویس را انتخاب کن.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg3_status")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
+        except Exception as exc:
+            await rich_reply_text(update.message, f"❌ اتصال با کلید API ناموفق بود.\n\n{type(exc).__name__}: {str(exc)[:500]}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("🔌 تلاش دوباره", callback_data="pg3_connect")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
         return
 
     if user.id == ADMIN_ID and context.user_data.get("pg3_waiting_username"):
@@ -5747,7 +5787,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = context.user_data.pop("pg3_username", "")
         context.user_data["pg3_waiting_password"] = False
         try:
-            save_pasarguard_vip_config(base_url, username, password, enabled=True)
+            save_pasarguard_vip_config(base_url, username, password, enabled=True, auth_mode="password")
             try:
                 await context.bot.delete_message(chat_id=user.id, message_id=update.message.message_id)
             except Exception:
@@ -5779,9 +5819,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await rich_reply_text(update.message, "❌ آدرس پنل باید با http:// یا https:// شروع شود.")
             return
         context.user_data["pg_waiting_url"] = False
-        context.user_data["pg_waiting_username"] = True
         context.user_data["pg_base_url"] = base_url
-        await rich_reply_text(update.message, "👤 نام کاربری مدیر PasarGuard را ارسال کن.")
+        await rich_reply_text(update.message, "روش اتصال پنل حجمی را انتخاب کن:", reply_markup=InlineKeyboardMarkup([[styled_inline_button("👤 نام کاربری و رمز عبور", callback_data="pg_auth_password")], [styled_inline_button("🔑 کلید API", callback_data="pg_auth_key")]]))
+        return
+
+    if user.id == ADMIN_ID and context.user_data.get("pg_waiting_api_key"):
+        api_key = text.strip()
+        base_url = context.user_data.pop("pg_base_url", "")
+        context.user_data["pg_waiting_api_key"] = False
+        try:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            save_pasarguard_connection(base_url, "", "", **({"enabled": True, "auth_mode": "api_key", "api_key": api_key}))
+            if "pg" == "pg":
+                await asyncio.to_thread(_pg_login_sync, True)
+                groups = await asyncio.to_thread(pg_get_groups_sync)
+                await context.bot.send_message(chat_id=user.id, text=f"✅ اتصال پنل حجمی با API Key موفق بود.\n📦 تعداد گروه‌ها: {len(groups)}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg_status")]]))
+            else:
+                await asyncio.to_thread(_pg_login_sync)
+                await rich_reply_text(update.message, "✅ اتصال پنل حجمی با کلید API موفق بود.\nحالا از بخش وضعیت پنل، گروه سرویس را انتخاب کن.", reply_markup=InlineKeyboardMarkup([[styled_inline_button("📡 وضعیت پنل", callback_data="pg_status")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
+        except Exception as exc:
+            await rich_reply_text(update.message, f"❌ اتصال با کلید API ناموفق بود.\n\n{type(exc).__name__}: {str(exc)[:500]}", reply_markup=InlineKeyboardMarkup([[styled_inline_button("🔌 تلاش دوباره", callback_data="pg_connect")], [styled_inline_button(t(lang, "admin_panel"), callback_data="admin")]]))
         return
 
     if user.id == ADMIN_ID and context.user_data.get("pg_waiting_username"):
@@ -5801,7 +5861,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
             except Exception:
                 pass
-            save_pasarguard_connection(base_url, username, password)
+            save_pasarguard_connection(base_url, username, password, auth_mode="password")
             await asyncio.to_thread(_pg_login_sync, True)
             groups = await asyncio.to_thread(pg_get_groups_sync)
             keyboard = [[styled_inline_button(f"{g['name']} | ID {g['id']}", callback_data=f"pg_group_{g['id']}")] for g in groups[:50]]

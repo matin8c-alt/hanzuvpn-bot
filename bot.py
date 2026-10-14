@@ -1016,6 +1016,16 @@ async def show_language_selector_message(message):
     await rich_reply_text(message, TEXTS["fa"]["language_title"], reply_markup=language_keyboard())
 
 
+def clear_pasarguard_setup_states(context):
+    """Prevent stale setup flags for one panel from intercepting another panel's input."""
+    for key in (
+        "pg_waiting_url", "pg_waiting_username", "pg_waiting_password", "pg_base_url", "pg_username",
+        "pg2_waiting_url", "pg2_waiting_username", "pg2_waiting_password", "pg2_base_url", "pg2_username",
+        "pg3_waiting_url", "pg3_waiting_username", "pg3_waiting_password", "pg3_base_url", "pg3_username",
+    ):
+        context.user_data.pop(key, None)
+
+
 def clear_user_states(context):
     keys = [
         "waiting_custom_volume", "waiting_coupon", "waiting_ticket_message",
@@ -1389,8 +1399,14 @@ def _pg_url(base, path):
 
 
 def _pg_http(method, url, headers=None, json_body=None, form=None, timeout=12):
+    """HTTP helper with bounded retries only for safe API calls.
+
+    GET calls and the admin-token login may retry temporary network failures.
+    POSTs that create/update users are never retried here, avoiding duplicate services.
+    """
     data = None
     req_headers = dict(headers or {})
+    method = method.upper()
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
         req_headers["Content-Type"] = "application/json"
@@ -1398,24 +1414,33 @@ def _pg_http(method, url, headers=None, json_body=None, form=None, timeout=12):
         from urllib.parse import urlencode
         data = urlencode(form).encode("utf-8")
         req_headers["Content-Type"] = "application/x-www-form-urlencoded"
-    req = urlrequest.Request(url, data=data, headers=req_headers, method=method.upper())
-    try:
-        with urlrequest.urlopen(req, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
+    req = urlrequest.Request(url, data=data, headers=req_headers, method=method)
+    safe_to_retry = method == "GET" or str(url).split("?", 1)[0].rstrip("/").endswith("/api/admin/token")
+    attempts = 3 if safe_to_retry else 1
+    last_result = (0, {"detail": "unknown connection error"})
+    for attempt in range(attempts):
+        try:
+            with urlrequest.urlopen(req, timeout=timeout) as response:
+                body = response.read().decode("utf-8", errors="replace")
+                try:
+                    payload = json.loads(body) if body else {}
+                except Exception:
+                    payload = {"raw": body}
+                return response.status, payload
+        except Exception as exc:
+            status = getattr(exc, "code", None)
+            body = ""
             try:
+                body = exc.read().decode("utf-8", errors="replace")
                 payload = json.loads(body) if body else {}
             except Exception:
-                payload = {"raw": body}
-            return response.status, payload
-    except Exception as exc:
-        status = getattr(exc, "code", None)
-        body = ""
-        try:
-            body = exc.read().decode("utf-8", errors="replace")
-            payload = json.loads(body) if body else {}
-        except Exception:
-            payload = {}
-        return int(status or 0), payload or {"detail": str(exc)}
+                payload = {}
+            last_result = (int(status or 0), payload or {"detail": str(exc)})
+            # Only retry network-level failures, not HTTP/API errors.
+            if not safe_to_retry or status is not None or attempt + 1 >= attempts:
+                return last_result
+            time.sleep(0.5 * (attempt + 1))
+    return last_result
 
 
 def _pg_login_sync(force=False):
@@ -4989,10 +5014,22 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg_connect":
         if user_id != ADMIN_ID:
             return
+        clear_pasarguard_setup_states(context)
         context.user_data["pg_waiting_url"] = True
         context.user_data.pop("pg_waiting_username", None)
         context.user_data.pop("pg_waiting_password", None)
         await rich_edit(query, "🔌 اتصال PasarGuard\n\nآدرس کامل پنل را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        return
+
+    if data == "pg_test":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            await asyncio.to_thread(_pg_login_sync, True)
+            groups = await asyncio.to_thread(pg_get_groups_sync)
+            await query.answer(f"اتصال API پنل حجمی موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
+        except Exception as exc:
+            await query.answer(f"اتصال API پنل حجمی ناموفق: {str(exc)[:150]}", show_alert=True)
         return
 
     if data == "pg_status":
@@ -5101,10 +5138,22 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg2_connect":
         if user_id != ADMIN_ID:
             return
+        clear_pasarguard_setup_states(context)
         context.user_data["pg2_waiting_url"] = True
         context.user_data.pop("pg2_waiting_username", None)
         context.user_data.pop("pg2_waiting_password", None)
-        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        await rich_edit(query, "♾️ اتصال پنل دوم نامحدود\n\nآدرس کامل پنل دوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        return
+
+    if data == "pg2_test":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            await asyncio.to_thread(_pg2_login_sync, True)
+            groups = await asyncio.to_thread(pg2_get_groups_sync)
+            await query.answer(f"اتصال API پنل نامحدود موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
+        except Exception as exc:
+            await query.answer(f"اتصال API پنل نامحدود ناموفق: {str(exc)[:150]}", show_alert=True)
         return
 
     if data == "pg2_status":
@@ -5112,6 +5161,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         text = await asyncio.to_thread(pasarguard_unlimited_status_text)
         kb = [
+            [styled_inline_button("🧪 تست اتصال API", callback_data="pg2_test")],
             [styled_inline_button("📦 انتخاب گروه پنل دوم", callback_data="pg2_groups")],
             [styled_inline_button("🔌 اتصال / تغییر پنل دوم", callback_data="pg2_connect")],
             [styled_inline_button("🗑 قطع اتصال پنل دوم", callback_data="pg2_disconnect")],
@@ -5168,10 +5218,22 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "pg3_connect":
         if user_id != ADMIN_ID:
             return
+        clear_pasarguard_setup_states(context)
         context.user_data["pg3_waiting_url"] = True
         context.user_data.pop("pg3_waiting_username", None)
         context.user_data.pop("pg3_waiting_password", None)
         await rich_edit(query, "♾️ اتصال پنل سوم تانل VIP\n\nآدرس کامل پنل سوم PasarGuard را ارسال کن.\n\nمثال:\nhttps://panel.example.com")
+        return
+
+    if data == "pg3_test":
+        if user_id != ADMIN_ID:
+            return
+        try:
+            await asyncio.to_thread(_pg3_login_sync, True)
+            groups = await asyncio.to_thread(pg3_get_groups_sync)
+            await query.answer(f"اتصال API پنل VIP موفق بود؛ {len(groups)} گروه پیدا شد.", show_alert=True)
+        except Exception as exc:
+            await query.answer(f"اتصال API پنل VIP ناموفق: {str(exc)[:150]}", show_alert=True)
         return
 
     if data == "pg3_status":
@@ -5179,6 +5241,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         text = await asyncio.to_thread(pasarguard_vip_status_text)
         kb = [
+            [styled_inline_button("🧪 تست اتصال API", callback_data="pg3_test")],
             [styled_inline_button("📦 انتخاب گروه پنل سوم VIP", callback_data="pg3_groups")],
             [styled_inline_button("🔌 اتصال / تغییر پنل سوم VIP", callback_data="pg3_connect")],
             [styled_inline_button("🗑 قطع اتصال پنل سوم VIP", callback_data="pg3_disconnect")],

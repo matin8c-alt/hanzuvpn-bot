@@ -3631,14 +3631,21 @@ def _api_services_payload(user_id):
     return [_api_live_service_data(row) for row in get_user_services(user_id)]
 
 
-def get_user_trial(user_id):
+def get_user_trials(user_id):
     conn = get_db()
-    row = conn.execute("""
-        SELECT user_id, claimed_at, expires_at, pg_username, pg_subscription_url
-        FROM free_trial_users WHERE user_id = ? LIMIT 1
-    """, (user_id,)).fetchone()
-    conn.close()
-    return row
+    try:
+        rows = conn.execute("SELECT user_id, service_key, claimed_at, expires_at, pg_username, pg_subscription_url FROM free_trial_claims WHERE user_id=?", (user_id,)).fetchall()
+        legacy = conn.execute("SELECT user_id, claimed_at, expires_at, pg_username, pg_subscription_url FROM free_trial_users WHERE user_id=? LIMIT 1", (user_id,)).fetchone()
+        if legacy and not any(r["service_key"] == "volume" for r in rows):
+            rows.append({"user_id": legacy["user_id"], "service_key": "volume", "claimed_at": legacy["claimed_at"], "expires_at": legacy["expires_at"], "pg_username": legacy["pg_username"], "pg_subscription_url": legacy["pg_subscription_url"]})
+        return rows
+    finally:
+        conn.close()
+
+
+def get_user_trial(user_id):
+    rows = get_user_trials(user_id)
+    return rows[0] if rows else None
 
 
 async def send_services_message(message, user_id):
@@ -3649,9 +3656,9 @@ async def send_services_message(message, user_id):
     """
     lang = get_user_language(user_id) or "fa"
     rows = get_user_services(user_id)
-    trial = get_user_trial(user_id)
+    trials = get_user_trials(user_id)
 
-    if not rows and not trial:
+    if not rows and not trials:
         await rich_reply_text(message, t(lang, "no_services"), reply_markup=InlineKeyboardMarkup([
             [styled_inline_button(t(lang, "buy"), callback_data="buy")],
             [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
@@ -3659,8 +3666,10 @@ async def send_services_message(message, user_id):
         return
 
     keyboard = []
-    if trial:
-        keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+    trial_names = {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"}
+    for trial_item in trials:
+        key = trial_item["service_key"]
+        keyboard.append([styled_inline_button(f"🎁 تست {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
 
     for row in rows:
         volume = str(row["volume"] or "-")
@@ -3687,7 +3696,7 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
     trial = None
 
     if service_type == "trial":
-        trial = get_user_trial(user_id)
+        trials = get_user_trials(user_id)
         if not trial:
             await query.answer("❌ تستی برای شما ثبت نشده است.", show_alert=True)
             return
@@ -3721,7 +3730,8 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
             print(f"PasarGuard live usage error for service {service_id or 'trial'}: {exc}")
 
     if trial:
-        title = "🎁 تست رایگان"
+        trial_titles = {"volume": "حجمی", "vip": "تانل (VIP)", "unlimited": "نامحدود"}
+        title = f"🎁 تست رایگان | {trial_titles.get(trial['service_key'], 'HanzuVPN')}"
         link = trial["pg_subscription_url"] or "-"
         fallback_expire = trial["expires_at"] or "-"
         fallback_volume = "100 MB"
@@ -4710,16 +4720,25 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             await rich_edit(query, t(lang, "trial_empty"), reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "back"), callback_data="trial")]]))
             return
         service_title = {"volume": ("📦 حجمی", "📦 Volume", "📦 قەبارەیی"), "vip": ("🌐 تانل (VIP)", "🌐 Tunnel (VIP)", "🌐 تانڵ (VIP)"), "unlimited": ("♾️ نامحدود", "♾️ Unlimited", "♾️ بێ سنوور")}[service_key][{"fa":0,"en":1,"ku":2}.get(lang,0)]
-        msg = t(lang, "trial_success", link=result["link"])
-        msg = service_title + "\n\n" + msg
-        await rich_edit(query, msg, reply_markup=InlineKeyboardMarkup([[styled_inline_button(t(lang, "trial"), callback_data="trial")], [styled_inline_button(t(lang, "buy"), callback_data="buy")], [styled_inline_button(t(lang, "main_menu"), callback_data="home")]]))
+        expires_text = (datetime.now() + timedelta(days=TRIAL_DAYS)).strftime("%Y-%m-%d %H:%M")
+        msg = (f"🎁 تست رایگان HanzuVPN\\n\\n🌐 نام سرویس: {service_title}\\n"
+               f"📦 حجم اولیه: ۱۰۰ مگابایت\\n📅 تاریخ انقضا: {expires_text}\\n"
+               f"📊 حجم لحظه‌ای: برای مشاهده مصرف واقعی، از «سرویس‌های من» بروزرسانی کنید\\n\\n"
+               f"🔗 لینک اشتراک:\\n{result['link']}\\n\\n"
+               "📌 لینک را در برنامه VPN خود وارد کنید.")
+        await rich_edit(query, msg, reply_markup=InlineKeyboardMarkup([
+            [styled_inline_button("📦 سرویس‌های من", callback_data="my_services")],
+            [styled_inline_button(t(lang, "trial"), callback_data="trial")],
+            [styled_inline_button(t(lang, "buy"), callback_data="buy")],
+            [styled_inline_button(t(lang, "main_menu"), callback_data="home")]
+        ]))
         return
 
     # سرویس‌های من: هر سرویس یک دکمه جدا دارد؛ مصرف فقط هنگام کلیک روی همان سرویس خوانده می‌شود.
     if data == "my_services":
         rows = get_user_services(user_id)
-        trial = get_user_trial(user_id)
-        if not rows and not trial:
+        trials = get_user_trials(user_id)
+        if not rows and not trials:
             await rich_edit(query, t(lang, "no_services"), reply_markup=InlineKeyboardMarkup([
                 [styled_inline_button(t(lang, "buy"), callback_data="buy")],
                 [styled_inline_button(t(lang, "back"), callback_data="home")],
@@ -4727,8 +4746,10 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         keyboard = []
-        if trial:
-            keyboard.append([styled_inline_button("🎁 تست رایگان | 100 MB", callback_data="service_trial")])
+        trial_names = {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"}
+        for trial_item in trials:
+            key = trial_item["service_key"]
+            keyboard.append([styled_inline_button(f"🎁 تست {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
         for row in rows:
             volume = str(row["volume"] or "-")
             label = unlimited_display(volume, lang).replace("♾️ ", "") if is_unlimited_volume(volume) else f"{volume} گیگ"
@@ -4743,7 +4764,11 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if data == "service_trial":
-        await show_service_detail(query, user_id, "trial")
+        await show_service_detail(query, user_id, "trial", "volume")
+        return
+
+    if data.startswith("service_trial_"):
+        await show_service_detail(query, user_id, "trial", data[len("service_trial_"):])
         return
 
     if data.startswith("service_order_"):

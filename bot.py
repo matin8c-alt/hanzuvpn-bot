@@ -8,6 +8,9 @@ import hashlib
 import hmac
 import threading
 import tempfile
+from io import BytesIO
+
+import qrcode
 from urllib.parse import parse_qsl, unquote, urljoin, quote
 from urllib import request as urlrequest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -948,6 +951,28 @@ async def rich_reply_text(message, text, reply_markup=None, parse_mode=None, **k
         message, text, reply_markup=reply_markup,
         parse_mode=parse_mode, **kwargs
     )
+
+
+async def send_subscription_qr(bot, chat_id, link, caption="📲 QR کد اتصال HanzuVPN"):
+    """Send a QR image containing the user's actual subscription URL."""
+    link = str(link or "").strip()
+    if not link.startswith(("https://", "http://")):
+        return False
+    try:
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
+                           box_size=8, border=3)
+        qr.add_data(link)
+        qr.make(fit=True)
+        image = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        buffer.name = "hanzuvpn-subscription-qr.png"
+        await bot.send_photo(chat_id=chat_id, photo=buffer, caption=caption)
+        return True
+    except Exception as exc:
+        print(f"Subscription QR send failed for chat {chat_id}: {type(exc).__name__}: {exc}")
+        return False
 
 
 async def rich_draft(bot, chat_id, draft_id, html, can_stop=True, keep_on_stop=False):
@@ -2742,6 +2767,7 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await rich_reply_text(update.message, t(lang, "trial_empty"))
         return
     await rich_reply_text(update.message, t(lang, "trial_success", link=result["link"]))
+    await send_subscription_qr(context.bot, user.id, result["link"])
 
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4661,6 +4687,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                       order=order_id,
                       link=result["link"])
                 )
+            await send_subscription_qr(context.bot, user_id, result.get("link"))
         elif result["status"] == "pg_error":
             await refund_wallet_after_pg_failure(user_id, price, order_id)
             await rich_edit(query, "❌ ساخت سرویس در PasarGuard ناموفق بود. مبلغ به کیف پول برگردانده شد.\n\n" + str(result.get("error") or "خطای نامشخص")[:300])
@@ -4721,17 +4748,25 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         service_title = {"volume": ("📦 حجمی", "📦 Volume", "📦 قەبارەیی"), "vip": ("🌐 تانل (VIP)", "🌐 Tunnel (VIP)", "🌐 تانڵ (VIP)"), "unlimited": ("♾️ نامحدود", "♾️ Unlimited", "♾️ بێ سنوور")}[service_key][{"fa":0,"en":1,"ku":2}.get(lang,0)]
         expires_text = (datetime.now() + timedelta(days=TRIAL_DAYS)).strftime("%Y-%m-%d %H:%M")
-        msg = (f"🎁 تست رایگان HanzuVPN\\n\\n🌐 نام سرویس: {service_title}\\n"
-               f"📦 حجم اولیه: ۱۰۰ مگابایت\\n📅 تاریخ انقضا: {expires_text}\\n"
-               f"📊 حجم لحظه‌ای: برای مشاهده مصرف واقعی، از «سرویس‌های من» بروزرسانی کنید\\n\\n"
-               f"🔗 لینک اشتراک:\\n{result['link']}\\n\\n"
-               "📌 لینک را در برنامه VPN خود وارد کنید.")
-        await rich_edit(query, msg, reply_markup=InlineKeyboardMarkup([
+        msg = (
+            f"🎉 سرویس شما با موفقیت فعال شد!\n\n"
+            f"🌐 <b>HanzuVPN</b>\n"
+            f"📦 نام سرویس: <b>{service_title}</b>\n"
+            f"📊 حجم اولیه: <b>۱۰۰ مگابایت</b>\n"
+            f"📅 تاریخ انقضا: <b>{expires_text}</b>\n"
+            f"📈 مصرف: برای مشاهده مصرف واقعی، از «سرویس‌های من» استفاده کنید\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"🔗 <b>لینک اشتراک شما:</b>\n{result['link']}\n\n"
+            f"📌 لینک را کپی کنید و داخل برنامه VPN خود وارد کنید.\n"
+            f"⚠️ لینک اشتراک خود را با دیگران به اشتراک نگذارید."
+        )
+        await rich_edit(query, msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
             [styled_inline_button("📦 سرویس‌های من", callback_data="my_services")],
             [styled_inline_button(t(lang, "trial"), callback_data="trial")],
             [styled_inline_button(t(lang, "buy"), callback_data="buy")],
             [styled_inline_button(t(lang, "main_menu"), callback_data="home")]
         ]))
+        await send_subscription_qr(context.bot, user.id, result["link"])
         return
 
     # سرویس‌های من: هر سرویس یک دکمه جدا دارد؛ مصرف فقط هنگام کلیک روی همان سرویس خوانده می‌شود.
@@ -4986,6 +5021,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                     text=t(recipient_lang, "payment_confirmed",
                           volume=order["volume"], expires=expires, order=order_id, link=link)
                 )
+                await send_subscription_qr(context.bot, order["user_id"], link)
                 await query.answer("✅ پرداخت تأیید شد.")
                 return
 
@@ -5535,6 +5571,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
                    order=order_id,
                    link=result["link"])
         await context.bot.send_message(chat_id=order["user_id"], text=confirmation_text)
+        await send_subscription_qr(context.bot, order["user_id"], result.get("link"))
         try:
             await query.edit_message_caption(
                 caption=(f"✅ سفارش #{order_id} تأیید شد.\n♾️ {unlimited_display(order['volume'], recipient_lang).replace('♾️ ', '')}\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}" if is_unlimited_volume(order['volume']) else f"✅ سفارش #{order_id} تأیید شد.\n📦 {order['volume']} گیگ\n💰 {order['price']:,} تومان\n📅 {result['expires_at']}")

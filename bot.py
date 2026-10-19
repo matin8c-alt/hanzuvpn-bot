@@ -26,6 +26,7 @@ from telegram import (
     MenuButtonWebApp,
     WebAppInfo,
     InputFile,
+    InputMediaPhoto,
 )
 from telegram.ext import (
     Application,
@@ -126,6 +127,21 @@ TEXTS = {
         "receipt_received": "✅ رسید شما دریافت شد.\n\n🧾 سفارش #{order}\n\nپس از بررسی توسط مدیریت، نتیجه برای شما ارسال می‌شود.",
         "no_pending": "❌ سفارش در انتظار پرداختی پیدا نشد.",
         "services_title": "📦 <b>سرویس‌های من</b>\n\nسرویس‌های فعال شما در ادامه نمایش داده می‌شوند:",
+        "services_prompt": "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        "trial_missing": "❌ تست ثبت‌شده‌ای برای شما پیدا نشد.",
+        "service_invalid": "❌ سرویس نامعتبر است.",
+        "service_missing": "❌ این سرویس پیدا نشد.",
+        "service_total": "📦 حجم کل: {value}",
+        "service_used": "📊 مصرف‌شده: {value} ({percent}٪)",
+        "service_remaining": "🟢 باقی‌مانده: {value} ({percent}٪)",
+        "service_unlimited": "♾️ حجم: نامحدود",
+        "service_usage_unavailable": "📊 آمار مصرف در دسترس نیست",
+        "service_status": "{icon} وضعیت: {status}",
+        "service_expiry": "⏳ انقضا: {expire}",
+        "service_link": "🔗 لینک اتصال شما:",
+        "service_qr": "📲 QR کد اتصال HanzuVPN",
+        "service_refresh": "🔄 بروزرسانی مصرف",
+        "service_back": "📦 بازگشت به سرویس‌های من",
         "no_services": "📦 <b>سرویس‌های من</b>\n\nهنوز سرویس فعالی ندارید.\n\n🛒 برای شروع، یک سرویس جدید تهیه کنید.",
         "service_item": "🧾 سفارش #{id}\n📦 حجم: {volume} گیگ\n⏳ انقضا: {expires}\n\n🔗 لینک:\n{link}\n\n",
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
@@ -282,6 +298,21 @@ TEXTS = {
         'delete_item': '🗑 #{id} | {volume} گیگ',
         'ticket_item': '🎫 تیکەتی #{id}',
         'volume_label': '📦 {volume} گیگ',
+        "services_prompt": "📦 خزمەتگوزارییەکانم\n\nبۆ بینینی بەکارهێنان و دۆخی نوێ، خزمەتگوزارییەکە هەڵبژێرە:",
+        "trial_missing": "❌ هیچ تاقیکردنەوەیەکی تۆمارکراو نەدۆزرایەوە.",
+        "service_invalid": "❌ خزمەتگوزاری نادروستە.",
+        "service_missing": "❌ ئەم خزمەتگوزارییە نەدۆزرایەوە.",
+        "service_total": "📦 کۆی قەبارە: {value}",
+        "service_used": "📊 بەکارهاتوو: {value} ({percent}%)",
+        "service_remaining": "🟢 ماوە: {value} ({percent}%)",
+        "service_unlimited": "♾️ قەبارە: بێ سنوور",
+        "service_usage_unavailable": "📊 زانیاری بەکارهێنان بەردەست نییە",
+        "service_status": "{icon} دۆخ: {status}",
+        "service_expiry": "⏳ بەسەرچوون: {expire}",
+        "service_link": "🔗 بەستەری پەیوەندی تۆ:",
+        "service_qr": "📲 کۆدی QR بۆ پەیوەندی HanzuVPN",
+        "service_refresh": "🔄 نوێکردنەوەی بەکارهێنان",
+        "service_back": "📦 گەڕانەوە بۆ خزمەتگوزارییەکانم",
     },
     "en": {
         "language_title": "🌐 Choose Language\n\nPlease select your language:",
@@ -314,6 +345,21 @@ TEXTS = {
         "receipt_received": "✅ Receipt received.\n\n🧾 Order #{order}",
         "no_pending": "❌ No pending order found.",
         "services_title": "📦 Your Services\n\n",
+        "services_prompt": "📦 My Services\n\nTap a service to view its current usage and status:",
+        "trial_missing": "❌ No registered trial was found for your account.",
+        "service_invalid": "❌ Invalid service.",
+        "service_missing": "❌ Service not found.",
+        "service_total": "📦 Total quota: {value}",
+        "service_used": "📊 Used: {value} ({percent}%)",
+        "service_remaining": "🟢 Remaining: {value} ({percent}%)",
+        "service_unlimited": "♾️ Quota: Unlimited",
+        "service_usage_unavailable": "📊 Usage data unavailable",
+        "service_status": "{icon} Status: {status}",
+        "service_expiry": "⏳ Expires: {expire}",
+        "service_link": "🔗 Your connection link:",
+        "service_qr": "📲 HanzuVPN connection QR",
+        "service_refresh": "🔄 Refresh usage",
+        "service_back": "📦 Back to My Services",
         "no_services": "📦 You don't have any active services.",
         "service_item": "🧾 Order #{id}\n📦 {volume} GB\n⏳ {expires}\n\n🔗 {link}\n\n",
         "renew_no_services": "🔄 You don't have any active services.",
@@ -2766,8 +2812,18 @@ async def trial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if result["status"] == "empty":
         await rich_reply_text(update.message, t(lang, "trial_empty"))
         return
-    await rich_reply_text(update.message, t(lang, "trial_success", link=result["link"]))
-    await send_subscription_qr(context.bot, user.id, result["link"])
+    link = result["link"]
+    caption = t(lang, "trial_success", link=link)
+    try:
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
+        qr.add_data(link); qr.make(fit=True)
+        image = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO(); image.save(buffer, format="PNG"); buffer.seek(0)
+        buffer.name = "hanzuvpn-trial-qr.png"
+        await update.message.reply_photo(photo=buffer, caption=(caption + "\n\n" + t(lang, "service_qr"))[:1024])
+    except Exception as exc:
+        print(f"Trial QR message failed: {type(exc).__name__}: {exc}")
+        await rich_reply_text(update.message, caption)
 
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3692,10 +3748,15 @@ async def send_services_message(message, user_id):
         return
 
     keyboard = []
-    trial_names = {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"}
+    trial_names = {
+        "fa": {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"},
+        "en": {"volume": "Volume", "vip": "Tunnel VIP", "unlimited": "Unlimited"},
+        "ku": {"volume": "قەبارەیی", "vip": "تانڵ VIP", "unlimited": "بێ سنوور"},
+    }.get(lang, {})
     for trial_item in trials:
         key = trial_item["service_key"]
-        keyboard.append([styled_inline_button(f"🎁 تست {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
+        prefix = {"fa":"🎁 تست", "en":"🎁 Trial", "ku":"🎁 تاقیکردنەوە"}.get(lang, "🎁 Trial")
+        keyboard.append([styled_inline_button(f"{prefix} {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
 
     for row in rows:
         volume = str(row["volume"] or "-")
@@ -3710,7 +3771,7 @@ async def send_services_message(message, user_id):
 
     await rich_reply_text(
         message,
-        "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        t(lang, "services_prompt"),
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -3723,14 +3784,15 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
 
     if service_type == "trial":
         trials = get_user_trials(user_id)
+        trial = next((item for item in trials if item["service_key"] == service_id), None)
         if not trial:
-            await query.answer("❌ تستی برای شما ثبت نشده است.", show_alert=True)
+            await query.answer(t(lang, "trial_missing"), show_alert=True)
             return
     else:
         try:
             order_id = int(service_id)
         except (TypeError, ValueError):
-            await query.answer("❌ سرویس نامعتبر است.", show_alert=True)
+            await query.answer(t(lang, "service_invalid"), show_alert=True)
             return
         conn = get_db()
         row = conn.execute("""
@@ -3743,7 +3805,7 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
         """, (order_id, user_id)).fetchone()
         conn.close()
         if not row:
-            await query.answer("❌ این سرویس پیدا نشد.", show_alert=True)
+            await query.answer(t(lang, "service_missing"), show_alert=True)
             return
 
     live = None
@@ -3772,21 +3834,22 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
         used = live["used_traffic"]
         remaining = live["remaining"]
         if limit:
+            used_percent = min(100, max(0, round((used / limit) * 100))) if limit else 0
+            remaining_percent = max(0, 100 - used_percent)
             usage = (
-                f"📦 حجم کل: {_pg_usage_bytes_text(limit)}\n"
-                f"📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
-                f"🟢 باقی‌مانده: {_pg_usage_bytes_text(remaining)}\n"
+                t(lang, "service_total", value=_pg_usage_bytes_text(limit)) + "\n"
+                + t(lang, "service_used", value=_pg_usage_bytes_text(used), percent=used_percent) + "\n"
+                + t(lang, "service_remaining", value=_pg_usage_bytes_text(remaining), percent=remaining_percent) + "\n"
             )
         else:
-            usage = f"♾️ حجم: نامحدود\n📊 مصرف لحظه‌ای: {_pg_usage_bytes_text(used)}\n"
+            usage = t(lang, "service_unlimited") + "\n" + t(lang, "service_used", value=_pg_usage_bytes_text(used), percent="—") + "\n"
         status = str(live.get("status") or "active")
         status_icon = "🟢" if status == "active" else "🔴"
         expire = live.get("expire") or fallback_expire
     else:
         usage = (
-            f"📦 حجم کل: {fallback_volume}\n"
-            "📊 مصرف لحظه‌ای: در دسترس نیست\n"
-            "ℹ️ این سرویس دستی است یا ارتباط با پنل برقرار نیست.\n"
+            t(lang, "service_total", value=fallback_volume) + "\n"
+            + t(lang, "service_usage_unavailable") + "\n"
         )
         status_icon = "🟢"
         status = "active"
@@ -3795,17 +3858,35 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
     text = (
         f"{title}\n\n"
         f"{usage}"
-        f"{status_icon} وضعیت: {status}\n"
-        f"⏳ انقضا: {expire}\n\n"
-        f"🔗 لینک Subscription:\n{link}"
+        + t(lang, "service_status", icon=status_icon, status=status) + "\n"
+        + t(lang, "service_expiry", expire=expire) + "\n\n"
+        + t(lang, "service_link") + "\n" + link
     )
 
     back_data = "my_services"
-    await rich_edit(query, text, reply_markup=InlineKeyboardMarkup([
-        [styled_inline_button("🔄 بروزرسانی مصرف", callback_data=query.data)],
-        [styled_inline_button("📦 بازگشت به سرویس‌های من", callback_data=back_data)],
+    markup = InlineKeyboardMarkup([
+        [styled_inline_button(t(lang, "service_refresh"), callback_data=query.data)],
+        [styled_inline_button(t(lang, "service_back"), callback_data=back_data)],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
-    ]))
+    ])
+    # Put service details and its QR into one Telegram photo message.
+    try:
+        if link and str(link).startswith(("https://", "http://")):
+            qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
+            qr.add_data(str(link)); qr.make(fit=True)
+            image = qr.make_image(fill_color="black", back_color="white")
+            buffer = BytesIO(); image.save(buffer, format="PNG"); buffer.seek(0)
+            buffer.name = "hanzuvpn-qr.png"
+            await query.message.reply_photo(photo=buffer, caption=(text + "\n\n" + t(lang, "service_qr"))[:1024], reply_markup=markup)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+        else:
+            await rich_edit(query, text, reply_markup=markup)
+    except Exception as exc:
+        print(f"Service detail QR message failed: {type(exc).__name__}: {exc}")
+        await rich_edit(query, text, reply_markup=markup)
 
 
 # کوپن
@@ -4748,25 +4829,30 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         service_title = {"volume": ("📦 حجمی", "📦 Volume", "📦 قەبارەیی"), "vip": ("🌐 تانل (VIP)", "🌐 Tunnel (VIP)", "🌐 تانڵ (VIP)"), "unlimited": ("♾️ نامحدود", "♾️ Unlimited", "♾️ بێ سنوور")}[service_key][{"fa":0,"en":1,"ku":2}.get(lang,0)]
         expires_text = (datetime.now() + timedelta(days=TRIAL_DAYS)).strftime("%Y-%m-%d %H:%M")
-        msg = (
-            f"🎉 سرویس شما با موفقیت فعال شد!\n\n"
-            f"🌐 <b>HanzuVPN</b>\n"
-            f"📦 نام سرویس: <b>{service_title}</b>\n"
-            f"📊 حجم اولیه: <b>۱۰۰ مگابایت</b>\n"
-            f"📅 تاریخ انقضا: <b>{expires_text}</b>\n"
-            f"📈 مصرف: برای مشاهده مصرف واقعی، از «سرویس‌های من» استفاده کنید\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"🔗 <b>لینک اشتراک شما:</b>\n{result['link']}\n\n"
-            f"📌 لینک را کپی کنید و داخل برنامه VPN خود وارد کنید.\n"
-            f"⚠️ لینک اشتراک خود را با دیگران به اشتراک نگذارید."
-        )
-        await rich_edit(query, msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
-            [styled_inline_button("📦 سرویس‌های من", callback_data="my_services")],
+        if lang == "en":
+            msg = (f"🎉 Your service is active!\n\n🌐 <b>HanzuVPN</b>\n📦 Service: <b>{service_title}</b>\n📊 Initial quota: <b>100 MB</b>\n📅 Expires: <b>{expires_text}</b>\n📈 View live usage in My Services.\n\n🔗 <b>Your subscription link:</b>\n{result['link']}\n\n📌 Import this link into your VPN app.\n⚠️ Do not share your subscription link.")
+        elif lang == "ku":
+            msg = (f"🎉 خزمەتگوزارییەکەت چالاک کرا!\n\n🌐 <b>HanzuVPN</b>\n📦 خزمەتگوزاری: <b>{service_title}</b>\n📊 قەبارەی سەرەتایی: <b>100 MB</b>\n📅 بەسەرچوون: <b>{expires_text}</b>\n📈 بەکارهێنانی نوێ لە خزمەتگوزارییەکانم ببینە.\n\n🔗 <b>بەستەری تۆ:</b>\n{result['link']}\n\n📌 بەستەرەکە لە بەرنامەی VPN دابنێ.\n⚠️ بەستەرەکەت هاوبەش مەکە.")
+        else:
+            msg = (f"🎉 سرویس شما با موفقیت فعال شد!\n\n🌐 <b>HanzuVPN</b>\n📦 نام سرویس: <b>{service_title}</b>\n📊 حجم اولیه: <b>۱۰۰ مگابایت</b>\n📅 تاریخ انقضا: <b>{expires_text}</b>\n📈 مصرف لحظه‌ای را در سرویس‌های من ببینید.\n\n🔗 <b>لینک اشتراک شما:</b>\n{result['link']}\n\n📌 لینک را داخل برنامه VPN وارد کنید.\n⚠️ لینک اشتراک خود را با دیگران به اشتراک نگذارید.")
+        markup = InlineKeyboardMarkup([
+            [styled_inline_button(t(lang, "services"), callback_data="my_services")],
             [styled_inline_button(t(lang, "trial"), callback_data="trial")],
             [styled_inline_button(t(lang, "buy"), callback_data="buy")],
             [styled_inline_button(t(lang, "main_menu"), callback_data="home")]
-        ]))
-        await send_subscription_qr(context.bot, user.id, result["link"])
+        ])
+        try:
+            qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
+            qr.add_data(result["link"]); qr.make(fit=True)
+            image = qr.make_image(fill_color="black", back_color="white")
+            buffer = BytesIO(); image.save(buffer, format="PNG"); buffer.seek(0)
+            buffer.name = "hanzuvpn-trial-qr.png"
+            await query.message.reply_photo(photo=buffer, caption=(msg + "\n\n" + t(lang, "service_qr"))[:1024], parse_mode="HTML", reply_markup=markup)
+            try: await query.message.delete()
+            except Exception: pass
+        except Exception as exc:
+            print(f"Trial QR delivery failed: {type(exc).__name__}: {exc}")
+            await rich_edit(query, msg, parse_mode="HTML", reply_markup=markup)
         return
 
     # سرویس‌های من: هر سرویس یک دکمه جدا دارد؛ مصرف فقط هنگام کلیک روی همان سرویس خوانده می‌شود.
@@ -4781,10 +4867,15 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         keyboard = []
-        trial_names = {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"}
+        trial_names = {
+            "fa": {"volume": "حجمی", "vip": "تانل VIP", "unlimited": "نامحدود"},
+            "en": {"volume": "Volume", "vip": "Tunnel VIP", "unlimited": "Unlimited"},
+            "ku": {"volume": "قەبارەیی", "vip": "تانڵ VIP", "unlimited": "بێ سنوور"},
+        }.get(lang, {})
         for trial_item in trials:
             key = trial_item["service_key"]
-            keyboard.append([styled_inline_button(f"🎁 تست {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
+            prefix = {"fa":"🎁 تست", "en":"🎁 Trial", "ku":"🎁 تاقیکردنەوە"}.get(lang, "🎁 Trial")
+            keyboard.append([styled_inline_button(f"{prefix} {trial_names.get(key, key)} | 100 MB", callback_data=f"service_trial_{key}")])
         for row in rows:
             volume = str(row["volume"] or "-")
             label = unlimited_display(volume, lang).replace("♾️ ", "") if is_unlimited_volume(volume) else f"{volume} گیگ"
@@ -4794,7 +4885,7 @@ async def _button_handler_impl(update: Update, context: ContextTypes.DEFAULT_TYP
             )])
         keyboard.append([styled_inline_button(t(lang, "renew"), callback_data="renew")])
         keyboard.append([styled_inline_button(t(lang, "main_menu"), callback_data="home")])
-        await rich_edit(query, "📦 سرویس‌های من\n\nبرای دیدن مصرف و وضعیت لحظه‌ای، روی سرویس موردنظر بزنید:",
+        await rich_edit(query, t(lang, "services_prompt"),
                         reply_markup=InlineKeyboardMarkup(keyboard))
         return
 

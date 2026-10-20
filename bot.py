@@ -3,7 +3,6 @@ import re
 import sqlite3
 import asyncio
 import json
-import html
 import base64
 import hashlib
 import hmac
@@ -120,7 +119,7 @@ TEXTS = {
         "trial_success": "🎁 تست رایگان HanzuVPN\n\n📦 حجم: 100 مگابایت\n⏳ مدت: 1 روز\n\n🔗 لینک Subscription:\n\n{link}\n\n📌 لینک را در برنامه VPN خود وارد کنید.",
         "payment": "💳 <b>اطلاعات پرداخت</b>\n\n📦 حجم سرویس: <b>{volume} گیگ</b>\n💰 مبلغ: <b>{price:,} تومان</b>\n⏳ مدت اعتبار: <b>۳۰ روز</b>\n",
         "original_price": "\n🏷 مبلغ اصلی: {original:,} تومان\n🎟 کد تخفیف: {coupon}\n",
-        "card": "\n💳 شماره کارت:\n`{card}`\n👤 به نام: علی علیزاده\n\nبعد از انتقال مبلغ، روی «پرداخت کردم» بزنید و سپس تصویر رسید را ارسال کنید.",
+        "card": "\n💳 شماره کارت:\n`{card}`\n\nبعد از انتقال مبلغ، روی «پرداخت کردم» بزنید و سپس تصویر رسید را ارسال کنید.",
         "paid": "💳 پرداخت کردم",
         "pay": "💳 پرداخت",
         "pay_wallet": "💰 پرداخت از کیف پول",
@@ -148,7 +147,7 @@ TEXTS = {
         "renew_no_services": "🔄 تمدید سرویس\n\nشما سرویس فعالی ندارید.",
         "renew_choose": "🔄 تمدید سرویس\n\nسرویسی که می‌خواهید تمدید کنید را انتخاب کنید:",
         "renew_payment": "🔄 تمدید سرویس\n\n📦 حجم: {volume} گیگ\n💰 مبلغ تمدید: {price:,} تومان\n⏳ مدت: 30 روز\n\nبرای پرداخت روی دکمه زیر بزنید.",
-        "renew_paid": "💳 پرداخت تمدید\n\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n⏳ مدت: 30 روز\n\n💳 شماره کارت:\n`{card}`\n👤 به نام: علی علیزاده\n\nبعد از پرداخت روی دکمه زیر بزنید.",
+        "renew_paid": "💳 پرداخت تمدید\n\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n⏳ مدت: 30 روز\n\n💳 شماره کارت:\n`{card}`\n\nبعد از پرداخت روی دکمه زیر بزنید.",
         "renew_created": "✅ درخواست تمدید ثبت شد.\n\n🧾 سفارش: #{order}\n📦 حجم: {volume} گیگ\n💰 مبلغ: {price:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "custom_prompt": "✏️ حجم دلخواه\n\nحجم موردنظر را به گیگ وارد کن.\n\nمثال:\n25",
         "invalid_volume": "❌ حجم نامعتبر است.\n\nمثلاً 25 وارد کن.",
@@ -174,7 +173,7 @@ TEXTS = {
         "wallet_history": "📜 تاریخچه تراکنش‌ها",
         "charge_prompt": "💰 شارژ کیف پول\n\nمبلغ مورد نظر را به تومان وارد کنید.\n\nحداقل مبلغ: {min:,} تومان\n\nمثال:\n50000",
         "invalid_charge": "❌ مبلغ نامعتبر است.\n\nحداقل مبلغ شارژ {min:,} تومان است.",
-        "charge_payment": "💰 شارژ کیف پول\n\n💵 مبلغ: {amount:,} تومان\n\n💳 شماره کارت:\n`{card}`\n👤 به نام: علی علیزاده\n\nبعد از واریز، روی «پرداخت کردم» بزنید و رسید را ارسال کنید.",
+        "charge_payment": "💰 شارژ کیف پول\n\n💵 مبلغ: {amount:,} تومان\n\n💳 شماره کارت:\n`{card}`\n\nبعد از واریز، روی «پرداخت کردم» بزنید و رسید را ارسال کنید.",
         "charge_created": "✅ درخواست شارژ ثبت شد.\n\n🧾 شماره: #{order}\n💰 مبلغ: {amount:,} تومان\n\n📸 حالا تصویر رسید را ارسال کنید.",
         "charge_success": "✅ شارژ کیف پول با موفقیت انجام شد.\n\n💰 مبلغ: {amount:,} تومان\n💵 موجودی جدید: {balance:,} تومان",
         "not_enough_balance": "❌ موجودی کیف پول شما کافی نیست.",
@@ -229,7 +228,7 @@ TEXTS = {
         "trial_success": "🎁 تاقیکردنەوەی بەخۆڕایی\n\n📦 قەبارە: 100 مێگابایت\n⏳ ماوە: 1 ڕۆژ\n\n🔗 بەستەر:\n{link}",
         "payment": "💳 زانیاری پارەدان\n\n📦 قەبارە: {volume} گیگ\n💰 بڕ: {price:,} تومان\n⏳ ماوە: 30 ڕۆژ\n",
         "original_price": "\n🏷 بڕی سەرەکی: {original:,} تومان\n🎟 کۆد: {coupon}\n",
-        "card": "\n💳 ژمارەی کارت:\n`{card}`\n👤 بە ناوی: Ali Alizadeh\n\nدوای پارەدان «پارەم داوە» هەڵبژێرە و وێنەی پسوڵە بنێرە.",
+        "card": "\n💳 ژمارەی کارت:\n`{card}`\n\nدوای پارەدان «پارەم داوە» هەڵبژێرە و وێنەی پسوڵە بنێرە.",
         "paid": "💳 پارەم داوە",
         "pay": "💳 پارەدان",
         "pay_wallet": "💰 پارەدان لە جزدان",
@@ -242,7 +241,7 @@ TEXTS = {
         "renew_no_services": "🔄 هیچ خزمەتگوزارییەکی چالاکت نییە.",
         "renew_choose": "🔄 خزمەتگوزارییەک هەڵبژێرە بۆ نوێکردنەوە:",
         "renew_payment": "🔄 نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان",
-        "renew_paid": "💳 پارەدانی نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n💳 ژمارەی کارت: `{card}`\n👤 بە ناوی: Ali Alizadeh",
+        "renew_paid": "💳 پارەدانی نوێکردنەوە\n\n📦 {volume} گیگ\n💰 {price:,} تومان\n\n💳 `{card}`",
         "renew_created": "✅ داواکاری نوێکردنەوە تۆمار کرا.\n\n🧾 #{order}",
         "custom_prompt": "✏️ قەبارە بە گیگ بنووسە:\n\nنموونە: 25",
         "invalid_volume": "❌ قەبارە نادروستە.",
@@ -268,7 +267,7 @@ TEXTS = {
         "wallet_history": "📜 مێژووی مامەڵەکان",
         "charge_prompt": "💰 شارژ\n\nبڕ بنووسە (کەمترین: {min:,})",
         "invalid_charge": "❌ بڕ نادروستە.",
-        "charge_payment": "💰 شارژ\n\n💵 {amount:,} تومان\n\n💳 ژمارەی کارت: `{card}`\n👤 بە ناوی: Ali Alizadeh",
+        "charge_payment": "💰 شارژ\n\n💵 {amount:,} تومان\n\n💳 `{card}`",
         "charge_created": "✅ داواکاری شارژ تۆمار کرا.\n\n🧾 #{order}",
         "charge_success": "✅ شارژ سەرکەوتوو بوو.\n\n💰 {amount:,}\n💵 موجودی نوێ: {balance:,}",
         "not_enough_balance": "❌ موجودی بەس نییە.",
@@ -338,7 +337,7 @@ TEXTS = {
         "trial_success": "🎁 Free Trial\n\n📦 100 MB\n⏳ 1 day\n\n🔗 {link}",
         "payment": "💳 Payment Information\n\n📦 Volume: {volume} GB\n💰 Price: {price:,} Toman\n⏳ 30 days\n",
         "original_price": "\n🏷 Original: {original:,} Toman\n🎟 Coupon: {coupon}\n",
-        "card": "\n💳 Card number:\n`{card}`\n👤 Account holder: Ali Alizadeh\n\nAfter payment, tap «I Paid» and send the receipt.",
+        "card": "\n💳 Card number:\n`{card}`\n\nAfter payment, tap «I Paid» and send the receipt.",
         "paid": "💳 I Paid",
         "pay": "💳 Pay",
         "pay_wallet": "💰 Pay from Wallet",
@@ -366,7 +365,7 @@ TEXTS = {
         "renew_no_services": "🔄 You don't have any active services.",
         "renew_choose": "🔄 Choose the service to renew:",
         "renew_payment": "🔄 Renew\n\n📦 {volume} GB\n💰 {price:,} Toman",
-        "renew_paid": "💳 Renewal Payment\n\n📦 {volume} GB\n💰 {price:,} Toman\n\n💳 Card number: `{card}`\n👤 Account holder: Ali Alizadeh",
+        "renew_paid": "💳 Renewal Payment\n\n📦 {volume} GB\n💰 {price:,} Toman\n\n💳 `{card}`",
         "renew_created": "✅ Renewal request registered.\n\n🧾 #{order}",
         "custom_prompt": "✏️ Enter volume in GB:\n\nExample: 25",
         "invalid_volume": "❌ Invalid volume.",
@@ -392,7 +391,7 @@ TEXTS = {
         "wallet_history": "📜 Transaction History",
         "charge_prompt": "💰 Charge Wallet\n\nEnter amount in Toman.\n\nMinimum: {min:,}",
         "invalid_charge": "❌ Invalid amount.\n\nMinimum is {min:,} Toman.",
-        "charge_payment": "💰 Charge Wallet\n\n💵 Amount: {amount:,} Toman\n\n💳 Card number: `{card}`\n👤 Account holder: Ali Alizadeh",
+        "charge_payment": "💰 Charge Wallet\n\n💵 Amount: {amount:,} Toman\n\n💳 `{card}`",
         "charge_created": "✅ Charge request registered.\n\n🧾 #{order}\n💰 {amount:,} Toman",
         "charge_success": "✅ Wallet charged successfully.\n\n💰 {amount:,} Toman\n💵 New balance: {balance:,}",
         "not_enough_balance": "❌ Insufficient wallet balance.",
@@ -3778,7 +3777,7 @@ async def send_services_message(message, user_id):
 
 
 async def show_service_detail(query, user_id, service_type, service_id=None):
-    """Show a neatly organized, localized service card with its own subscription QR."""
+    """Render one service and fetch live PasarGuard usage only on click."""
     lang = get_user_language(user_id) or "fa"
     row = None
     trial = None
@@ -3809,9 +3808,9 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
             await query.answer(t(lang, "service_missing"), show_alert=True)
             return
 
-    pg_username = trial["pg_username"] if trial else row["pg_username"]
     live = None
     pg_enabled = get_pasarguard_mode() in ("panel", "pasarguard", "fallback")
+    pg_username = trial["pg_username"] if trial else row["pg_username"]
     if pg_username and pg_enabled:
         try:
             live = await asyncio.to_thread(_pg_live_usage_sync, pg_username)
@@ -3819,106 +3818,86 @@ async def show_service_detail(query, user_id, service_type, service_id=None):
             print(f"PasarGuard live usage error for service {service_id or 'trial'}: {exc}")
 
     if trial:
-        key = str(trial["service_key"] or "volume")
-        type_names = {
-            "fa": {"volume": "حجمی", "vip": "تانل (VIP)", "unlimited": "نامحدود"},
-            "en": {"volume": "Volume", "vip": "Tunnel (VIP)", "unlimited": "Unlimited"},
-            "ku": {"volume": "قەبارەیی", "vip": "تانڵ (VIP)", "unlimited": "بێ سنوور"},
-        }
-        service_name = type_names.get(lang, type_names["fa"]).get(key, "HanzuVPN")
-        title = {"fa": f"🎁 تست رایگان | {service_name}", "en": f"🎁 Free Trial | {service_name}", "ku": f"🎁 تاقیکردنەوەی خۆڕایی | {service_name}"}.get(lang, f"🎁 Free Trial | {service_name}")
-        link = trial["pg_subscription_url"] or ""
-        fallback_expire = trial["expires_at"] or "—"
+        trial_titles = {"volume": "حجمی", "vip": "تانل (VIP)", "unlimited": "نامحدود"}
+        title = f"🎁 تست رایگان | {trial_titles.get(trial['service_key'], 'HanzuVPN')}"
+        link = trial["pg_subscription_url"] or "-"
+        fallback_expire = trial["expires_at"] or "-"
         fallback_volume = "100 MB"
-        service_code = "TRIAL"
     else:
-        volume = str(row["volume"] or "—")
-        type_names = {
-            "fa": "نامحدود" if is_unlimited_volume(volume) else ("تانل (VIP)" if "vip" in volume.lower() else "حجمی"),
-            "en": "Unlimited" if is_unlimited_volume(volume) else ("Tunnel (VIP)" if "vip" in volume.lower() else "Volume"),
-            "ku": "بێ سنوور" if is_unlimited_volume(volume) else ("تانڵ (VIP)" if "vip" in volume.lower() else "قەبارەیی"),
-        }
-        service_name = type_names.get(lang, type_names["fa"])
-        title = {"fa": f"📦 مشخصات سرویس #{row['id']}", "en": f"📦 Service Details #{row['id']}", "ku": f"📦 زانیاری خزمەتگوزاری #{row['id']}"}.get(lang, f"📦 Service #{row['id']}")
-        link = row["link"] or ""
-        fallback_expire = row["expires_at"] or "—"
-        fallback_volume = f"{volume} GB" if lang == "en" else (f"{volume} گیگ" if lang == "fa" else f"{volume} گیگابایت")
-        service_code = f"#{row['id']}"
+        title = f"📦 سرویس #{row['id']}"
+        link = row["link"] or "-"
+        fallback_expire = row["expires_at"] or "-"
+        fallback_volume = f"{row['volume']} گیگ"
 
     if live:
-        limit = int(live.get("data_limit") or 0)
-        used = int(live.get("used_traffic") or 0)
-        remaining = int(live.get("remaining") or 0)
-        if limit > 0:
-            used_percent = min(100, max(0, round(used * 100 / limit)))
+        limit = live["data_limit"]
+        used = live["used_traffic"]
+        remaining = live["remaining"]
+        if limit:
+            used_percent = min(100, max(0, round((used / limit) * 100))) if limit else 0
             remaining_percent = max(0, 100 - used_percent)
             usage = (
                 t(lang, "service_total", value=_pg_usage_bytes_text(limit)) + "\n"
                 + t(lang, "service_used", value=_pg_usage_bytes_text(used), percent=used_percent) + "\n"
-                + t(lang, "service_remaining", value=_pg_usage_bytes_text(remaining), percent=remaining_percent)
+                + t(lang, "service_remaining", value=_pg_usage_bytes_text(remaining), percent=remaining_percent) + "\n"
             )
         else:
-            usage = t(lang, "service_unlimited") + "\n" + t(lang, "service_used", value=_pg_usage_bytes_text(used), percent="—")
-        raw_status = str(live.get("status") or "active").lower()
-        active = raw_status in ("active", "on_hold", "enabled", "true", "1")
-        status_icon = "🟢" if active else "🔴"
-        status_text = ({"fa": "فعال" if active else "غیرفعال", "en": "Active" if active else "Inactive", "ku": "چالاک" if active else "ناچالاک"}.get(lang))
+            usage = t(lang, "service_unlimited") + "\n" + t(lang, "service_used", value=_pg_usage_bytes_text(used), percent="—") + "\n"
+        status = str(live.get("status") or "active")
+        status_icon = "🟢" if status == "active" else "🔴"
         expire = live.get("expire") or fallback_expire
     else:
-        usage = t(lang, "service_total", value=fallback_volume) + "\n" + t(lang, "service_usage_unavailable")
+        usage = (
+            t(lang, "service_total", value=fallback_volume) + "\n"
+            + t(lang, "service_usage_unavailable") + "\n"
+        )
         status_icon = "🟢"
-        status_text = {"fa": "ثبت‌شده", "en": "Registered", "ku": "تۆمارکراو"}.get(lang, "Registered")
+        status = "active"
         expire = fallback_expire
 
-    labels = {
-        "fa": ("👤 نام سرویس", "🧩 نوع سرویس", "📅 تاریخ انقضا", "🌐 موقعیت سرویس", "📍 طبق اطلاعات پنل"),
-        "en": ("👤 Service name", "🧩 Service type", "📅 Expiry", "🌐 Location", "📍 As provided by panel"),
-        "ku": ("👤 ناوی خزمەتگوزاری", "🧩 جۆری خزمەتگوزاری", "📅 بەسەرچوون", "🌐 شوێن", "📍 بەپێی زانیاریی پانێڵ"),
-    }
-    name_label, type_label, expiry_label, location_label, location_unknown = labels.get(lang, labels["fa"])
-    link_label = t(lang, "service_link")
-    qr_label = t(lang, "service_qr")
     text = (
-        f"{title}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"{name_label}: <code>{html.escape(str(service_code))}</code>\n"
-        f"{type_label}: {html.escape(str(service_name))}\n"
-        f"{t(lang, 'service_status', icon=status_icon, status=status_text)}\n\n"
-        f"📊 <b>{'اطلاعات مصرف' if lang == 'fa' else ('Usage' if lang == 'en' else 'زانیاری بەکارهێنان')}</b>\n"
-        f"{usage}\n\n"
-        f"{expiry_label}: {html.escape(str(expire))}\n"
-        f"{location_label}: {location_unknown}\n\n"
-        f"{link_label}\n{html.escape(str(link)) if link else '—'}\n\n{qr_label}"
+        f"{title}\n\n"
+        f"{usage}"
+        + t(lang, "service_status", icon=status_icon, status=status) + "\n"
+        + t(lang, "service_expiry", expire=expire) + "\n\n"
+        + t(lang, "service_link") + "\n" + link
     )
 
+    back_data = "my_services"
     markup = InlineKeyboardMarkup([
         [styled_inline_button(t(lang, "service_refresh"), callback_data=query.data)],
-        [styled_inline_button(t(lang, "service_back"), callback_data="my_services")],
+        [styled_inline_button(t(lang, "service_back"), callback_data=back_data)],
         [styled_inline_button(t(lang, "main_menu"), callback_data="home")],
     ])
+    # Rich Message buttons cannot be attached to a photo message. Send the QR
+    # image separately, then send the service details as a real Rich Message so
+    # all three action buttons use the same working callback style as the rest
+    # of HanzuVPN.
     try:
-        if link.startswith(("https://", "http://")):
+        if link and str(link).startswith(("https://", "http://")):
             qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=3)
-            qr.add_data(link)
-            qr.make(fit=True)
+            qr.add_data(str(link)); qr.make(fit=True)
             image = qr.make_image(fill_color="black", back_color="white")
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-            buffer.name = "hanzuvpn-service-qr.png"
-            # Telegram photo captions are limited to 1024 characters; keep all key
-            # details and the actual subscription link in the caption where possible.
-            caption = text[:1024]
-            await query.message.reply_photo(photo=buffer, caption=caption, parse_mode="HTML", reply_markup=markup)
-            try:
-                await query.message.delete()
-            except Exception:
-                pass
-        else:
-            await rich_edit(query, text, parse_mode="HTML", reply_markup=markup)
+            buffer = BytesIO(); image.save(buffer, format="PNG"); buffer.seek(0)
+            buffer.name = "hanzuvpn-qr.png"
+            await query.message.reply_photo(
+                photo=buffer,
+                caption=t(lang, "service_qr"),
+            )
+
+        await rich_reply_text(query.message, text, reply_markup=markup)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
     except Exception as exc:
-        print(f"Service detail QR message failed: {type(exc).__name__}: {exc}")
-        await rich_edit(query, text, parse_mode="HTML", reply_markup=markup)
+        print(f"Service detail Rich Message failed: {type(exc).__name__}: {exc}")
+        try:
+            await rich_edit(query, text, reply_markup=markup)
+        except Exception as fallback_exc:
+            print(f"Service detail fallback failed: {type(fallback_exc).__name__}: {fallback_exc}")
+
+
 # کوپن
 def create_coupon(code, percent, max_uses):
     conn = get_db()
